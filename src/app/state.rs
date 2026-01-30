@@ -1,6 +1,6 @@
 //! Application state and view management
 
-use crate::jj::{JjExecutor, Parser};
+use crate::jj::JjExecutor;
 use crate::ui::views::LogView;
 
 /// Available views in the application
@@ -56,17 +56,12 @@ impl App {
 
     /// Refresh the log view with optional revset
     pub fn refresh_log(&mut self, revset: Option<&str>) {
-        match self.jj.log_raw(revset) {
-            Ok(output) => match Parser::parse_log(&output) {
-                Ok(changes) => {
-                    self.log_view.set_changes(changes);
-                    self.log_view.current_revset = revset.map(|s| s.to_string());
-                    self.error_message = None;
-                }
-                Err(e) => {
-                    self.error_message = Some(format!("Parse error: {}", e));
-                }
-            },
+        match self.jj.log(revset) {
+            Ok(changes) => {
+                self.log_view.set_changes(changes);
+                self.log_view.current_revset = revset.map(|s| s.to_string());
+                self.error_message = None;
+            }
             Err(e) => {
                 self.error_message = Some(format!("jj error: {}", e));
             }

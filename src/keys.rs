@@ -37,6 +37,13 @@ pub const GO_TOP: KeyCode = KeyCode::Char('g');
 pub const GO_BOTTOM: KeyCode = KeyCode::Char('G');
 
 // =============================================================================
+// Input keys (used in input modes)
+// =============================================================================
+
+/// Submit input (Enter in input mode)
+pub const SUBMIT: KeyCode = KeyCode::Enter;
+
+// =============================================================================
 // Log View keys
 // =============================================================================
 

@@ -5,8 +5,11 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+use crate::model::Change;
+
 use super::JjError;
 use super::constants::{self, commands, errors, flags, special};
+use super::parser::Parser;
 use super::template::Templates;
 
 /// Executor for jj commands
@@ -98,7 +101,7 @@ impl JjExecutor {
         Ok(())
     }
 
-    /// Run `jj log` with optional revset filter
+    /// Run `jj log` with optional revset filter (raw output)
     pub fn log_raw(&self, revset: Option<&str>) -> Result<String, JjError> {
         let template = Templates::log();
         let mut args = vec![commands::LOG, flags::NO_GRAPH, flags::TEMPLATE, template];
@@ -109,6 +112,12 @@ impl JjExecutor {
         }
 
         self.run(&args)
+    }
+
+    /// Run `jj log` and parse the output into Changes
+    pub fn log(&self, revset: Option<&str>) -> Result<Vec<Change>, JjError> {
+        let output = self.log_raw(revset)?;
+        Parser::parse_log(&output).map_err(|e| JjError::ParseError(e.to_string()))
     }
 
     /// Run `jj status`

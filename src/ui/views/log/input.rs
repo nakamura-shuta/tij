@@ -72,7 +72,7 @@ impl LogView {
                 self.cancel_input();
                 LogAction::None
             }
-            KeyCode::Enter => {
+            k if k == keys::SUBMIT => {
                 let query = self.input_buffer.clone();
                 if query.is_empty() {
                     // Clear search query
@@ -104,7 +104,7 @@ impl LogView {
                 self.cancel_input();
                 LogAction::None
             }
-            KeyCode::Enter => {
+            k if k == keys::SUBMIT => {
                 let revset = self.input_buffer.clone();
                 self.input_mode = InputMode::Normal;
                 self.input_buffer.clear();
