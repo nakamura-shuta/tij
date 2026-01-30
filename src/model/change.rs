@@ -26,6 +26,18 @@ pub struct Change {
 
     /// Associated bookmarks (branch names)
     pub bookmarks: Vec<String>,
+
+    /// DAG graph prefix from jj log output
+    ///
+    /// Examples:
+    /// - `"@  "` (working copy, simple)
+    /// - `"│ ○  "` (1-level branch)
+    /// - `"│ │ ○  "` (2-level branch)
+    /// - `"├─╮"` (graph-only, branch start)
+    pub graph_prefix: String,
+
+    /// True if this is a graph-only line (no change data, just branch lines)
+    pub is_graph_only: bool,
 }
 
 impl Change {
@@ -63,6 +75,8 @@ mod tests {
             is_working_copy: false,
             is_empty: false,
             bookmarks: vec!["main".to_string()],
+            graph_prefix: String::new(),
+            is_graph_only: false,
         }
     }
 

@@ -20,6 +20,8 @@ fn create_test_changes() -> Vec<Change> {
             is_working_copy: true,
             is_empty: false,
             bookmarks: vec!["main".to_string()],
+            graph_prefix: "@  ".to_string(),
+            is_graph_only: false,
         },
         Change {
             change_id: "xyz98765".to_string(),
@@ -30,6 +32,8 @@ fn create_test_changes() -> Vec<Change> {
             is_working_copy: false,
             is_empty: false,
             bookmarks: vec![],
+            graph_prefix: "○  ".to_string(),
+            is_graph_only: false,
         },
         Change {
             change_id: constants::ROOT_CHANGE_ID.to_string(),
@@ -40,6 +44,8 @@ fn create_test_changes() -> Vec<Change> {
             is_working_copy: false,
             is_empty: true,
             bookmarks: vec![],
+            graph_prefix: "◆  ".to_string(),
+            is_graph_only: false,
         },
     ]
 }

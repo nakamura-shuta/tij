@@ -45,9 +45,9 @@ pub enum LogAction {
 /// Log View state
 #[derive(Debug, Default)]
 pub struct LogView {
-    /// List of changes to display
+    /// List of changes to display (includes graph-only lines)
     pub changes: Vec<Change>,
-    /// Currently selected index
+    /// Currently selected index in `changes`
     pub selected_index: usize,
     /// Scroll offset for display
     pub scroll_offset: usize,
@@ -61,6 +61,10 @@ pub struct LogView {
     pub current_revset: Option<String>,
     /// Last search query for n/N navigation
     pub(crate) last_search_query: Option<String>,
+    /// Indices of selectable changes (not graph-only)
+    selectable_indices: Vec<usize>,
+    /// Current position in selectable_indices
+    selection_cursor: usize,
 }
 
 pub mod empty_text {
@@ -75,15 +79,21 @@ impl LogView {
     }
 
     /// Set the changes to display
+    ///
+    /// Builds the selectable indices list (excluding graph-only lines)
+    /// and resets selection to the first selectable change.
     pub fn set_changes(&mut self, changes: Vec<Change>) {
+        // Build selectable indices (non graph-only lines)
+        self.selectable_indices = changes
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| !c.is_graph_only)
+            .map(|(i, _)| i)
+            .collect();
+
         self.changes = changes;
-        // Reset selection if out of bounds
-        if self.selected_index >= self.changes.len() && !self.changes.is_empty() {
-            self.selected_index = self.changes.len() - 1;
-        }
-        if self.changes.is_empty() {
-            self.selected_index = 0;
-        }
+        self.selection_cursor = 0;
+        self.selected_index = self.selectable_indices.first().copied().unwrap_or(0);
     }
 
     /// Get the currently selected change
@@ -91,30 +101,47 @@ impl LogView {
         self.changes.get(self.selected_index)
     }
 
-    /// Move selection up
+    /// Check if the given index is selectable (not graph-only)
+    pub fn is_selectable(&self, index: usize) -> bool {
+        self.changes
+            .get(index)
+            .map(|c| !c.is_graph_only)
+            .unwrap_or(false)
+    }
+
+    /// Move selection up (skips graph-only lines)
     pub fn move_up(&mut self) {
-        if self.selected_index > 0 {
-            self.selected_index -= 1;
+        if self.selection_cursor > 0 {
+            self.selection_cursor -= 1;
+            self.selected_index = self.selectable_indices[self.selection_cursor];
         }
     }
 
-    /// Move selection down
+    /// Move selection down (skips graph-only lines)
     pub fn move_down(&mut self) {
-        if !self.changes.is_empty() && self.selected_index < self.changes.len() - 1 {
-            self.selected_index += 1;
+        if self.selection_cursor < self.selectable_indices.len().saturating_sub(1) {
+            self.selection_cursor += 1;
+            self.selected_index = self.selectable_indices[self.selection_cursor];
         }
     }
 
-    /// Move to top
+    /// Move to top (first selectable change)
     pub fn move_to_top(&mut self) {
-        self.selected_index = 0;
+        self.selection_cursor = 0;
+        self.selected_index = self.selectable_indices.first().copied().unwrap_or(0);
     }
 
-    /// Move to bottom
+    /// Move to bottom (last selectable change)
     pub fn move_to_bottom(&mut self) {
-        if !self.changes.is_empty() {
-            self.selected_index = self.changes.len() - 1;
+        if let Some(&last) = self.selectable_indices.last() {
+            self.selection_cursor = self.selectable_indices.len().saturating_sub(1);
+            self.selected_index = last;
         }
+    }
+
+    /// Get the number of selectable changes
+    pub fn selectable_count(&self) -> usize {
+        self.selectable_indices.len()
     }
 
     /// Start text search input mode

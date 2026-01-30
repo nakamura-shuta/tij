@@ -102,9 +102,12 @@ impl JjExecutor {
     }
 
     /// Run `jj log` with optional revset filter (raw output)
+    ///
+    /// Note: Graph output is enabled to show DAG structure.
+    /// The parser handles graph prefixes in the output.
     pub fn log_raw(&self, revset: Option<&str>) -> Result<String, JjError> {
         let template = Templates::log();
-        let mut args = vec![commands::LOG, flags::NO_GRAPH, flags::TEMPLATE, template];
+        let mut args = vec![commands::LOG, flags::TEMPLATE, template];
 
         if let Some(rev) = revset {
             args.push(flags::REVISION);

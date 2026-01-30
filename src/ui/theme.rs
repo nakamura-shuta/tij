@@ -24,6 +24,8 @@ pub mod log_view {
     pub const EMPTY_LABEL: Color = Color::DarkGray;
     /// Selected row background
     pub const SELECTED_BG: Color = Color::DarkGray;
+    /// Graph line color (DAG structure)
+    pub const GRAPH_LINE: Color = Color::Blue;
 }
 
 /// Colors for Diff View

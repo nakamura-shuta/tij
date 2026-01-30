@@ -12,24 +12,109 @@ pub struct Parser;
 impl Parser {
     /// Parse `jj log` output into a list of Changes
     ///
-    /// Each line represents one change, with fields separated by tabs.
+    /// Handles graph output with TAB-based detection:
+    /// - Lines with TAB: Change lines (graph prefix + TAB-separated fields)
+    /// - Lines without TAB: Graph-only lines (branch/merge lines)
     pub fn parse_log(output: &str) -> Result<Vec<Change>, JjError> {
         let mut changes = Vec::new();
 
         for line in output.lines() {
-            let line = line.trim();
             if line.is_empty() {
                 continue;
             }
 
-            let change = Self::parse_log_record(line)?;
-            changes.push(change);
+            // TAB presence determines line type
+            if let Some(tab_pos) = line.find(FIELD_SEPARATOR) {
+                // Change line: extract graph prefix and parse fields
+                let graph_and_id = &line[..tab_pos];
+                let data_fields = &line[tab_pos + 1..];
+
+                let (graph_prefix, change_id) = Self::split_graph_prefix(graph_and_id)?;
+                let mut change = Self::parse_log_fields(change_id, data_fields)?;
+                change.graph_prefix = graph_prefix;
+                change.is_graph_only = false;
+                changes.push(change);
+            } else {
+                // Graph-only line (no TAB = no data fields)
+                changes.push(Change {
+                    graph_prefix: line.to_string(),
+                    is_graph_only: true,
+                    ..Default::default()
+                });
+            }
         }
 
         Ok(changes)
     }
 
-    /// Parse a single log record (one line, tab-separated fields)
+    /// Split graph prefix and change_id from the part before TAB
+    ///
+    /// Input: "│ │ ○  oqwroxvu"
+    /// Output: Ok(("│ │ ○  ", "oqwroxvu"))
+    ///
+    /// jj's change_id uses "reversed hex" encoding with lowercase letters only.
+    /// The template uses `.short(8)` which outputs `[a-z]{8}`.
+    fn split_graph_prefix(graph_and_id: &str) -> Result<(String, &str), JjError> {
+        let bytes = graph_and_id.as_bytes();
+        let mut id_start = bytes.len();
+
+        // Find where the change_id starts (consecutive lowercase letters from end)
+        for i in (0..bytes.len()).rev() {
+            if bytes[i].is_ascii_lowercase() {
+                id_start = i;
+            } else if id_start < bytes.len() {
+                // Hit non-lowercase after finding some lowercase chars
+                break;
+            }
+        }
+
+        if id_start < bytes.len() {
+            let graph_prefix = graph_and_id[..id_start].to_string();
+            let change_id = &graph_and_id[id_start..];
+            Ok((graph_prefix, change_id))
+        } else {
+            // TAB exists but no change_id found - invalid format
+            Err(JjError::ParseError(format!(
+                "Cannot extract change_id from: {}",
+                graph_and_id
+            )))
+        }
+    }
+
+    /// Parse TAB-separated fields after change_id
+    ///
+    /// Fields: commit_id, author, timestamp, description, is_working_copy, is_empty, bookmarks
+    fn parse_log_fields(change_id: &str, data: &str) -> Result<Change, JjError> {
+        let fields: Vec<&str> = data.split(FIELD_SEPARATOR).collect();
+
+        if fields.len() < 6 {
+            return Err(JjError::ParseError(format!(
+                "Expected at least 6 fields after change_id, got {}: {:?}",
+                fields.len(),
+                fields
+            )));
+        }
+
+        Ok(Change {
+            change_id: change_id.to_string(),
+            commit_id: fields[0].to_string(),
+            author: fields[1].to_string(),
+            timestamp: fields[2].to_string(),
+            description: fields[3].to_string(),
+            is_working_copy: fields[4] == "true",
+            is_empty: fields[5] == "true",
+            bookmarks: if fields.len() > 6 && !fields[6].is_empty() {
+                fields[6].split(',').map(|s| s.to_string()).collect()
+            } else {
+                Vec::new()
+            },
+            graph_prefix: String::new(), // Set by caller
+            is_graph_only: false,
+        })
+    }
+
+    // Legacy function for tests - kept for backwards compatibility
+    #[cfg(test)]
     fn parse_log_record(record: &str) -> Result<Change, JjError> {
         let fields: Vec<&str> = record.split(FIELD_SEPARATOR).collect();
 
@@ -54,6 +139,8 @@ impl Parser {
             } else {
                 Vec::new()
             },
+            graph_prefix: String::new(),
+            is_graph_only: false,
         })
     }
 
@@ -622,5 +709,118 @@ Modified regular file src/lib.rs:
     fn test_parse_diff_line_deleted() {
         let line = Parser::parse_diff_line("   11     : -       println!(\"old\");").unwrap();
         assert_eq!(line.kind, DiffLineKind::Deleted);
+    }
+
+    // =========================================================================
+    // Graph parsing tests (Phase 3.5)
+    // =========================================================================
+
+    #[test]
+    fn test_split_graph_prefix_simple() {
+        let (prefix, id) = Parser::split_graph_prefix("@  oqwroxvu").unwrap();
+        assert_eq!(prefix, "@  ");
+        assert_eq!(id, "oqwroxvu");
+    }
+
+    #[test]
+    fn test_split_graph_prefix_one_level() {
+        let (prefix, id) = Parser::split_graph_prefix("│ ○  nuzyqrpm").unwrap();
+        assert_eq!(prefix, "│ ○  ");
+        assert_eq!(id, "nuzyqrpm");
+    }
+
+    #[test]
+    fn test_split_graph_prefix_two_level() {
+        let (prefix, id) = Parser::split_graph_prefix("│ │ ○  uslxsspn").unwrap();
+        assert_eq!(prefix, "│ │ ○  ");
+        assert_eq!(id, "uslxsspn");
+    }
+
+    #[test]
+    fn test_split_graph_prefix_complex() {
+        let (prefix, id) = Parser::split_graph_prefix("│ ○ │  rnstomqt").unwrap();
+        assert_eq!(prefix, "│ ○ │  ");
+        assert_eq!(id, "rnstomqt");
+    }
+
+    #[test]
+    fn test_split_graph_prefix_no_change_id() {
+        // Graph-only lines shouldn't reach this function (filtered by TAB check)
+        // but if they do, it should error
+        let result = Parser::split_graph_prefix("│ ├─╮");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_log_with_graph_simple() {
+        let output = "@  oqwroxvu\t1f7a8c00\tuser@example.com\t2026-01-30T16:17:51+0900\texperimental: results\ttrue\tfalse\t\n\
+                      ○  vxvxrlkn\tdd9bda5a\tuser@example.com\t2026-01-30T16:17:51+0900\texperimental: try\tfalse\tfalse\t";
+
+        let changes = Parser::parse_log(output).unwrap();
+        assert_eq!(changes.len(), 2);
+
+        assert_eq!(changes[0].graph_prefix, "@  ");
+        assert_eq!(changes[0].change_id, "oqwroxvu");
+        assert!(changes[0].is_working_copy);
+        assert!(!changes[0].is_graph_only);
+
+        assert_eq!(changes[1].graph_prefix, "○  ");
+        assert_eq!(changes[1].change_id, "vxvxrlkn");
+        assert!(!changes[1].is_working_copy);
+    }
+
+    #[test]
+    fn test_parse_log_with_graph_branch() {
+        // Simulates a branch with graph-only line
+        let output = "@  oqwroxvu\t1f7a8c00\tuser@example.com\t2026-01-30T16:17:51+0900\tfeature\ttrue\tfalse\t\n\
+                      │ ○  nuzyqrpm\t8b644ab5\tuser@example.com\t2026-01-30T16:17:46+0900\tmain\tfalse\tfalse\t\n\
+                      ├─╯\n\
+                      ○  basecommit\tbase1234\tuser@example.com\t2026-01-30T16:15:24+0900\tbase\tfalse\tfalse\t";
+
+        let changes = Parser::parse_log(output).unwrap();
+        assert_eq!(changes.len(), 4);
+
+        // First change
+        assert_eq!(changes[0].graph_prefix, "@  ");
+        assert_eq!(changes[0].change_id, "oqwroxvu");
+        assert!(!changes[0].is_graph_only);
+
+        // Second change (in branch)
+        assert_eq!(changes[1].graph_prefix, "│ ○  ");
+        assert_eq!(changes[1].change_id, "nuzyqrpm");
+        assert!(!changes[1].is_graph_only);
+
+        // Graph-only line (branch merge)
+        assert_eq!(changes[2].graph_prefix, "├─╯");
+        assert!(changes[2].is_graph_only);
+        assert!(changes[2].change_id.is_empty());
+
+        // Base commit
+        assert_eq!(changes[3].graph_prefix, "○  ");
+        assert_eq!(changes[3].change_id, "basecommit");
+        assert!(!changes[3].is_graph_only);
+    }
+
+    #[test]
+    fn test_parse_log_graph_only_lines() {
+        // Various graph-only patterns
+        let patterns = ["│ ├─╮", "├─╯ │", "├───╯", "│ │", "│"];
+
+        for pattern in patterns {
+            let changes = Parser::parse_log(pattern).unwrap();
+            assert_eq!(changes.len(), 1);
+            assert!(changes[0].is_graph_only);
+            assert_eq!(changes[0].graph_prefix, pattern);
+        }
+    }
+
+    #[test]
+    fn test_parse_log_empty_lines_skipped() {
+        let output = "@  oqwroxvu\t1f7a8c00\tuser@example.com\t2026-01-30T16:17:51+0900\ttest\ttrue\tfalse\t\n\
+                      \n\
+                      ○  vxvxrlkn\tdd9bda5a\tuser@example.com\t2026-01-30T16:17:51+0900\ttest2\tfalse\tfalse\t";
+
+        let changes = Parser::parse_log(output).unwrap();
+        assert_eq!(changes.len(), 2);
     }
 }

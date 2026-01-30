@@ -44,34 +44,24 @@ impl LogView {
             return;
         }
 
-        // Calculate visible range
-        // N items = N lines + (N-1) connectors = 2N-1 lines
-        // So visible_changes = (inner_height + 1) / 2
         let inner_height = area.height.saturating_sub(2) as usize; // borders
-        let visible_changes = if inner_height == 0 {
-            0
-        } else {
-            inner_height.div_ceil(2)
-        };
+        if inner_height == 0 {
+            return;
+        }
 
-        // Adjust scroll offset to keep selection visible
-        let scroll_offset = self.calculate_scroll_offset(visible_changes);
+        // Calculate scroll offset to keep selection visible
+        let scroll_offset = self.calculate_scroll_offset(inner_height);
 
-        // Build lines
+        // Build lines - each change is one line (graph prefix from jj)
         let mut lines: Vec<Line> = Vec::new();
         for (idx, change) in self.changes.iter().enumerate().skip(scroll_offset) {
             if lines.len() >= inner_height {
                 break;
             }
 
-            let is_selected = idx == self.selected_index;
-            let change_line = self.build_change_line(change, is_selected);
-            lines.push(change_line);
-
-            // Add connector line (except for last)
-            if idx < self.changes.len() - 1 && lines.len() < inner_height {
-                lines.push(Line::from(format!("{}", symbols::markers::CONNECTOR)));
-            }
+            let is_selected = idx == self.selected_index && !change.is_graph_only;
+            let line = self.build_change_line(change, is_selected);
+            lines.push(line);
         }
 
         let paragraph =
@@ -129,15 +119,26 @@ impl LogView {
     }
 
     fn build_change_line(&self, change: &Change, is_selected: bool) -> Line<'static> {
-        let (marker, marker_color) = self.marker_for_change(change);
+        let mut spans = Vec::new();
 
-        let mut spans = vec![
-            Span::styled(format!("{}  ", marker), Style::default().fg(marker_color)),
-            Span::styled(
-                format!("{} ", change.short_id()),
-                Style::default().fg(theme::log_view::CHANGE_ID),
-            ),
-        ];
+        // Graph prefix (from jj output)
+        if !change.graph_prefix.is_empty() {
+            spans.push(Span::styled(
+                change.graph_prefix.clone(),
+                Style::default().fg(theme::log_view::GRAPH_LINE),
+            ));
+        }
+
+        // For graph-only lines, just return the prefix
+        if change.is_graph_only {
+            return Line::from(spans);
+        }
+
+        // Change ID
+        spans.push(Span::styled(
+            format!("{} ", change.short_id()),
+            Style::default().fg(theme::log_view::CHANGE_ID),
+        ));
 
         // Author (if not root)
         if change.change_id != constants::ROOT_CHANGE_ID {
@@ -180,6 +181,7 @@ impl LogView {
         line
     }
 
+    #[allow(dead_code)]
     pub(crate) fn marker_for_change(&self, change: &Change) -> (char, ratatui::style::Color) {
         if change.change_id == constants::ROOT_CHANGE_ID {
             (symbols::markers::ROOT, theme::log_view::ROOT_MARKER)
