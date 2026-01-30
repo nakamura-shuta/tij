@@ -6,6 +6,14 @@ use super::JjError;
 use super::template::FIELD_SEPARATOR;
 use crate::model::{Change, DiffContent, DiffLine, DiffLineKind, FileState, FileStatus, Status};
 
+/// File operation type from jj show output
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FileOperation {
+    Added,
+    Modified,
+    Deleted,
+}
+
 /// Parser for jj command output
 pub struct Parser;
 
@@ -209,6 +217,7 @@ impl Parser {
         let mut file_count = 0;
         let mut header_done = false;
         let mut in_diff_section = false;
+        let mut current_file_op = FileOperation::Modified;
 
         for line in output.lines() {
             // Parse header fields (before diff section)
@@ -252,7 +261,7 @@ impl Parser {
             }
 
             // File header detection - marks start of diff section
-            if let Some(path) = Self::extract_file_path(line) {
+            if let Some((path, file_op)) = Self::extract_file_info(line) {
                 // If we haven't saved description yet, do it now
                 if !description_lines.is_empty() {
                     content.description = description_lines.join("\n");
@@ -260,6 +269,7 @@ impl Parser {
                 }
                 header_done = true;
                 in_diff_section = true;
+                current_file_op = file_op;
 
                 // Add separator before file (except first file)
                 if file_count > 0 {
@@ -272,7 +282,7 @@ impl Parser {
 
             // Diff line parsing (only after we're in diff section)
             if in_diff_section {
-                if let Some(diff_line) = Self::parse_diff_line(line) {
+                if let Some(diff_line) = Self::parse_diff_line(line, current_file_op) {
                     content.lines.push(diff_line);
                 }
             }
@@ -300,26 +310,26 @@ impl Parser {
         Some((line.trim().to_string(), String::new()))
     }
 
-    /// Extract file path from file header line
+    /// Extract file path and operation type from file header line
     ///
     /// Examples:
-    /// - "Modified regular file src/main.rs:" -> "src/main.rs"
-    /// - "Added regular file src/new.rs:" -> "src/new.rs"
-    fn extract_file_path(line: &str) -> Option<String> {
-        // Patterns: "Modified regular file", "Added regular file", "Deleted regular file"
+    /// - "Modified regular file src/main.rs:" -> ("src/main.rs", Modified)
+    /// - "Added regular file src/new.rs:" -> ("src/new.rs", Added)
+    fn extract_file_info(line: &str) -> Option<(String, FileOperation)> {
         let patterns = [
-            "Modified regular file ",
-            "Added regular file ",
-            "Deleted regular file ",
-            "Renamed regular file ",
-            "Copied regular file ",
+            ("Added regular file ", FileOperation::Added),
+            ("Removed regular file ", FileOperation::Deleted),
+            ("Deleted regular file ", FileOperation::Deleted),
+            ("Modified regular file ", FileOperation::Modified),
+            ("Renamed regular file ", FileOperation::Modified),
+            ("Copied regular file ", FileOperation::Added),
         ];
 
-        for pattern in patterns {
+        for (pattern, op) in patterns {
             if let Some(rest) = line.strip_prefix(pattern) {
                 // Remove trailing ":"
                 let path = rest.strip_suffix(':').unwrap_or(rest);
-                return Some(path.to_string());
+                return Some((path.to_string(), op));
             }
         }
 
@@ -332,7 +342,8 @@ impl Parser {
     /// - "   10   10:     fn main() {"      (context)
     /// - "   11     : -       old"          (deleted)
     /// - "        11: +       new"          (added)
-    fn parse_diff_line(line: &str) -> Option<DiffLine> {
+    /// - "        1: // content"            (added file - no prefix)
+    fn parse_diff_line(line: &str, file_op: FileOperation) -> Option<DiffLine> {
         // Skip empty lines or lines without the colon separator
         if !line.contains(':') {
             return None;
@@ -359,8 +370,24 @@ impl Parser {
             // Empty deleted line
             (DiffLineKind::Deleted, String::new())
         } else {
-            // Context line - preserve original content after colon
-            (DiffLineKind::Context, content_part.to_string())
+            // No explicit +/- prefix - determine kind from context
+            let kind = match file_op {
+                FileOperation::Added => DiffLineKind::Added,
+                FileOperation::Deleted => DiffLineKind::Deleted,
+                FileOperation::Modified => {
+                    // For modified files, check line numbers to determine kind
+                    // - Both old and new: context
+                    // - Only new: added
+                    // - Only old: deleted
+                    match (old_line, new_line) {
+                        (Some(_), Some(_)) => DiffLineKind::Context,
+                        (None, Some(_)) => DiffLineKind::Added,
+                        (Some(_), None) => DiffLineKind::Deleted,
+                        (None, None) => DiffLineKind::Context, // fallback
+                    }
+                }
+            };
+            (kind, content_part.to_string())
         };
 
         Some(DiffLine {
@@ -379,14 +406,17 @@ impl Parser {
         match parts.len() {
             0 => (None, None),
             1 => {
-                // Single number - need to determine if old or new
-                // If there's leading space, it might be new line only
+                // Single number - determine if old or new based on position
+                // Right-aligned (lots of leading space) = new line only
+                // Left-aligned (little leading space) = old line only
                 let num = parts[0].parse().ok();
-                // Check if number is at the end (new line) or start (old line)
-                if s.trim_start().len() < s.len() / 2 {
-                    (num, None)
-                } else {
+                let leading_spaces = s.len() - s.trim_start().len();
+                if leading_spaces > s.len() / 2 {
+                    // Number is right-aligned = new line number
                     (None, num)
+                } else {
+                    // Number is left-aligned = old line number
+                    (num, None)
                 }
             }
             _ => {
@@ -667,20 +697,22 @@ Modified regular file src/lib.rs:
     }
 
     #[test]
-    fn test_extract_file_path() {
-        assert_eq!(
-            Parser::extract_file_path("Modified regular file src/main.rs:"),
-            Some("src/main.rs".to_string())
-        );
-        assert_eq!(
-            Parser::extract_file_path("Added regular file src/new.rs:"),
-            Some("src/new.rs".to_string())
-        );
-        assert_eq!(
-            Parser::extract_file_path("Deleted regular file old.txt:"),
-            Some("old.txt".to_string())
-        );
-        assert_eq!(Parser::extract_file_path("Some other line"), None);
+    fn test_extract_file_info() {
+        use super::{FileOperation, Parser};
+
+        let (path, op) = Parser::extract_file_info("Modified regular file src/main.rs:").unwrap();
+        assert_eq!(path, "src/main.rs");
+        assert_eq!(op, FileOperation::Modified);
+
+        let (path, op) = Parser::extract_file_info("Added regular file src/new.rs:").unwrap();
+        assert_eq!(path, "src/new.rs");
+        assert_eq!(op, FileOperation::Added);
+
+        let (path, op) = Parser::extract_file_info("Removed regular file old.txt:").unwrap();
+        assert_eq!(path, "old.txt");
+        assert_eq!(op, FileOperation::Deleted);
+
+        assert!(Parser::extract_file_info("Some other line").is_none());
     }
 
     #[test]
@@ -694,20 +726,49 @@ Modified regular file src/lib.rs:
 
     #[test]
     fn test_parse_diff_line_context() {
-        let line = Parser::parse_diff_line("   10   10:     fn main() {").unwrap();
+        use super::FileOperation;
+        let line = Parser::parse_diff_line("   10   10:     fn main() {", FileOperation::Modified)
+            .unwrap();
         assert_eq!(line.kind, DiffLineKind::Context);
         assert_eq!(line.line_numbers, Some((Some(10), Some(10))));
     }
 
     #[test]
     fn test_parse_diff_line_added() {
-        let line = Parser::parse_diff_line("        11: +       println!(\"new\");").unwrap();
+        use super::FileOperation;
+        let line = Parser::parse_diff_line(
+            "        11: +       println!(\"new\");",
+            FileOperation::Modified,
+        )
+        .unwrap();
         assert_eq!(line.kind, DiffLineKind::Added);
     }
 
     #[test]
     fn test_parse_diff_line_deleted() {
-        let line = Parser::parse_diff_line("   11     : -       println!(\"old\");").unwrap();
+        use super::FileOperation;
+        let line = Parser::parse_diff_line(
+            "   11     : -       println!(\"old\");",
+            FileOperation::Modified,
+        )
+        .unwrap();
+        assert_eq!(line.kind, DiffLineKind::Deleted);
+    }
+
+    #[test]
+    fn test_parse_diff_line_added_file_no_prefix() {
+        use super::FileOperation;
+        // Lines in added files don't have + prefix
+        let line = Parser::parse_diff_line("        1: // Hotfix", FileOperation::Added).unwrap();
+        assert_eq!(line.kind, DiffLineKind::Added);
+    }
+
+    #[test]
+    fn test_parse_diff_line_deleted_file_no_prefix() {
+        use super::FileOperation;
+        // Lines in deleted files don't have - prefix
+        let line =
+            Parser::parse_diff_line("    1    : old content", FileOperation::Deleted).unwrap();
         assert_eq!(line.kind, DiffLineKind::Deleted);
     }
 
