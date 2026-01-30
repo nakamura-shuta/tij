@@ -1,0 +1,478 @@
+//! Tests for LogView
+
+use crossterm::event::{KeyCode, KeyEvent};
+
+use crate::jj::constants;
+use crate::model::Change;
+use crate::ui::{symbols, theme};
+
+use super::{InputMode, LogAction, LogView};
+
+fn create_test_changes() -> Vec<Change> {
+    vec![
+        Change {
+            change_id: "abc12345".to_string(),
+            commit_id: "def67890".to_string(),
+            author: "user@example.com".to_string(),
+            timestamp: "2024-01-29".to_string(),
+            description: "First commit".to_string(),
+            is_working_copy: true,
+            is_empty: false,
+            bookmarks: vec!["main".to_string()],
+        },
+        Change {
+            change_id: "xyz98765".to_string(),
+            commit_id: "uvw43210".to_string(),
+            author: "user@example.com".to_string(),
+            timestamp: "2024-01-28".to_string(),
+            description: "Initial commit".to_string(),
+            is_working_copy: false,
+            is_empty: false,
+            bookmarks: vec![],
+        },
+        Change {
+            change_id: constants::ROOT_CHANGE_ID.to_string(),
+            commit_id: "0".repeat(40),
+            author: "".to_string(),
+            timestamp: "".to_string(),
+            description: "".to_string(),
+            is_working_copy: false,
+            is_empty: true,
+            bookmarks: vec![],
+        },
+    ]
+}
+
+#[test]
+fn test_log_view_new() {
+    let view = LogView::new();
+    assert!(view.changes.is_empty());
+    assert_eq!(view.selected_index, 0);
+    assert_eq!(view.input_mode, InputMode::Normal);
+}
+
+#[test]
+fn test_set_changes() {
+    let mut view = LogView::new();
+    let changes = create_test_changes();
+    view.set_changes(changes.clone());
+    assert_eq!(view.changes.len(), 3);
+}
+
+#[test]
+fn test_navigation() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    assert_eq!(view.selected_index, 0);
+
+    view.move_down();
+    assert_eq!(view.selected_index, 1);
+
+    view.move_down();
+    assert_eq!(view.selected_index, 2);
+
+    // Should not go past last item
+    view.move_down();
+    assert_eq!(view.selected_index, 2);
+
+    view.move_up();
+    assert_eq!(view.selected_index, 1);
+
+    view.move_to_top();
+    assert_eq!(view.selected_index, 0);
+
+    view.move_to_bottom();
+    assert_eq!(view.selected_index, 2);
+}
+
+#[test]
+fn test_navigation_bounds_empty() {
+    let mut view = LogView::new();
+
+    // Should not panic on empty list
+    view.move_down();
+    view.move_up();
+    view.move_to_top();
+    view.move_to_bottom();
+
+    assert_eq!(view.selected_index, 0);
+}
+
+#[test]
+fn test_selected_change() {
+    let mut view = LogView::new();
+    assert!(view.selected_change().is_none());
+
+    view.set_changes(create_test_changes());
+    assert!(view.selected_change().is_some());
+    assert_eq!(view.selected_change().unwrap().change_id, "abc12345");
+
+    view.move_down();
+    assert_eq!(view.selected_change().unwrap().change_id, "xyz98765");
+}
+
+#[test]
+fn test_input_mode_toggle() {
+    let mut view = LogView::new();
+    assert_eq!(view.input_mode, InputMode::Normal);
+
+    view.start_revset_input();
+    assert_eq!(view.input_mode, InputMode::RevsetInput);
+
+    view.cancel_input();
+    assert_eq!(view.input_mode, InputMode::Normal);
+}
+
+#[test]
+fn test_handle_key_navigation() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    let action = view.handle_key(KeyEvent::from(KeyCode::Char('j')));
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.selected_index, 1);
+
+    let action = view.handle_key(KeyEvent::from(KeyCode::Char('k')));
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.selected_index, 0);
+}
+
+#[test]
+fn test_handle_key_open_diff() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    let action = view.handle_key(KeyEvent::from(KeyCode::Enter));
+    assert_eq!(action, LogAction::OpenDiff("abc12345".to_string()));
+}
+
+#[test]
+fn test_handle_key_search_input() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Start search mode with /
+    let action = view.handle_key(KeyEvent::from(KeyCode::Char('/')));
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::SearchInput);
+
+    // Type search query
+    view.handle_key(KeyEvent::from(KeyCode::Char('I')));
+    view.handle_key(KeyEvent::from(KeyCode::Char('n')));
+    view.handle_key(KeyEvent::from(KeyCode::Char('i')));
+    view.handle_key(KeyEvent::from(KeyCode::Char('t')));
+    assert_eq!(view.input_buffer, "Init");
+
+    // Submit - should store query and jump to match
+    let action = view.handle_key(KeyEvent::from(KeyCode::Enter));
+    assert_eq!(action, LogAction::None); // Search doesn't execute revset
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert!(view.input_buffer.is_empty());
+    assert_eq!(view.last_search_query, Some("Init".to_string()));
+    assert_eq!(view.selected_index, 1); // Jumped to "Initial commit"
+}
+
+#[test]
+fn test_handle_key_revset_input() {
+    let mut view = LogView::new();
+
+    // Start revset mode with r
+    let action = view.handle_key(KeyEvent::from(KeyCode::Char('r')));
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::RevsetInput);
+
+    // Type revset
+    view.handle_key(KeyEvent::from(KeyCode::Char('a')));
+    view.handle_key(KeyEvent::from(KeyCode::Char('l')));
+    view.handle_key(KeyEvent::from(KeyCode::Char('l')));
+    assert_eq!(view.input_buffer, "all");
+
+    // Submit
+    let action = view.handle_key(KeyEvent::from(KeyCode::Enter));
+    assert_eq!(action, LogAction::ExecuteRevset("all".to_string()));
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert!(view.input_buffer.is_empty());
+    assert_eq!(view.revset_history, vec!["all".to_string()]);
+}
+
+#[test]
+fn test_handle_key_revset_cancel() {
+    let mut view = LogView::new();
+
+    view.start_revset_input();
+    view.handle_key(KeyEvent::from(KeyCode::Char('t')));
+    view.handle_key(KeyEvent::from(KeyCode::Char('e')));
+    assert_eq!(view.input_buffer, "te");
+
+    // Cancel with Esc
+    let action = view.handle_key(KeyEvent::from(KeyCode::Esc));
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert!(view.input_buffer.is_empty());
+}
+
+#[test]
+fn test_handle_key_backspace() {
+    let mut view = LogView::new();
+    view.start_revset_input();
+
+    view.handle_key(KeyEvent::from(KeyCode::Char('a')));
+    view.handle_key(KeyEvent::from(KeyCode::Char('b')));
+    assert_eq!(view.input_buffer, "ab");
+
+    view.handle_key(KeyEvent::from(KeyCode::Backspace));
+    assert_eq!(view.input_buffer, "a");
+}
+
+#[test]
+fn test_marker_for_change() {
+    let view = LogView::new();
+
+    let working_copy = Change {
+        change_id: "abc".to_string(),
+        is_working_copy: true,
+        ..Default::default()
+    };
+    let (marker, color) = view.marker_for_change(&working_copy);
+    assert_eq!(marker, symbols::markers::WORKING_COPY);
+    assert_eq!(color, theme::log_view::WORKING_COPY_MARKER);
+
+    let root = Change {
+        change_id: constants::ROOT_CHANGE_ID.to_string(),
+        is_working_copy: false,
+        ..Default::default()
+    };
+    let (marker, color) = view.marker_for_change(&root);
+    assert_eq!(marker, symbols::markers::ROOT);
+    assert_eq!(color, theme::log_view::ROOT_MARKER);
+
+    let normal = Change {
+        change_id: "xyz".to_string(),
+        is_working_copy: false,
+        ..Default::default()
+    };
+    let (marker, color) = view.marker_for_change(&normal);
+    assert_eq!(marker, symbols::markers::NORMAL);
+    assert_eq!(color, theme::log_view::NORMAL_MARKER);
+}
+
+#[test]
+fn test_set_changes_resets_selection() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    view.selected_index = 2;
+
+    // Set fewer changes
+    view.set_changes(vec![create_test_changes()[0].clone()]);
+    assert_eq!(view.selected_index, 0);
+}
+
+#[test]
+fn test_search_first_finds_from_beginning() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    view.selected_index = 2; // Start at root
+    view.last_search_query = Some("First".to_string());
+
+    // Should find "First commit" at index 0, regardless of current position
+    assert!(view.search_first());
+    assert_eq!(view.selected_index, 0);
+}
+
+#[test]
+fn test_search_first_no_match() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    view.last_search_query = Some("nonexistent".to_string());
+
+    assert!(!view.search_first());
+    assert_eq!(view.selected_index, 0); // Position unchanged
+}
+
+#[test]
+fn test_search_next_no_query() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // No search query set
+    assert!(!view.search_next());
+    assert_eq!(view.selected_index, 0);
+}
+
+#[test]
+fn test_search_next_finds_match() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    view.last_search_query = Some("Initial".to_string());
+
+    // Should find "Initial commit" at index 1
+    assert!(view.search_next());
+    assert_eq!(view.selected_index, 1);
+}
+
+#[test]
+fn test_search_next_wraps_around() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    view.selected_index = 1; // Start at "Initial commit"
+    view.last_search_query = Some("First".to_string());
+
+    // Should wrap to find "First commit" at index 0
+    assert!(view.search_next());
+    assert_eq!(view.selected_index, 0);
+}
+
+#[test]
+fn test_search_prev_finds_match() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    view.selected_index = 2; // Start at root
+    view.last_search_query = Some("Initial".to_string());
+
+    // Should find "Initial commit" at index 1
+    assert!(view.search_prev());
+    assert_eq!(view.selected_index, 1);
+}
+
+#[test]
+fn test_search_prev_wraps_around() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    view.selected_index = 0;
+    view.last_search_query = Some("Initial".to_string());
+
+    // Should wrap to find "Initial commit" at index 1
+    assert!(view.search_prev());
+    assert_eq!(view.selected_index, 1);
+}
+
+#[test]
+fn test_search_no_match() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    view.last_search_query = Some("nonexistent".to_string());
+
+    assert!(!view.search_next());
+    assert_eq!(view.selected_index, 0);
+}
+
+#[test]
+fn test_search_by_author() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    view.last_search_query = Some("example.com".to_string());
+
+    // Should match by author email
+    assert!(view.search_next());
+    assert_eq!(view.selected_index, 1); // Skips 0, finds 1
+}
+
+#[test]
+fn test_search_by_bookmark() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    view.selected_index = 1; // Start at index 1
+    view.last_search_query = Some("main".to_string());
+
+    // Should wrap and find "main" bookmark at index 0
+    assert!(view.search_next());
+    assert_eq!(view.selected_index, 0);
+}
+
+#[test]
+fn test_search_case_insensitive() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    view.selected_index = 1; // Start at index 1
+    view.last_search_query = Some("FIRST".to_string());
+
+    // Should wrap and find "First commit" case-insensitively at index 0
+    assert!(view.search_next());
+    assert_eq!(view.selected_index, 0);
+}
+
+#[test]
+fn test_handle_key_search_next() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    view.last_search_query = Some("Initial".to_string());
+
+    let action = view.handle_key(KeyEvent::from(KeyCode::Char('n')));
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.selected_index, 1);
+}
+
+#[test]
+fn test_handle_key_search_prev() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    view.selected_index = 2;
+    view.last_search_query = Some("First".to_string());
+
+    let action = view.handle_key(KeyEvent::from(KeyCode::Char('N')));
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.selected_index, 0);
+}
+
+#[test]
+fn test_search_input_stores_query() {
+    let mut view = LogView::new();
+    view.start_search_input();
+
+    // Type query
+    view.handle_key(KeyEvent::from(KeyCode::Char('m')));
+    view.handle_key(KeyEvent::from(KeyCode::Char('a')));
+    view.handle_key(KeyEvent::from(KeyCode::Char('i')));
+    view.handle_key(KeyEvent::from(KeyCode::Char('n')));
+
+    // Submit
+    view.handle_key(KeyEvent::from(KeyCode::Enter));
+
+    // Should store as search query
+    assert_eq!(view.last_search_query, Some("main".to_string()));
+}
+
+#[test]
+fn test_revset_input_does_not_store_search_query() {
+    let mut view = LogView::new();
+    view.start_revset_input();
+
+    // Type revset
+    view.handle_key(KeyEvent::from(KeyCode::Char('a')));
+    view.handle_key(KeyEvent::from(KeyCode::Char('l')));
+    view.handle_key(KeyEvent::from(KeyCode::Char('l')));
+
+    // Submit
+    view.handle_key(KeyEvent::from(KeyCode::Enter));
+
+    // Revset should NOT be stored as search query
+    assert_eq!(view.last_search_query, None);
+}
+
+#[test]
+fn test_search_empty_enter_clears_query() {
+    let mut view = LogView::new();
+
+    // Set a search query first
+    view.last_search_query = Some("test".to_string());
+
+    // Start search input and submit empty
+    view.start_search_input();
+    view.handle_key(KeyEvent::from(KeyCode::Enter));
+
+    // Should clear search query
+    assert_eq!(view.last_search_query, None);
+}
+
+#[test]
+fn test_revset_empty_enter_returns_clear_action() {
+    let mut view = LogView::new();
+
+    // Start revset input and submit empty
+    view.start_revset_input();
+    let action = view.handle_key(KeyEvent::from(KeyCode::Enter));
+
+    // Should return ClearRevset action
+    assert_eq!(action, LogAction::ClearRevset);
+}
