@@ -38,6 +38,10 @@ coverage/
 
 # Claude Code
 .claude/
+CLAUDE.md
 
 # Project working files (design docs - local only)
 .work/
+
+# Jujutsu VCS (colocated mode)
+.jj/

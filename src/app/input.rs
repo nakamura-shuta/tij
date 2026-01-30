@@ -82,7 +82,8 @@ impl App {
             }
             View::Diff => {
                 if let Some(ref mut diff_view) = self.diff_view {
-                    let action = diff_view.handle_key(key);
+                    let visible_height = self.last_frame_height.get() as usize;
+                    let action = diff_view.handle_key_with_height(key, visible_height);
                     self.handle_diff_action(action);
                 }
             }

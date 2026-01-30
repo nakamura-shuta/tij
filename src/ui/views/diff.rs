@@ -38,6 +38,8 @@ pub struct DiffView {
     pub file_names: Vec<String>,
     /// Current file index (for context bar)
     pub current_file_index: usize,
+    /// Last known visible height (updated during render)
+    visible_height: usize,
 }
 
 impl Default for DiffView {
@@ -56,6 +58,7 @@ impl DiffView {
             file_header_positions: Vec::new(),
             file_names: Vec::new(),
             current_file_index: 0,
+            visible_height: Self::DEFAULT_VISIBLE_HEIGHT,
         }
     }
 
@@ -93,6 +96,7 @@ impl DiffView {
         self.file_header_positions.clear();
         self.file_names.clear();
         self.current_file_index = 0;
+        self.visible_height = Self::DEFAULT_VISIBLE_HEIGHT;
     }
 
     /// Get current file name for context bar
@@ -144,15 +148,26 @@ impl DiffView {
 
     /// Scroll down by one line
     pub fn scroll_down(&mut self) {
-        let max_offset = self.total_lines().saturating_sub(1);
+        let max_offset = self.max_scroll_offset();
         if self.scroll_offset < max_offset {
             self.scroll_offset += 1;
         }
         self.update_current_file_index();
     }
 
+    /// Calculate maximum scroll offset based on visible height
+    fn max_scroll_offset(&self) -> usize {
+        // If visible_height is 0, don't allow scrolling
+        if self.visible_height == 0 {
+            return 0;
+        }
+        let total = self.total_lines();
+        total.saturating_sub(self.visible_height)
+    }
+
     /// Scroll up by half page
     pub fn scroll_half_page_up(&mut self, visible_height: usize) {
+        self.visible_height = visible_height;
         let half = visible_height / 2;
         self.scroll_offset = self.scroll_offset.saturating_sub(half);
         self.update_current_file_index();
@@ -160,8 +175,9 @@ impl DiffView {
 
     /// Scroll down by half page
     pub fn scroll_half_page_down(&mut self, visible_height: usize) {
+        self.visible_height = visible_height;
         let half = visible_height / 2;
-        let max_offset = self.total_lines().saturating_sub(1);
+        let max_offset = self.max_scroll_offset();
         self.scroll_offset = (self.scroll_offset + half).min(max_offset);
         self.update_current_file_index();
     }
@@ -174,12 +190,8 @@ impl DiffView {
 
     /// Jump to the bottom
     pub fn jump_to_bottom(&mut self, visible_height: usize) {
-        let total = self.total_lines();
-        if total > visible_height {
-            self.scroll_offset = total - visible_height;
-        } else {
-            self.scroll_offset = 0;
-        }
+        self.visible_height = visible_height;
+        self.scroll_offset = self.max_scroll_offset();
         self.update_current_file_index();
     }
 
@@ -250,6 +262,9 @@ impl DiffView {
 
     /// Handle key input with explicit visible height
     pub fn handle_key_with_height(&mut self, key: KeyEvent, visible_height: usize) -> DiffAction {
+        // Always update visible_height to ensure accurate scroll bounds
+        self.visible_height = visible_height;
+
         match key.code {
             keys::MOVE_DOWN => {
                 self.scroll_down();
@@ -292,24 +307,23 @@ impl DiffView {
     // Rendering
     // =========================================================================
 
-    /// Render the diff view
+    /// Render the diff view (without status bar - rendered by App)
     pub fn render(&self, frame: &mut Frame, area: Rect) {
-        // Layout: header (3) + context bar (1) + diff (rest) + status bar (1)
+        // Layout: header (4) + context bar (1) + diff (rest)
+        // Header increased to 4 lines to include description
         let chunks = Layout::vertical([
-            Constraint::Length(3), // Header
+            Constraint::Length(4), // Header (commit, author, description)
             Constraint::Length(1), // Context bar
             Constraint::Min(1),    // Diff content
-            Constraint::Length(1), // Status bar
         ])
         .split(area);
 
         self.render_header(frame, chunks[0]);
         self.render_context_bar(frame, chunks[1]);
         self.render_diff_content(frame, chunks[2]);
-        self.render_status_bar(frame, chunks[3]);
     }
 
-    /// Render the header (commit info)
+    /// Render the header (commit info including description)
     fn render_header(&self, frame: &mut Frame, area: Rect) {
         let title = Line::from(vec![
             Span::raw(" Tij - Diff View ").bold(),
@@ -321,6 +335,18 @@ impl DiffView {
             Span::raw("]"),
         ])
         .centered();
+
+        // Truncate description to fit in one line
+        let description = if self.content.description.is_empty() {
+            "(no description)".to_string()
+        } else {
+            self.content
+                .description
+                .lines()
+                .next()
+                .unwrap_or("")
+                .to_string()
+        };
 
         let header_text = vec![
             Line::from(vec![
@@ -339,6 +365,10 @@ impl DiffView {
                     Style::default().fg(Color::DarkGray),
                 ),
             ]),
+            Line::from(vec![Span::styled(
+                description,
+                Style::default().fg(Color::White).bold(),
+            )]),
         ];
 
         let header = Paragraph::new(header_text).block(
@@ -375,7 +405,8 @@ impl DiffView {
 
     /// Render the diff content (scrollable)
     fn render_diff_content(&self, frame: &mut Frame, area: Rect) {
-        let inner_height = area.height.saturating_sub(2) as usize; // Account for borders
+        // No top/bottom borders, only left/right, so use full height
+        let inner_height = area.height as usize;
 
         if !self.has_changes() {
             // Empty state
@@ -469,25 +500,6 @@ impl DiffView {
             None => "         ".to_string(),
         }
     }
-
-    /// Render the status bar
-    fn render_status_bar(&self, frame: &mut Frame, area: Rect) {
-        let help_text = Line::from(vec![
-            Span::styled("[j/k]", Style::default().fg(Color::Yellow)),
-            Span::raw(" Scroll  "),
-            Span::styled("[d/u]", Style::default().fg(Color::Yellow)),
-            Span::raw(" Half page  "),
-            Span::styled("]/[", Style::default().fg(Color::Yellow)),
-            Span::raw(" File  "),
-            Span::styled("[q]", Style::default().fg(Color::Yellow)),
-            Span::raw(" Back"),
-        ]);
-
-        let status = Paragraph::new(help_text)
-            .block(Block::default().borders(Borders::BOTTOM | Borders::LEFT | Borders::RIGHT));
-
-        frame.render_widget(status, area);
-    }
 }
 
 #[cfg(test)]
@@ -546,6 +558,8 @@ mod tests {
     #[test]
     fn test_diff_view_scroll() {
         let mut view = DiffView::new("test".to_string(), create_test_content());
+        // Set visible height smaller than total lines to allow scrolling
+        view.visible_height = 5;
 
         assert_eq!(view.scroll_offset, 0);
 
@@ -571,12 +585,18 @@ mod tests {
         view.scroll_up();
         assert_eq!(view.scroll_offset, 0);
 
+        // Set a visible height smaller than total lines
+        view.visible_height = 5;
+
         // Scroll to bottom
         for _ in 0..20 {
             view.scroll_down();
         }
-        // Should not exceed total lines - 1
-        assert!(view.scroll_offset < view.total_lines());
+
+        // With 8 total lines and 5 visible, max offset should be 3
+        // (so the last 5 lines are visible)
+        let expected_max = view.total_lines().saturating_sub(view.visible_height);
+        assert_eq!(view.scroll_offset, expected_max);
     }
 
     #[test]
@@ -616,7 +636,9 @@ mod tests {
     fn test_diff_view_handle_key_scroll() {
         let mut view = DiffView::new("test".to_string(), create_test_content());
 
-        let action = view.handle_key(KeyEvent::from(crossterm::event::KeyCode::Char('j')));
+        // Use handle_key_with_height to set visible height smaller than total lines
+        let action =
+            view.handle_key_with_height(KeyEvent::from(crossterm::event::KeyCode::Char('j')), 5);
         assert_eq!(action, DiffAction::None);
         assert_eq!(view.scroll_offset, 1);
     }
@@ -636,16 +658,20 @@ mod tests {
     fn test_diff_view_half_page_scroll() {
         let mut view = DiffView::new("test".to_string(), create_test_content());
 
-        view.scroll_half_page_down(10);
-        assert_eq!(view.scroll_offset, 5);
+        // With 8 total lines and visible_height 4, max offset is 4
+        // Half page is 2, so first scroll goes to 2
+        view.scroll_half_page_down(4);
+        assert_eq!(view.scroll_offset, 2);
 
-        view.scroll_half_page_up(10);
+        view.scroll_half_page_up(4);
         assert_eq!(view.scroll_offset, 0);
     }
 
     #[test]
     fn test_diff_view_clear() {
         let mut view = DiffView::new("test".to_string(), create_test_content());
+        // Set visible height smaller than total lines to allow scrolling
+        view.visible_height = 5;
         view.scroll_down();
 
         assert!(view.has_changes());
@@ -690,5 +716,21 @@ mod tests {
     fn test_diff_view_current_context_empty() {
         let view = DiffView::empty();
         assert_eq!(view.current_context(), "(no files)");
+    }
+
+    #[test]
+    fn test_diff_view_scroll_with_zero_visible_height() {
+        let mut view = DiffView::new("test".to_string(), create_test_content());
+
+        // When visible_height is 0, scrolling should not be allowed
+        view.visible_height = 0;
+
+        // Try to scroll down - should stay at 0
+        view.scroll_down();
+        assert_eq!(view.scroll_offset, 0);
+
+        // Try half page down with 0 height
+        view.scroll_half_page_down(0);
+        assert_eq!(view.scroll_offset, 0);
     }
 }

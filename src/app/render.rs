@@ -47,6 +47,11 @@ impl App {
                 ..area
             };
 
+            // Store visible height for diff content (header=4, context=1)
+            // This is used by key handling for accurate scroll bounds
+            let diff_content_height = main_area.height.saturating_sub(5);
+            self.last_frame_height.set(diff_content_height);
+
             diff_view.render(frame, main_area);
             render_diff_status_bar(frame, diff_view);
         } else {

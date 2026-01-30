@@ -1,5 +1,7 @@
 //! Application state and view management
 
+use std::cell::Cell;
+
 use crate::jj::JjExecutor;
 use crate::ui::views::{DiffView, LogView};
 
@@ -30,6 +32,8 @@ pub struct App {
     pub jj: JjExecutor,
     /// Error message to display
     pub error_message: Option<String>,
+    /// Last known frame height (updated during render, uses Cell for interior mutability)
+    pub(crate) last_frame_height: Cell<u16>,
 }
 
 impl Default for App {
@@ -49,6 +53,7 @@ impl App {
             diff_view: None,
             jj: JjExecutor::new(),
             error_message: None,
+            last_frame_height: Cell::new(24), // Default terminal height
         };
 
         // Load initial log
