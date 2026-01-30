@@ -63,6 +63,22 @@ pub const SEARCH_NEXT: KeyCode = KeyCode::Char('n');
 pub const SEARCH_PREV: KeyCode = KeyCode::Char('N');
 
 // =============================================================================
+// Diff View keys
+// =============================================================================
+
+/// Next file in diff
+pub const NEXT_FILE: KeyCode = KeyCode::Char(']');
+
+/// Previous file in diff
+pub const PREV_FILE: KeyCode = KeyCode::Char('[');
+
+/// Half page down
+pub const HALF_PAGE_DOWN: KeyCode = KeyCode::Char('d');
+
+/// Half page up
+pub const HALF_PAGE_UP: KeyCode = KeyCode::Char('u');
+
+// =============================================================================
 // View switching keys
 // =============================================================================
 
@@ -132,5 +148,29 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "s",
         description: "Status view",
+    },
+];
+
+/// Diff view key bindings for help display
+pub const DIFF_KEYS: &[KeyBindEntry] = &[
+    KeyBindEntry {
+        key: "j/k",
+        description: "Scroll down/up",
+    },
+    KeyBindEntry {
+        key: "d/u",
+        description: "Half page down/up",
+    },
+    KeyBindEntry {
+        key: "g/G",
+        description: "Go to top/bottom",
+    },
+    KeyBindEntry {
+        key: "]/[",
+        description: "Next/prev file",
+    },
+    KeyBindEntry {
+        key: "q",
+        description: "Back to log",
     },
 ];

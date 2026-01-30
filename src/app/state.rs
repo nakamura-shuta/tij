@@ -1,7 +1,7 @@
 //! Application state and view management
 
 use crate::jj::JjExecutor;
-use crate::ui::views::LogView;
+use crate::ui::views::{DiffView, LogView};
 
 /// Available views in the application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -24,6 +24,8 @@ pub struct App {
     pub(crate) previous_view: Option<View>,
     /// Log view state
     pub log_view: LogView,
+    /// Diff view state (created on demand)
+    pub diff_view: Option<DiffView>,
     /// jj executor
     pub jj: JjExecutor,
     /// Error message to display
@@ -44,6 +46,7 @@ impl App {
             current_view: View::Log,
             previous_view: None,
             log_view: LogView::new(),
+            diff_view: None,
             jj: JjExecutor::new(),
             error_message: None,
         };
@@ -99,5 +102,19 @@ impl App {
     /// Set running to false to quit the application.
     pub(crate) fn quit(&mut self) {
         self.running = false;
+    }
+
+    /// Open diff view for a specific change
+    pub(crate) fn open_diff(&mut self, change_id: &str) {
+        match self.jj.show(change_id) {
+            Ok(content) => {
+                self.diff_view = Some(DiffView::new(change_id.to_string(), content));
+                self.go_to_view(View::Diff);
+                self.error_message = None;
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to load diff: {}", e));
+            }
+        }
     }
 }

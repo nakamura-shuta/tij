@@ -4,7 +4,8 @@ use ratatui::{Frame, prelude::*};
 
 use super::state::{App, View};
 use crate::ui::widgets::{
-    render_error_banner, render_help_panel, render_placeholder, render_status_bar,
+    render_diff_status_bar, render_error_banner, render_help_panel, render_placeholder,
+    render_status_bar,
 };
 
 impl App {
@@ -37,12 +38,25 @@ impl App {
     }
 
     fn render_diff_view(&self, frame: &mut Frame) {
-        render_placeholder(
-            frame,
-            " Tij - Diff View ",
-            Color::Yellow,
-            "Diff view - Press q to go back",
-        );
+        if let Some(ref diff_view) = self.diff_view {
+            let area = frame.area();
+
+            // Reserve space for status bar
+            let main_area = Rect {
+                height: area.height.saturating_sub(1),
+                ..area
+            };
+
+            diff_view.render(frame, main_area);
+            render_diff_status_bar(frame, diff_view);
+        } else {
+            render_placeholder(
+                frame,
+                " Tij - Diff View ",
+                Color::Yellow,
+                "No diff loaded - Press q to go back",
+            );
+        }
     }
 
     fn render_status_view(&self, frame: &mut Frame) {

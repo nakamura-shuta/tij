@@ -4,7 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::state::{App, View};
 use crate::keys;
-use crate::ui::views::{InputMode, LogAction};
+use crate::ui::views::{DiffAction, InputMode, LogAction};
 
 impl App {
     /// Handle key events
@@ -81,7 +81,10 @@ impl App {
                 self.handle_log_action(action);
             }
             View::Diff => {
-                // TODO: Diff view key handling
+                if let Some(ref mut diff_view) = self.diff_view {
+                    let action = diff_view.handle_key(key);
+                    self.handle_diff_action(action);
+                }
             }
             View::Status => {
                 // TODO: Status view key handling
@@ -96,15 +99,22 @@ impl App {
         match action {
             LogAction::None => {}
             LogAction::OpenDiff(change_id) => {
-                // TODO: Open diff view for change_id
-                let _ = change_id;
-                self.go_to_view(View::Diff);
+                self.open_diff(&change_id);
             }
             LogAction::ExecuteRevset(revset) => {
                 self.refresh_log(Some(&revset));
             }
             LogAction::ClearRevset => {
                 self.refresh_log(None);
+            }
+        }
+    }
+
+    fn handle_diff_action(&mut self, action: DiffAction) {
+        match action {
+            DiffAction::None => {}
+            DiffAction::Back => {
+                self.go_back();
             }
         }
     }

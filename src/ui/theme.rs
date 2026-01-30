@@ -32,12 +32,14 @@ pub mod diff_view {
 
     /// Added line color
     pub const ADDED: Color = Color::Green;
-    /// Removed line color
-    pub const REMOVED: Color = Color::Red;
+    /// Deleted line color
+    pub const DELETED: Color = Color::Red;
     /// Context line color
     pub const CONTEXT: Color = Color::Reset;
-    /// Hunk header color
-    pub const HUNK_HEADER: Color = Color::Cyan;
+    /// File header color (bold applied in rendering)
+    pub const FILE_HEADER: Color = Color::Cyan;
+    /// Line number color
+    pub const LINE_NUMBER: Color = Color::DarkGray;
 }
 
 /// Colors for Status View
@@ -71,7 +73,9 @@ mod tests {
     #[test]
     fn test_diff_view_colors_defined() {
         let _ = diff_view::ADDED;
-        let _ = diff_view::REMOVED;
+        let _ = diff_view::DELETED;
+        let _ = diff_view::FILE_HEADER;
+        let _ = diff_view::LINE_NUMBER;
     }
 
     #[test]

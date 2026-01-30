@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::model::Change;
+use crate::model::{Change, DiffContent};
 
 use super::JjError;
 use super::constants::{self, commands, errors, flags, special};
@@ -139,6 +139,14 @@ impl JjExecutor {
     /// Run `jj show` for a specific change
     pub fn show_raw(&self, change_id: &str) -> Result<String, JjError> {
         self.run(&[commands::SHOW, flags::REVISION, change_id])
+    }
+
+    /// Run `jj show` and parse the output into DiffContent
+    ///
+    /// This is the preferred API for application code, following the same pattern as log_changes().
+    pub fn show(&self, change_id: &str) -> Result<DiffContent, JjError> {
+        let output = self.show_raw(change_id)?;
+        Parser::parse_show(&output)
     }
 }
 
