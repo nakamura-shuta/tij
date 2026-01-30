@@ -120,6 +120,28 @@ impl LogView {
                 .any(|b| b.to_lowercase().contains(&query_lower))
     }
 
+    /// Search for first match from beginning (used when search is confirmed)
+    pub fn search_first(&mut self) -> bool {
+        let Some(ref query) = self.last_search_query else {
+            return false;
+        };
+        if self.changes.is_empty() {
+            return false;
+        }
+
+        let query = query.clone();
+
+        // Search from beginning
+        for i in 0..self.changes.len() {
+            if self.change_matches(&self.changes[i], &query) {
+                self.selected_index = i;
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// Search for next match (n key)
     pub fn search_next(&mut self) -> bool {
         let Some(ref query) = self.last_search_query else {
@@ -263,8 +285,8 @@ impl LogView {
                 let query = self.input_buffer.clone();
                 if !query.is_empty() {
                     self.last_search_query = Some(query);
-                    // Jump to first match
-                    self.search_next();
+                    // Jump to first match from beginning
+                    self.search_first();
                 }
                 self.input_mode = InputMode::Normal;
                 self.input_buffer.clear();
@@ -496,14 +518,25 @@ impl LogView {
         };
 
         let input_text = format!("{}{}", prompt, self.input_buffer);
-        let cursor_pos = input_text.len();
+
+        // Calculate available width (area width minus borders)
+        let available_width = area.width.saturating_sub(2) as usize;
+
+        // Truncate display text if too long (show end of input)
+        let display_text = if input_text.len() > available_width {
+            let start = input_text.len() - available_width;
+            format!("…{}", &input_text[start + 1..])
+        } else {
+            input_text.clone()
+        };
 
         let paragraph =
-            Paragraph::new(input_text).block(Block::default().borders(Borders::ALL).title(title));
+            Paragraph::new(display_text).block(Block::default().borders(Borders::ALL).title(title));
 
         frame.render_widget(paragraph, area);
 
-        // Show cursor
+        // Show cursor (clamped to available width)
+        let cursor_pos = input_text.len().min(available_width);
         frame.set_cursor_position((area.x + cursor_pos as u16 + 1, area.y + 1));
     }
 }
@@ -770,6 +803,28 @@ mod tests {
         // Set fewer changes
         view.set_changes(vec![create_test_changes()[0].clone()]);
         assert_eq!(view.selected_index, 0);
+    }
+
+    #[test]
+    fn test_search_first_finds_from_beginning() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+        view.selected_index = 2; // Start at root
+        view.last_search_query = Some("First".to_string());
+
+        // Should find "First commit" at index 0, regardless of current position
+        assert!(view.search_first());
+        assert_eq!(view.selected_index, 0);
+    }
+
+    #[test]
+    fn test_search_first_no_match() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+        view.last_search_query = Some("nonexistent".to_string());
+
+        assert!(!view.search_first());
+        assert_eq!(view.selected_index, 0); // Position unchanged
     }
 
     #[test]

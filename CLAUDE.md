@@ -63,15 +63,13 @@ src/
 
 ## Current Phase
 
-**Phase 1: プロジェクト基盤** - 基本構造構築中
+**Phase 2: Log View** - ✅ 完了、次は Phase 3: Diff View
 
 ```
-[x] Cargo.toml、依存関係
-[x] TUIアプリ構造（App, Event Loop）
-[x] アーキテクチャ設計
-[x] キーバインド設計（keys.rs）
-[ ] jjコマンド実行モジュール
-[ ] エラーハンドリング設計
+[x] Phase 1: プロジェクト基盤
+[x] Phase 2: Log View（jj log表示、ナビゲーション、検索、revset）
+[ ] Phase 3: Diff View
+[ ] Phase 4: Status View
 ```
 
 ## Conventions
@@ -79,6 +77,17 @@ src/
 - キーバインドは `src/keys.rs` に集約
 - 型の配置: ドメインモデル → `model/`、UI状態 → `ui/`
 - jj実行時は必ず `--color=never` を付与
+
+## Known Limitations
+
+### タブ文字制約
+jj出力のパースにタブ区切りを使用しているため、以下のフィールドにタブ文字が含まれると正しくパースできません:
+
+- description（コミットメッセージ）
+- author（メールアドレス）
+- bookmarks
+
+**影響**: 実際にタブ文字がこれらのフィールドに含まれることは稀ですが、もし発生した場合はパースエラーまたは不正確な表示となります。
 
 
 ## Build
