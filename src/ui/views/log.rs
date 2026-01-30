@@ -36,6 +36,8 @@ pub enum LogAction {
     OpenDiff(String),
     /// Execute revset filter
     ExecuteRevset(String),
+    /// Clear revset filter (reset to default)
+    ClearRevset,
 }
 
 /// Log View state
@@ -283,7 +285,10 @@ impl LogView {
             }
             KeyCode::Enter => {
                 let query = self.input_buffer.clone();
-                if !query.is_empty() {
+                if query.is_empty() {
+                    // Clear search query
+                    self.last_search_query = None;
+                } else {
                     self.last_search_query = Some(query);
                     // Jump to first match from beginning
                     self.search_first();
@@ -312,14 +317,13 @@ impl LogView {
             }
             KeyCode::Enter => {
                 let revset = self.input_buffer.clone();
-                if !revset.is_empty() {
-                    self.revset_history.push(revset.clone());
-                }
                 self.input_mode = InputMode::Normal;
                 self.input_buffer.clear();
                 if revset.is_empty() {
-                    LogAction::None
+                    // Clear revset (reset to default)
+                    LogAction::ClearRevset
                 } else {
+                    self.revset_history.push(revset.clone());
                     LogAction::ExecuteRevset(revset)
                 }
             }
@@ -365,9 +369,14 @@ impl LogView {
         }
 
         // Calculate visible range
+        // N items = N lines + (N-1) connectors = 2N-1 lines
+        // So visible_changes = (inner_height + 1) / 2
         let inner_height = area.height.saturating_sub(2) as usize; // borders
-        let lines_per_change = 2; // marker line + connector
-        let visible_changes = inner_height / lines_per_change;
+        let visible_changes = if inner_height == 0 {
+            0
+        } else {
+            (inner_height + 1) / 2
+        };
 
         // Adjust scroll offset to keep selection visible
         let scroll_offset = self.calculate_scroll_offset(visible_changes);
@@ -522,10 +531,16 @@ impl LogView {
         // Calculate available width (area width minus borders)
         let available_width = area.width.saturating_sub(2) as usize;
 
-        // Truncate display text if too long (show end of input)
-        let display_text = if input_text.len() > available_width {
-            let start = input_text.len() - available_width;
-            format!("…{}", &input_text[start + 1..])
+        // Early return if no space for input
+        if available_width == 0 {
+            return;
+        }
+
+        // Truncate display text if too long (show end of input, UTF-8 safe)
+        let char_count = input_text.chars().count();
+        let display_text = if char_count > available_width {
+            let skip = char_count.saturating_sub(available_width.saturating_sub(1)); // -1 for ellipsis
+            format!("…{}", input_text.chars().skip(skip).collect::<String>())
         } else {
             input_text.clone()
         };
@@ -535,8 +550,8 @@ impl LogView {
 
         frame.render_widget(paragraph, area);
 
-        // Show cursor (clamped to available width)
-        let cursor_pos = input_text.len().min(available_width);
+        // Show cursor (clamped to available width, character-based)
+        let cursor_pos = char_count.min(available_width);
         frame.set_cursor_position((area.x + cursor_pos as u16 + 1, area.y + 1));
     }
 }
@@ -985,5 +1000,32 @@ mod tests {
 
         // Revset should NOT be stored as search query
         assert_eq!(view.last_search_query, None);
+    }
+
+    #[test]
+    fn test_search_empty_enter_clears_query() {
+        let mut view = LogView::new();
+
+        // Set a search query first
+        view.last_search_query = Some("test".to_string());
+
+        // Start search input and submit empty
+        view.start_search_input();
+        view.handle_key(KeyEvent::from(KeyCode::Enter));
+
+        // Should clear search query
+        assert_eq!(view.last_search_query, None);
+    }
+
+    #[test]
+    fn test_revset_empty_enter_returns_clear_action() {
+        let mut view = LogView::new();
+
+        // Start revset input and submit empty
+        view.start_revset_input();
+        let action = view.handle_key(KeyEvent::from(KeyCode::Enter));
+
+        // Should return ClearRevset action
+        assert_eq!(action, LogAction::ClearRevset);
     }
 }
