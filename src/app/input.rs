@@ -27,14 +27,36 @@ impl App {
             return;
         }
 
-        // Global keys
+        if self.handle_global_key(key) {
+            return;
+        }
+
+        self.handle_view_key(key);
+    }
+
+    fn handle_global_key(&mut self, key: KeyEvent) -> bool {
         match key.code {
-            keys::QUIT => self.handle_quit(),
-            keys::ESC => self.handle_back(),
-            keys::HELP => self.go_to_view(View::Help),
-            keys::TAB => self.next_view(),
-            keys::STATUS_VIEW if self.current_view == View::Log => self.go_to_view(View::Status),
-            _ => self.handle_view_key(key),
+            keys::QUIT => {
+                self.handle_quit();
+                true
+            }
+            keys::ESC => {
+                self.handle_back();
+                true
+            }
+            keys::HELP => {
+                self.go_to_view(View::Help);
+                true
+            }
+            keys::TAB => {
+                self.next_view();
+                true
+            }
+            keys::STATUS_VIEW if self.current_view == View::Log => {
+                self.go_to_view(View::Status);
+                true
+            }
+            _ => false,
         }
     }
 

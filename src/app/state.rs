@@ -56,7 +56,7 @@ impl App {
 
     /// Refresh the log view with optional revset
     pub fn refresh_log(&mut self, revset: Option<&str>) {
-        match self.jj.log(revset) {
+        match self.jj.log_changes(revset) {
             Ok(changes) => {
                 self.log_view.set_changes(changes);
                 self.log_view.current_revset = revset.map(|s| s.to_string());

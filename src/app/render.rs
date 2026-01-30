@@ -1,16 +1,11 @@
 //! Rendering logic for the application
 
-use ratatui::{
-    Frame,
-    prelude::*,
-    style::Stylize,
-    text::Line,
-    widgets::{Block, Borders, Paragraph},
-};
+use ratatui::{Frame, prelude::*};
 
 use super::state::{App, View};
-use crate::keys;
-use crate::ui::widgets::{render_error_banner, render_status_bar};
+use crate::ui::widgets::{
+    render_error_banner, render_help_panel, render_placeholder, render_status_bar,
+};
 
 impl App {
     /// Render the UI
@@ -42,79 +37,24 @@ impl App {
     }
 
     fn render_diff_view(&self, frame: &mut Frame) {
-        let area = frame.area();
-
-        let title = Line::from(" Tij - Diff View ").bold().yellow().centered();
-
-        frame.render_widget(
-            Paragraph::new("Diff view - Press q to go back")
-                .block(Block::default().borders(Borders::ALL).title(title)),
-            area,
+        render_placeholder(
+            frame,
+            " Tij - Diff View ",
+            Color::Yellow,
+            "Diff view - Press q to go back",
         );
     }
 
     fn render_status_view(&self, frame: &mut Frame) {
-        let area = frame.area();
-
-        let title = Line::from(" Tij - Status View ").bold().green().centered();
-
-        frame.render_widget(
-            Paragraph::new("Status view - Press q or Tab to go back")
-                .block(Block::default().borders(Borders::ALL).title(title)),
-            area,
+        render_placeholder(
+            frame,
+            " Tij - Status View ",
+            Color::Green,
+            "Status view - Press q or Tab to go back",
         );
     }
 
     fn render_help_view(&self, frame: &mut Frame) {
-        let area = frame.area();
-
-        let title = Line::from(" Tij - Help ").bold().white().centered();
-
-        let mut lines = vec![
-            Line::from("Key bindings:".bold()),
-            Line::from(""),
-            Line::from("Global:".underlined()),
-        ];
-
-        for entry in keys::GLOBAL_KEYS {
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  {:10}", entry.key),
-                    Style::default().fg(Color::Yellow),
-                ),
-                Span::raw(entry.description),
-            ]));
-        }
-
-        lines.push(Line::from(""));
-        lines.push(Line::from("Navigation:".underlined()));
-
-        for entry in keys::NAV_KEYS {
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  {:10}", entry.key),
-                    Style::default().fg(Color::Yellow),
-                ),
-                Span::raw(entry.description),
-            ]));
-        }
-
-        lines.push(Line::from(""));
-        lines.push(Line::from("Log View:".underlined()));
-
-        for entry in keys::LOG_KEYS {
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  {:10}", entry.key),
-                    Style::default().fg(Color::Yellow),
-                ),
-                Span::raw(entry.description),
-            ]));
-        }
-
-        frame.render_widget(
-            Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(title)),
-            area,
-        );
+        render_help_panel(frame);
     }
 }

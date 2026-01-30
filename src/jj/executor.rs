@@ -120,6 +120,12 @@ impl JjExecutor {
         Parser::parse_log(&output).map_err(|e| JjError::ParseError(e.to_string()))
     }
 
+    /// Run `jj log` and parse output into Changes for current view.
+    /// This is the preferred API for application code.
+    pub fn log_changes(&self, revset: Option<&str>) -> Result<Vec<Change>, JjError> {
+        self.log(revset)
+    }
+
     /// Run `jj status`
     pub fn status_raw(&self) -> Result<String, JjError> {
         self.run(&[commands::STATUS])

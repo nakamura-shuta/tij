@@ -7,6 +7,14 @@ use crate::model::Change;
 
 use super::{InputMode, LogAction, LogView};
 
+/// Search direction/mode
+#[derive(Clone, Copy)]
+enum SearchKind {
+    First,
+    Next,
+    Prev,
+}
+
 impl LogView {
     // ─────────────────────────────────────────────────────────────────────────
     // Input handling
@@ -67,54 +75,44 @@ impl LogView {
     }
 
     fn handle_search_input_key(&mut self, key: KeyEvent) -> LogAction {
-        match key.code {
-            k if k == keys::ESC => {
-                self.cancel_input();
-                LogAction::None
+        self.handle_text_input(key, |view, query| {
+            if query.is_empty() {
+                // Clear search query
+                view.last_search_query = None;
+            } else {
+                view.last_search_query = Some(query);
+                // Jump to first match from beginning
+                view.search_first();
             }
-            k if k == keys::SUBMIT => {
-                let query = self.input_buffer.clone();
-                if query.is_empty() {
-                    // Clear search query
-                    self.last_search_query = None;
-                } else {
-                    self.last_search_query = Some(query);
-                    // Jump to first match from beginning
-                    self.search_first();
-                }
-                self.input_mode = InputMode::Normal;
-                self.input_buffer.clear();
-                LogAction::None
-            }
-            KeyCode::Char(c) => {
-                self.input_buffer.push(c);
-                LogAction::None
-            }
-            KeyCode::Backspace => {
-                self.input_buffer.pop();
-                LogAction::None
-            }
-            _ => LogAction::None,
-        }
+            LogAction::None
+        })
     }
 
     fn handle_revset_input_key(&mut self, key: KeyEvent) -> LogAction {
+        self.handle_text_input(key, |view, revset| {
+            if revset.is_empty() {
+                // Clear revset (reset to default)
+                LogAction::ClearRevset
+            } else {
+                view.revset_history.push(revset.clone());
+                LogAction::ExecuteRevset(revset)
+            }
+        })
+    }
+
+    fn handle_text_input<F>(&mut self, key: KeyEvent, on_submit: F) -> LogAction
+    where
+        F: FnOnce(&mut Self, String) -> LogAction,
+    {
         match key.code {
             k if k == keys::ESC => {
                 self.cancel_input();
                 LogAction::None
             }
             k if k == keys::SUBMIT => {
-                let revset = self.input_buffer.clone();
+                let input = std::mem::take(&mut self.input_buffer);
                 self.input_mode = InputMode::Normal;
-                self.input_buffer.clear();
-                if revset.is_empty() {
-                    // Clear revset (reset to default)
-                    LogAction::ClearRevset
-                } else {
-                    self.revset_history.push(revset.clone());
-                    LogAction::ExecuteRevset(revset)
-                }
+                on_submit(self, input)
             }
             KeyCode::Char(c) => {
                 self.input_buffer.push(c);
@@ -133,41 +131,32 @@ impl LogView {
     // ─────────────────────────────────────────────────────────────────────────
 
     /// Check if a change matches the search query
-    pub(crate) fn change_matches(&self, change: &Change, query: &str) -> bool {
-        let query_lower = query.to_lowercase();
-        change.change_id.to_lowercase().contains(&query_lower)
-            || change.description.to_lowercase().contains(&query_lower)
-            || change.author.to_lowercase().contains(&query_lower)
+    pub(crate) fn change_matches(&self, change: &Change, query_lower: &str) -> bool {
+        change.change_id.to_lowercase().contains(query_lower)
+            || change.description.to_lowercase().contains(query_lower)
+            || change.author.to_lowercase().contains(query_lower)
             || change
                 .bookmarks
                 .iter()
-                .any(|b| b.to_lowercase().contains(&query_lower))
+                .any(|b| b.to_lowercase().contains(query_lower))
     }
 
     /// Search for first match from beginning (used when search is confirmed)
     pub fn search_first(&mut self) -> bool {
-        let Some(ref query) = self.last_search_query else {
-            return false;
-        };
-        if self.changes.is_empty() {
-            return false;
-        }
-
-        let query = query.clone();
-
-        // Search from beginning
-        for i in 0..self.changes.len() {
-            if self.change_matches(&self.changes[i], &query) {
-                self.selected_index = i;
-                return true;
-            }
-        }
-
-        false
+        self.search(SearchKind::First)
     }
 
     /// Search for next match (n key)
     pub fn search_next(&mut self) -> bool {
+        self.search(SearchKind::Next)
+    }
+
+    /// Search for previous match (N key)
+    pub fn search_prev(&mut self) -> bool {
+        self.search(SearchKind::Prev)
+    }
+
+    fn search(&mut self, kind: SearchKind) -> bool {
         let Some(ref query) = self.last_search_query else {
             return false;
         };
@@ -175,55 +164,39 @@ impl LogView {
             return false;
         }
 
-        let query = query.clone();
-        let start = self.selected_index + 1;
+        let query_lower = query.to_lowercase();
 
-        // Search from current position to end
-        for i in start..self.changes.len() {
-            if self.change_matches(&self.changes[i], &query) {
-                self.selected_index = i;
-                return true;
+        let found = match kind {
+            SearchKind::First => self.find_match_in(0..self.changes.len(), &query_lower),
+            SearchKind::Next => {
+                let start = self.selected_index + 1;
+                let forward = start..self.changes.len();
+                let wrap = 0..self.selected_index;
+                self.find_match_in(forward, &query_lower)
+                    .or_else(|| self.find_match_in(wrap, &query_lower))
             }
-        }
+            SearchKind::Prev => {
+                let backward = (0..self.selected_index).rev();
+                let wrap = (self.selected_index + 1..self.changes.len()).rev();
+                self.find_match_in(backward, &query_lower)
+                    .or_else(|| self.find_match_in(wrap, &query_lower))
+            }
+        };
 
-        // Wrap around: search from beginning to current position
-        for i in 0..self.selected_index {
-            if self.change_matches(&self.changes[i], &query) {
-                self.selected_index = i;
-                return true;
-            }
+        if let Some(index) = found {
+            self.selected_index = index;
+            return true;
         }
 
         false
     }
 
-    /// Search for previous match (N key)
-    pub fn search_prev(&mut self) -> bool {
-        let Some(ref query) = self.last_search_query else {
-            return false;
-        };
-        if self.changes.is_empty() {
-            return false;
-        }
-
-        let query = query.clone();
-
-        // Search from current position to beginning
-        for i in (0..self.selected_index).rev() {
-            if self.change_matches(&self.changes[i], &query) {
-                self.selected_index = i;
-                return true;
-            }
-        }
-
-        // Wrap around: search from end to current position
-        for i in (self.selected_index + 1..self.changes.len()).rev() {
-            if self.change_matches(&self.changes[i], &query) {
-                self.selected_index = i;
-                return true;
-            }
-        }
-
-        false
+    fn find_match_in<I>(&self, indices: I, query_lower: &str) -> Option<usize>
+    where
+        I: IntoIterator<Item = usize>,
+    {
+        indices
+            .into_iter()
+            .find(|&i| self.change_matches(&self.changes[i], query_lower))
     }
 }

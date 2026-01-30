@@ -3,6 +3,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::jj::constants;
+use crate::keys;
 use crate::model::Change;
 use crate::ui::{symbols, theme};
 
@@ -41,6 +42,24 @@ fn create_test_changes() -> Vec<Change> {
             bookmarks: vec![],
         },
     ]
+}
+
+fn press_key(view: &mut LogView, key: KeyCode) -> LogAction {
+    view.handle_key(KeyEvent::from(key))
+}
+
+fn type_text(view: &mut LogView, text: &str) {
+    for c in text.chars() {
+        press_key(view, KeyCode::Char(c));
+    }
+}
+
+fn submit(view: &mut LogView) -> LogAction {
+    press_key(view, keys::SUBMIT)
+}
+
+fn escape(view: &mut LogView) -> LogAction {
+    press_key(view, keys::ESC)
 }
 
 #[test]
@@ -129,11 +148,11 @@ fn test_handle_key_navigation() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    let action = view.handle_key(KeyEvent::from(KeyCode::Char('j')));
+    let action = press_key(&mut view, keys::MOVE_DOWN);
     assert_eq!(action, LogAction::None);
     assert_eq!(view.selected_index, 1);
 
-    let action = view.handle_key(KeyEvent::from(KeyCode::Char('k')));
+    let action = press_key(&mut view, keys::MOVE_UP);
     assert_eq!(action, LogAction::None);
     assert_eq!(view.selected_index, 0);
 }
@@ -143,7 +162,7 @@ fn test_handle_key_open_diff() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    let action = view.handle_key(KeyEvent::from(KeyCode::Enter));
+    let action = press_key(&mut view, keys::OPEN_DIFF);
     assert_eq!(action, LogAction::OpenDiff("abc12345".to_string()));
 }
 
@@ -153,19 +172,16 @@ fn test_handle_key_search_input() {
     view.set_changes(create_test_changes());
 
     // Start search mode with /
-    let action = view.handle_key(KeyEvent::from(KeyCode::Char('/')));
+    let action = press_key(&mut view, keys::SEARCH_INPUT);
     assert_eq!(action, LogAction::None);
     assert_eq!(view.input_mode, InputMode::SearchInput);
 
     // Type search query
-    view.handle_key(KeyEvent::from(KeyCode::Char('I')));
-    view.handle_key(KeyEvent::from(KeyCode::Char('n')));
-    view.handle_key(KeyEvent::from(KeyCode::Char('i')));
-    view.handle_key(KeyEvent::from(KeyCode::Char('t')));
+    type_text(&mut view, "Init");
     assert_eq!(view.input_buffer, "Init");
 
     // Submit - should store query and jump to match
-    let action = view.handle_key(KeyEvent::from(KeyCode::Enter));
+    let action = submit(&mut view);
     assert_eq!(action, LogAction::None); // Search doesn't execute revset
     assert_eq!(view.input_mode, InputMode::Normal);
     assert!(view.input_buffer.is_empty());
@@ -178,18 +194,16 @@ fn test_handle_key_revset_input() {
     let mut view = LogView::new();
 
     // Start revset mode with r
-    let action = view.handle_key(KeyEvent::from(KeyCode::Char('r')));
+    let action = press_key(&mut view, keys::REVSET_INPUT);
     assert_eq!(action, LogAction::None);
     assert_eq!(view.input_mode, InputMode::RevsetInput);
 
     // Type revset
-    view.handle_key(KeyEvent::from(KeyCode::Char('a')));
-    view.handle_key(KeyEvent::from(KeyCode::Char('l')));
-    view.handle_key(KeyEvent::from(KeyCode::Char('l')));
+    type_text(&mut view, "all");
     assert_eq!(view.input_buffer, "all");
 
     // Submit
-    let action = view.handle_key(KeyEvent::from(KeyCode::Enter));
+    let action = submit(&mut view);
     assert_eq!(action, LogAction::ExecuteRevset("all".to_string()));
     assert_eq!(view.input_mode, InputMode::Normal);
     assert!(view.input_buffer.is_empty());
@@ -201,12 +215,11 @@ fn test_handle_key_revset_cancel() {
     let mut view = LogView::new();
 
     view.start_revset_input();
-    view.handle_key(KeyEvent::from(KeyCode::Char('t')));
-    view.handle_key(KeyEvent::from(KeyCode::Char('e')));
+    type_text(&mut view, "te");
     assert_eq!(view.input_buffer, "te");
 
     // Cancel with Esc
-    let action = view.handle_key(KeyEvent::from(KeyCode::Esc));
+    let action = escape(&mut view);
     assert_eq!(action, LogAction::None);
     assert_eq!(view.input_mode, InputMode::Normal);
     assert!(view.input_buffer.is_empty());
@@ -217,11 +230,10 @@ fn test_handle_key_backspace() {
     let mut view = LogView::new();
     view.start_revset_input();
 
-    view.handle_key(KeyEvent::from(KeyCode::Char('a')));
-    view.handle_key(KeyEvent::from(KeyCode::Char('b')));
+    type_text(&mut view, "ab");
     assert_eq!(view.input_buffer, "ab");
 
-    view.handle_key(KeyEvent::from(KeyCode::Backspace));
+    press_key(&mut view, KeyCode::Backspace);
     assert_eq!(view.input_buffer, "a");
 }
 
@@ -398,7 +410,7 @@ fn test_handle_key_search_next() {
     view.set_changes(create_test_changes());
     view.last_search_query = Some("Initial".to_string());
 
-    let action = view.handle_key(KeyEvent::from(KeyCode::Char('n')));
+    let action = press_key(&mut view, keys::SEARCH_NEXT);
     assert_eq!(action, LogAction::None);
     assert_eq!(view.selected_index, 1);
 }
@@ -410,7 +422,7 @@ fn test_handle_key_search_prev() {
     view.selected_index = 2;
     view.last_search_query = Some("First".to_string());
 
-    let action = view.handle_key(KeyEvent::from(KeyCode::Char('N')));
+    let action = press_key(&mut view, keys::SEARCH_PREV);
     assert_eq!(action, LogAction::None);
     assert_eq!(view.selected_index, 0);
 }
@@ -421,13 +433,10 @@ fn test_search_input_stores_query() {
     view.start_search_input();
 
     // Type query
-    view.handle_key(KeyEvent::from(KeyCode::Char('m')));
-    view.handle_key(KeyEvent::from(KeyCode::Char('a')));
-    view.handle_key(KeyEvent::from(KeyCode::Char('i')));
-    view.handle_key(KeyEvent::from(KeyCode::Char('n')));
+    type_text(&mut view, "main");
 
     // Submit
-    view.handle_key(KeyEvent::from(KeyCode::Enter));
+    submit(&mut view);
 
     // Should store as search query
     assert_eq!(view.last_search_query, Some("main".to_string()));
@@ -439,12 +448,10 @@ fn test_revset_input_does_not_store_search_query() {
     view.start_revset_input();
 
     // Type revset
-    view.handle_key(KeyEvent::from(KeyCode::Char('a')));
-    view.handle_key(KeyEvent::from(KeyCode::Char('l')));
-    view.handle_key(KeyEvent::from(KeyCode::Char('l')));
+    type_text(&mut view, "all");
 
     // Submit
-    view.handle_key(KeyEvent::from(KeyCode::Enter));
+    submit(&mut view);
 
     // Revset should NOT be stored as search query
     assert_eq!(view.last_search_query, None);
@@ -459,7 +466,7 @@ fn test_search_empty_enter_clears_query() {
 
     // Start search input and submit empty
     view.start_search_input();
-    view.handle_key(KeyEvent::from(KeyCode::Enter));
+    submit(&mut view);
 
     // Should clear search query
     assert_eq!(view.last_search_query, None);
@@ -471,7 +478,7 @@ fn test_revset_empty_enter_returns_clear_action() {
 
     // Start revset input and submit empty
     view.start_revset_input();
-    let action = view.handle_key(KeyEvent::from(KeyCode::Enter));
+    let action = submit(&mut view);
 
     // Should return ClearRevset action
     assert_eq!(action, LogAction::ClearRevset);

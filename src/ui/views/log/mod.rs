@@ -19,6 +19,16 @@ pub enum InputMode {
     RevsetInput,
 }
 
+impl InputMode {
+    pub fn input_bar_meta(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            InputMode::SearchInput => Some(("Search: ", " / Search ")),
+            InputMode::RevsetInput => Some(("Revset: ", " r Revset ")),
+            InputMode::Normal => None,
+        }
+    }
+}
+
 /// Actions that LogView can request from App
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LogAction {
@@ -51,6 +61,11 @@ pub struct LogView {
     pub current_revset: Option<String>,
     /// Last search query for n/N navigation
     pub(crate) last_search_query: Option<String>,
+}
+
+pub mod empty_text {
+    pub const TITLE: &str = "No changes found.";
+    pub const HINT: &str = "Hint: Try '/' with revset all()";
 }
 
 impl LogView {

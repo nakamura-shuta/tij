@@ -8,7 +8,6 @@ mod parser;
 mod template;
 
 pub use executor::JjExecutor;
-pub use parser::Parser;
 
 use std::io;
 use thiserror::Error;

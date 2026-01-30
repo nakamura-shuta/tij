@@ -12,7 +12,7 @@ use crate::jj::constants;
 use crate::model::Change;
 use crate::ui::{symbols, theme};
 
-use super::{InputMode, LogView};
+use super::{InputMode, LogView, empty_text};
 
 impl LogView {
     /// Render the view
@@ -51,7 +51,7 @@ impl LogView {
         let visible_changes = if inner_height == 0 {
             0
         } else {
-            (inner_height + 1) / 2
+            inner_height.div_ceil(2)
         };
 
         // Adjust scroll offset to keep selection visible
@@ -99,11 +99,9 @@ impl LogView {
     fn render_empty_state(&self, frame: &mut Frame, area: Rect, title: &Line) {
         let empty_text = vec![
             Line::from(""),
-            Line::from("No changes found.").centered(),
+            Line::from(empty_text::TITLE).centered(),
             Line::from(""),
-            Line::from("Hint: Try '/' with revset all()")
-                .dark_gray()
-                .centered(),
+            Line::from(empty_text::HINT).dark_gray().centered(),
             Line::from(""),
         ];
 
@@ -196,10 +194,8 @@ impl LogView {
     }
 
     fn render_input_bar(&self, frame: &mut Frame, area: Rect) {
-        let (prompt, title) = match self.input_mode {
-            InputMode::SearchInput => ("Search: ", " / Search "),
-            InputMode::RevsetInput => ("Revset: ", " r Revset "),
-            InputMode::Normal => return,
+        let Some((prompt, title)) = self.input_mode.input_bar_meta() else {
+            return;
         };
 
         let input_text = format!("{}{}", prompt, self.input_buffer);
