@@ -1,0 +1,43 @@
+# Rust build artifacts
+/target/
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# Debug / Profiling
+*.pdb
+*.profraw
+*.profdata
+
+# Coverage
+lcov.info
+tarpaulin-report.html
+coverage/
+
+# Documentation (generated)
+/doc/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Claude Code
+.claude/
+
+# Project working files (design docs - local only)
+.work/

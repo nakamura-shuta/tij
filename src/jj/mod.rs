@@ -1,0 +1,36 @@
+//! jj command execution layer
+//!
+//! This module handles executing jj commands and parsing their output.
+
+pub mod constants;
+mod executor;
+mod parser;
+mod template;
+
+pub use executor::JjExecutor;
+pub use parser::Parser;
+
+use std::io;
+use thiserror::Error;
+
+/// Errors that can occur when executing jj commands
+#[derive(Error, Debug)]
+pub enum JjError {
+    #[error("Not a jj repository")]
+    NotARepository,
+
+    #[error("jj command failed (exit code {exit_code}): {stderr}")]
+    CommandFailed { stderr: String, exit_code: i32 },
+
+    #[error("Failed to parse jj output: {0}")]
+    ParseError(String),
+
+    #[error("IO error: {0}")]
+    IoError(#[from] io::Error),
+
+    #[error("jj is not installed or not in PATH")]
+    JjNotFound,
+
+    #[error("Unsupported jj version: {version} (minimum: {minimum})")]
+    UnsupportedVersion { version: String, minimum: String },
+}
