@@ -85,6 +85,9 @@ impl App {
 
     /// Handle key events
     pub fn on_key_event(&mut self, key: KeyEvent) {
+        // Clear error message on any key press
+        self.error_message = None;
+
         // Handle Ctrl+C globally
         if key.modifiers.contains(KeyModifiers::CONTROL)
             && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('C'))
@@ -94,7 +97,7 @@ impl App {
         }
 
         // If in input mode, delegate all keys to LogView (skip global handling)
-        if self.current_view == View::Log && self.log_view.input_mode == InputMode::RevsetInput {
+        if self.current_view == View::Log && self.log_view.input_mode != InputMode::Normal {
             let action = self.log_view.handle_key(key);
             self.handle_log_action(action);
             return;
@@ -312,8 +315,13 @@ impl App {
             ),
             Span::raw(" "),
             Span::styled(
-                " [/] Revset ",
+                " [/] Search ",
                 Style::default().fg(Color::Black).bg(Color::Yellow),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                " [r] Revset ",
+                Style::default().fg(Color::Black).bg(Color::Magenta),
             ),
             Span::raw(" "),
             Span::styled(

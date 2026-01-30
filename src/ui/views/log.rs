@@ -21,7 +21,9 @@ pub enum InputMode {
     /// Normal navigation mode
     #[default]
     Normal,
-    /// Revset input mode
+    /// Text search input mode (for n/N navigation)
+    SearchInput,
+    /// Revset input mode (for jj filtering)
     RevsetInput,
 }
 
@@ -53,6 +55,8 @@ pub struct LogView {
     pub revset_history: Vec<String>,
     /// Current revset filter (None = default)
     pub current_revset: Option<String>,
+    /// Last search query for n/N navigation
+    last_search_query: Option<String>,
 }
 
 impl LogView {
@@ -104,14 +108,93 @@ impl LogView {
         }
     }
 
+    /// Check if a change matches the search query
+    fn change_matches(&self, change: &Change, query: &str) -> bool {
+        let query_lower = query.to_lowercase();
+        change.change_id.to_lowercase().contains(&query_lower)
+            || change.description.to_lowercase().contains(&query_lower)
+            || change.author.to_lowercase().contains(&query_lower)
+            || change
+                .bookmarks
+                .iter()
+                .any(|b| b.to_lowercase().contains(&query_lower))
+    }
+
+    /// Search for next match (n key)
+    pub fn search_next(&mut self) -> bool {
+        let Some(ref query) = self.last_search_query else {
+            return false;
+        };
+        if self.changes.is_empty() {
+            return false;
+        }
+
+        let query = query.clone();
+        let start = self.selected_index + 1;
+
+        // Search from current position to end
+        for i in start..self.changes.len() {
+            if self.change_matches(&self.changes[i], &query) {
+                self.selected_index = i;
+                return true;
+            }
+        }
+
+        // Wrap around: search from beginning to current position
+        for i in 0..self.selected_index {
+            if self.change_matches(&self.changes[i], &query) {
+                self.selected_index = i;
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Search for previous match (N key)
+    pub fn search_prev(&mut self) -> bool {
+        let Some(ref query) = self.last_search_query else {
+            return false;
+        };
+        if self.changes.is_empty() {
+            return false;
+        }
+
+        let query = query.clone();
+
+        // Search from current position to beginning
+        for i in (0..self.selected_index).rev() {
+            if self.change_matches(&self.changes[i], &query) {
+                self.selected_index = i;
+                return true;
+            }
+        }
+
+        // Wrap around: search from end to current position
+        for i in (self.selected_index + 1..self.changes.len()).rev() {
+            if self.change_matches(&self.changes[i], &query) {
+                self.selected_index = i;
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Start text search input mode
+    pub fn start_search_input(&mut self) {
+        self.input_mode = InputMode::SearchInput;
+        self.input_buffer.clear();
+    }
+
     /// Start revset input mode
     pub fn start_revset_input(&mut self) {
         self.input_mode = InputMode::RevsetInput;
         self.input_buffer.clear();
     }
 
-    /// Cancel revset input
-    pub fn cancel_revset_input(&mut self) {
+    /// Cancel input mode
+    pub fn cancel_input(&mut self) {
         self.input_mode = InputMode::Normal;
         self.input_buffer.clear();
     }
@@ -120,7 +203,8 @@ impl LogView {
     pub fn handle_key(&mut self, key: KeyEvent) -> LogAction {
         match self.input_mode {
             InputMode::Normal => self.handle_normal_key(key),
-            InputMode::RevsetInput => self.handle_input_key(key),
+            InputMode::SearchInput => self.handle_search_input_key(key),
+            InputMode::RevsetInput => self.handle_revset_input_key(key),
         }
     }
 
@@ -143,7 +227,19 @@ impl LogView {
                 LogAction::None
             }
             KeyCode::Char('/') => {
+                self.start_search_input();
+                LogAction::None
+            }
+            KeyCode::Char('r') => {
                 self.start_revset_input();
+                LogAction::None
+            }
+            KeyCode::Char('n') => {
+                self.search_next();
+                LogAction::None
+            }
+            KeyCode::Char('N') => {
+                self.search_prev();
                 LogAction::None
             }
             KeyCode::Enter => {
@@ -157,10 +253,39 @@ impl LogView {
         }
     }
 
-    fn handle_input_key(&mut self, key: KeyEvent) -> LogAction {
+    fn handle_search_input_key(&mut self, key: KeyEvent) -> LogAction {
         match key.code {
             KeyCode::Esc => {
-                self.cancel_revset_input();
+                self.cancel_input();
+                LogAction::None
+            }
+            KeyCode::Enter => {
+                let query = self.input_buffer.clone();
+                if !query.is_empty() {
+                    self.last_search_query = Some(query);
+                    // Jump to first match
+                    self.search_next();
+                }
+                self.input_mode = InputMode::Normal;
+                self.input_buffer.clear();
+                LogAction::None
+            }
+            KeyCode::Char(c) => {
+                self.input_buffer.push(c);
+                LogAction::None
+            }
+            KeyCode::Backspace => {
+                self.input_buffer.pop();
+                LogAction::None
+            }
+            _ => LogAction::None,
+        }
+    }
+
+    fn handle_revset_input_key(&mut self, key: KeyEvent) -> LogAction {
+        match key.code {
+            KeyCode::Esc => {
+                self.cancel_input();
                 LogAction::None
             }
             KeyCode::Enter => {
@@ -191,11 +316,13 @@ impl LogView {
     /// Render the view
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         // Split area for input bar if in input mode
-        let (log_area, input_area) = if self.input_mode == InputMode::RevsetInput {
-            let chunks = Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).split(area);
-            (chunks[0], Some(chunks[1]))
-        } else {
-            (area, None)
+        let (log_area, input_area) = match self.input_mode {
+            InputMode::Normal => (area, None),
+            InputMode::SearchInput | InputMode::RevsetInput => {
+                let chunks =
+                    Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).split(area);
+                (chunks[0], Some(chunks[1]))
+            }
         };
 
         // Render log list
@@ -247,10 +374,17 @@ impl LogView {
     }
 
     fn build_title(&self) -> Line<'static> {
-        let title_text = if let Some(ref revset) = self.current_revset {
-            format!(" Tij - Log View [{}] ", revset)
-        } else {
-            " Tij - Log View ".to_string()
+        let title_text = match (&self.current_revset, &self.last_search_query) {
+            (Some(revset), Some(query)) => {
+                format!(" Tij - Log View [{}] [Search: {}] ", revset, query)
+            }
+            (Some(revset), None) => {
+                format!(" Tij - Log View [{}] ", revset)
+            }
+            (None, Some(query)) => {
+                format!(" Tij - Log View [Search: {}] ", query)
+            }
+            (None, None) => " Tij - Log View ".to_string(),
         };
         Line::from(title_text).bold().cyan().centered()
     }
@@ -355,11 +489,17 @@ impl LogView {
     }
 
     fn render_input_bar(&self, frame: &mut Frame, area: Rect) {
-        let input_text = format!("Revset: {}", self.input_buffer);
+        let (prompt, title) = match self.input_mode {
+            InputMode::SearchInput => ("Search: ", " / Search "),
+            InputMode::RevsetInput => ("Revset: ", " r Revset "),
+            InputMode::Normal => return,
+        };
+
+        let input_text = format!("{}{}", prompt, self.input_buffer);
         let cursor_pos = input_text.len();
 
-        let paragraph = Paragraph::new(input_text)
-            .block(Block::default().borders(Borders::ALL).title(" Input "));
+        let paragraph =
+            Paragraph::new(input_text).block(Block::default().borders(Borders::ALL).title(title));
 
         frame.render_widget(paragraph, area);
 
@@ -484,7 +624,7 @@ mod tests {
         view.start_revset_input();
         assert_eq!(view.input_mode, InputMode::RevsetInput);
 
-        view.cancel_revset_input();
+        view.cancel_input();
         assert_eq!(view.input_mode, InputMode::Normal);
     }
 
@@ -512,11 +652,37 @@ mod tests {
     }
 
     #[test]
+    fn test_handle_key_search_input() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+
+        // Start search mode with /
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('/')));
+        assert_eq!(action, LogAction::None);
+        assert_eq!(view.input_mode, InputMode::SearchInput);
+
+        // Type search query
+        view.handle_key(KeyEvent::from(KeyCode::Char('I')));
+        view.handle_key(KeyEvent::from(KeyCode::Char('n')));
+        view.handle_key(KeyEvent::from(KeyCode::Char('i')));
+        view.handle_key(KeyEvent::from(KeyCode::Char('t')));
+        assert_eq!(view.input_buffer, "Init");
+
+        // Submit - should store query and jump to match
+        let action = view.handle_key(KeyEvent::from(KeyCode::Enter));
+        assert_eq!(action, LogAction::None); // Search doesn't execute revset
+        assert_eq!(view.input_mode, InputMode::Normal);
+        assert!(view.input_buffer.is_empty());
+        assert_eq!(view.last_search_query, Some("Init".to_string()));
+        assert_eq!(view.selected_index, 1); // Jumped to "Initial commit"
+    }
+
+    #[test]
     fn test_handle_key_revset_input() {
         let mut view = LogView::new();
 
-        // Start input mode
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('/')));
+        // Start revset mode with r
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('r')));
         assert_eq!(action, LogAction::None);
         assert_eq!(view.input_mode, InputMode::RevsetInput);
 
@@ -604,5 +770,165 @@ mod tests {
         // Set fewer changes
         view.set_changes(vec![create_test_changes()[0].clone()]);
         assert_eq!(view.selected_index, 0);
+    }
+
+    #[test]
+    fn test_search_next_no_query() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+
+        // No search query set
+        assert!(!view.search_next());
+        assert_eq!(view.selected_index, 0);
+    }
+
+    #[test]
+    fn test_search_next_finds_match() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+        view.last_search_query = Some("Initial".to_string());
+
+        // Should find "Initial commit" at index 1
+        assert!(view.search_next());
+        assert_eq!(view.selected_index, 1);
+    }
+
+    #[test]
+    fn test_search_next_wraps_around() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+        view.selected_index = 1; // Start at "Initial commit"
+        view.last_search_query = Some("First".to_string());
+
+        // Should wrap to find "First commit" at index 0
+        assert!(view.search_next());
+        assert_eq!(view.selected_index, 0);
+    }
+
+    #[test]
+    fn test_search_prev_finds_match() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+        view.selected_index = 2; // Start at root
+        view.last_search_query = Some("Initial".to_string());
+
+        // Should find "Initial commit" at index 1
+        assert!(view.search_prev());
+        assert_eq!(view.selected_index, 1);
+    }
+
+    #[test]
+    fn test_search_prev_wraps_around() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+        view.selected_index = 0;
+        view.last_search_query = Some("Initial".to_string());
+
+        // Should wrap to find "Initial commit" at index 1
+        assert!(view.search_prev());
+        assert_eq!(view.selected_index, 1);
+    }
+
+    #[test]
+    fn test_search_no_match() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+        view.last_search_query = Some("nonexistent".to_string());
+
+        assert!(!view.search_next());
+        assert_eq!(view.selected_index, 0);
+    }
+
+    #[test]
+    fn test_search_by_author() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+        view.last_search_query = Some("example.com".to_string());
+
+        // Should match by author email
+        assert!(view.search_next());
+        assert_eq!(view.selected_index, 1); // Skips 0, finds 1
+    }
+
+    #[test]
+    fn test_search_by_bookmark() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+        view.selected_index = 1; // Start at index 1
+        view.last_search_query = Some("main".to_string());
+
+        // Should wrap and find "main" bookmark at index 0
+        assert!(view.search_next());
+        assert_eq!(view.selected_index, 0);
+    }
+
+    #[test]
+    fn test_search_case_insensitive() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+        view.selected_index = 1; // Start at index 1
+        view.last_search_query = Some("FIRST".to_string());
+
+        // Should wrap and find "First commit" case-insensitively at index 0
+        assert!(view.search_next());
+        assert_eq!(view.selected_index, 0);
+    }
+
+    #[test]
+    fn test_handle_key_search_next() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+        view.last_search_query = Some("Initial".to_string());
+
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('n')));
+        assert_eq!(action, LogAction::None);
+        assert_eq!(view.selected_index, 1);
+    }
+
+    #[test]
+    fn test_handle_key_search_prev() {
+        let mut view = LogView::new();
+        view.set_changes(create_test_changes());
+        view.selected_index = 2;
+        view.last_search_query = Some("First".to_string());
+
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('N')));
+        assert_eq!(action, LogAction::None);
+        assert_eq!(view.selected_index, 0);
+    }
+
+    #[test]
+    fn test_search_input_stores_query() {
+        let mut view = LogView::new();
+        view.start_search_input();
+
+        // Type query
+        view.handle_key(KeyEvent::from(KeyCode::Char('m')));
+        view.handle_key(KeyEvent::from(KeyCode::Char('a')));
+        view.handle_key(KeyEvent::from(KeyCode::Char('i')));
+        view.handle_key(KeyEvent::from(KeyCode::Char('n')));
+
+        // Submit
+        view.handle_key(KeyEvent::from(KeyCode::Enter));
+
+        // Should store as search query
+        assert_eq!(view.last_search_query, Some("main".to_string()));
+    }
+
+    #[test]
+    fn test_revset_input_does_not_store_search_query() {
+        let mut view = LogView::new();
+        view.start_revset_input();
+
+        // Type revset
+        view.handle_key(KeyEvent::from(KeyCode::Char('a')));
+        view.handle_key(KeyEvent::from(KeyCode::Char('l')));
+        view.handle_key(KeyEvent::from(KeyCode::Char('l')));
+
+        // Submit
+        view.handle_key(KeyEvent::from(KeyCode::Enter));
+
+        // Revset should NOT be stored as search query
+        assert_eq!(view.last_search_query, None);
     }
 }

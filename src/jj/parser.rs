@@ -164,7 +164,8 @@ mod tests {
 
     #[test]
     fn test_parse_log_record_no_bookmarks() {
-        let record = "abc12345\tdef67890\tuser@example.com\t2024-01-29T15:30:00+0900\tTest\tfalse\ttrue\t";
+        let record =
+            "abc12345\tdef67890\tuser@example.com\t2024-01-29T15:30:00+0900\tTest\tfalse\ttrue\t";
         let change = Parser::parse_log_record(record).unwrap();
 
         assert!(change.bookmarks.is_empty());

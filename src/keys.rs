@@ -43,8 +43,11 @@ pub const GO_BOTTOM: KeyCode = KeyCode::Char('G');
 /// Open diff view for selected commit
 pub const OPEN_DIFF: KeyCode = KeyCode::Enter;
 
-/// Open revset input
-pub const REVSET_INPUT: KeyCode = KeyCode::Char('/');
+/// Open text search input (for n/N navigation)
+pub const SEARCH_INPUT: KeyCode = KeyCode::Char('/');
+
+/// Open revset input (for jj filtering)
+pub const REVSET_INPUT: KeyCode = KeyCode::Char('r');
 
 /// Next search result
 pub const SEARCH_NEXT: KeyCode = KeyCode::Char('n');
@@ -109,11 +112,15 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     },
     KeyBindEntry {
         key: "/",
-        description: "Revset input",
+        description: "Search in list",
+    },
+    KeyBindEntry {
+        key: "r",
+        description: "Revset filter",
     },
     KeyBindEntry {
         key: "n/N",
-        description: "Next/prev result",
+        description: "Next/prev search",
     },
     KeyBindEntry {
         key: "s",
