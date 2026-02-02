@@ -171,21 +171,25 @@ impl Parser {
             }
 
             // Parse working copy info
-            if line.starts_with("Working copy")
-                && let Some(rest) = line.strip_prefix("Working copy")
-                && let Some(info) = rest.strip_prefix(" : ").or(rest.strip_prefix(": "))
-                && let Some(change_id) = info.split_whitespace().next()
-            {
-                working_copy_change_id = change_id.to_string();
+            // Format: "Working copy  (@) : <change_id> <commit_id> <description>"
+            if line.starts_with("Working copy") {
+                if let Some(colon_pos) = line.find(": ") {
+                    let info = &line[colon_pos + 2..];
+                    if let Some(change_id) = info.split_whitespace().next() {
+                        working_copy_change_id = change_id.to_string();
+                    }
+                }
             }
 
             // Parse parent commit info
-            if line.starts_with("Parent commit")
-                && let Some(rest) = line.strip_prefix("Parent commit")
-                && let Some(info) = rest.strip_prefix(" : ").or(rest.strip_prefix(": "))
-                && let Some(change_id) = info.split_whitespace().next()
-            {
-                parent_change_id = change_id.to_string();
+            // Format: "Parent commit (@-): <change_id> <commit_id> <description>"
+            if line.starts_with("Parent commit") {
+                if let Some(colon_pos) = line.find(": ") {
+                    let info = &line[colon_pos + 2..];
+                    if let Some(change_id) = info.split_whitespace().next() {
+                        parent_change_id = change_id.to_string();
+                    }
+                }
             }
         }
 
@@ -592,6 +596,21 @@ Parent commit: xyz98765 uvw43210 parent"#;
         assert!(status.has_conflicts);
         assert_eq!(status.files.len(), 1);
         assert!(matches!(status.files[0].state, FileState::Conflicted));
+    }
+
+    #[test]
+    fn test_parse_status_with_markers() {
+        // jj 0.37+ format with (@) and (@-) markers
+        let output = r#"Working copy changes:
+A new_file.rs
+M src/main.rs
+Working copy  (@) : abc12345 def67890 (empty) (no description set)
+Parent commit (@-): xyz98765 uvw43210 Initial commit"#;
+
+        let status = Parser::parse_status(output).unwrap();
+        assert_eq!(status.files.len(), 2);
+        assert_eq!(status.working_copy_change_id, "abc12345");
+        assert_eq!(status.parent_change_id, "xyz98765");
     }
 
     #[test]
