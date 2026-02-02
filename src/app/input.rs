@@ -4,7 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::state::{App, View};
 use crate::keys;
-use crate::ui::views::{DiffAction, InputMode, LogAction, StatusAction};
+use crate::ui::views::{DiffAction, InputMode, LogAction, StatusAction, StatusInputMode};
 
 impl App {
     /// Handle key events
@@ -32,10 +32,19 @@ impl App {
             return;
         }
 
-        // If in input mode, delegate all keys to LogView (skip global handling)
+        // If in input mode, delegate all keys to the view (skip global handling)
         if self.current_view == View::Log && self.log_view.input_mode != InputMode::Normal {
             let action = self.log_view.handle_key(key);
             self.handle_log_action(action);
+            return;
+        }
+
+        // Handle Status View input mode
+        if self.current_view == View::Status
+            && self.status_view.input_mode != StatusInputMode::Normal
+        {
+            let action = self.status_view.handle_key(key);
+            self.handle_status_action(action);
             return;
         }
 
@@ -162,6 +171,9 @@ impl App {
                 file_path,
             } => {
                 self.open_diff_at_file(&change_id, &file_path);
+            }
+            StatusAction::Commit { message } => {
+                self.execute_commit(&message);
             }
         }
     }

@@ -8,4 +8,4 @@ mod status;
 
 pub use diff::{DiffAction, DiffView};
 pub use log::{InputMode, LogAction, LogView};
-pub use status::{StatusAction, StatusView};
+pub use status::{StatusAction, StatusInputMode, StatusView};

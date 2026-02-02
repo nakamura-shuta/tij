@@ -76,6 +76,9 @@ pub const EDIT: KeyCode = KeyCode::Char('e');
 /// Create new change
 pub const NEW_CHANGE: KeyCode = KeyCode::Char('c');
 
+/// Commit changes (Status View, uppercase)
+pub const COMMIT: KeyCode = KeyCode::Char('C');
+
 /// Open text search input (for n/N navigation)
 pub const SEARCH_INPUT: KeyCode = KeyCode::Char('/');
 
@@ -313,6 +316,11 @@ pub const STATUS_VIEW_HINTS: &[KeyHint] = &[
         color: Color::Green,
     },
     KeyHint {
+        key: "C",
+        label: "Commit",
+        color: Color::Yellow,
+    },
+    KeyHint {
         key: "Tab",
         label: "Switch",
         color: Color::Blue,
@@ -321,5 +329,33 @@ pub const STATUS_VIEW_HINTS: &[KeyHint] = &[
         key: "q",
         label: "Quit",
         color: Color::Red,
+    },
+];
+
+/// Status view key bindings for help display
+pub const STATUS_KEYS: &[KeyBindEntry] = &[
+    KeyBindEntry {
+        key: "j/k",
+        description: "Move down/up",
+    },
+    KeyBindEntry {
+        key: "g/G",
+        description: "Go to top/bottom",
+    },
+    KeyBindEntry {
+        key: "Enter",
+        description: "Show file diff",
+    },
+    KeyBindEntry {
+        key: "C",
+        description: "Commit changes",
+    },
+    KeyBindEntry {
+        key: "Tab",
+        description: "Switch to log",
+    },
+    KeyBindEntry {
+        key: "q",
+        description: "Quit",
     },
 ];

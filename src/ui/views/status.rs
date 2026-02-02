@@ -2,10 +2,10 @@
 //!
 //! Displays the current working copy status with changed files.
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
-    layout::Rect,
+    layout::{Constraint, Layout, Rect},
     style::{Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::Paragraph,
@@ -14,6 +14,16 @@ use ratatui::{
 use crate::keys;
 use crate::model::{FileState, Status};
 use crate::ui::{components, theme};
+
+/// Input mode for Status View
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StatusInputMode {
+    /// Normal navigation mode
+    #[default]
+    Normal,
+    /// Commit message input mode
+    CommitInput,
+}
 
 /// Action returned from StatusView key handling
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,6 +39,8 @@ pub enum StatusAction {
     Back,
     /// Switch to Log View (Tab)
     SwitchToLog,
+    /// Commit with message
+    Commit { message: String },
     /// No action
     None,
 }
@@ -44,6 +56,12 @@ pub struct StatusView {
 
     /// Scroll offset for display
     scroll_offset: usize,
+
+    /// Current input mode
+    pub input_mode: StatusInputMode,
+
+    /// Input buffer for commit message
+    pub input_buffer: String,
 }
 
 impl Default for StatusView {
@@ -59,7 +77,21 @@ impl StatusView {
             status: None,
             selected_index: 0,
             scroll_offset: 0,
+            input_mode: StatusInputMode::Normal,
+            input_buffer: String::new(),
         }
+    }
+
+    /// Start commit input mode
+    pub fn start_commit_input(&mut self) {
+        self.input_mode = StatusInputMode::CommitInput;
+        self.input_buffer.clear();
+    }
+
+    /// Cancel input mode
+    pub fn cancel_input(&mut self) {
+        self.input_mode = StatusInputMode::Normal;
+        self.input_buffer.clear();
     }
 
     /// Set the status data
@@ -154,6 +186,13 @@ impl StatusView {
 
     /// Handle key event with explicit visible height
     pub fn handle_key_with_height(&mut self, key: KeyEvent, visible_count: usize) -> StatusAction {
+        match self.input_mode {
+            StatusInputMode::Normal => self.handle_normal_key(key, visible_count),
+            StatusInputMode::CommitInput => self.handle_commit_input_key(key),
+        }
+    }
+
+    fn handle_normal_key(&mut self, key: KeyEvent, visible_count: usize) -> StatusAction {
         match key.code {
             code if keys::is_move_down(code) => {
                 self.move_down(visible_count);
@@ -183,13 +222,58 @@ impl StatusView {
                     StatusAction::None
                 }
             }
+            code if code == keys::COMMIT => {
+                // Only allow commit if there are changes
+                if self.status.as_ref().is_some_and(|s| !s.is_clean()) {
+                    self.start_commit_input();
+                }
+                StatusAction::None
+            }
             // Note: QUIT, TAB, ESC are handled by global key handler in input.rs
+            _ => StatusAction::None,
+        }
+    }
+
+    fn handle_commit_input_key(&mut self, key: KeyEvent) -> StatusAction {
+        match key.code {
+            KeyCode::Esc => {
+                self.cancel_input();
+                StatusAction::None
+            }
+            KeyCode::Enter => {
+                let message = std::mem::take(&mut self.input_buffer);
+                self.input_mode = StatusInputMode::Normal;
+                if message.is_empty() {
+                    // Empty message = cancel
+                    StatusAction::None
+                } else {
+                    StatusAction::Commit { message }
+                }
+            }
+            KeyCode::Char(c) => {
+                self.input_buffer.push(c);
+                StatusAction::None
+            }
+            KeyCode::Backspace => {
+                self.input_buffer.pop();
+                StatusAction::None
+            }
             _ => StatusAction::None,
         }
     }
 
     /// Render the view
     pub fn render(&self, frame: &mut Frame, area: Rect) {
+        // Split area for input bar if in input mode
+        let (status_area, input_area) = match self.input_mode {
+            StatusInputMode::Normal => (area, None),
+            StatusInputMode::CommitInput => {
+                let chunks =
+                    Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).split(area);
+                (chunks[0], Some(chunks[1]))
+            }
+        };
+
         let title = Line::from(" Tij - Status View ").bold().cyan().centered();
 
         match &self.status {
@@ -197,20 +281,56 @@ impl StatusView {
                 // Loading state
                 let content = components::empty_state("Loading...", None)
                     .block(components::bordered_block(title));
-                frame.render_widget(content, area);
+                frame.render_widget(content, status_area);
             }
             Some(status) if status.is_clean() => {
                 // Clean state
                 let content =
                     components::empty_state("Working copy is clean.", Some("No modified files."))
                         .block(components::bordered_block(title));
-                frame.render_widget(content, area);
+                frame.render_widget(content, status_area);
             }
             Some(status) => {
                 // Has changes
-                self.render_file_list(frame, area, status, &title);
+                self.render_file_list(frame, status_area, status, &title);
             }
         }
+
+        // Render input bar if in input mode
+        if let Some(input_area) = input_area {
+            self.render_input_bar(frame, input_area);
+        }
+    }
+
+    /// Render the commit input bar
+    fn render_input_bar(&self, frame: &mut Frame, area: Rect) {
+        let prompt = "Commit message: ";
+        let input_text = format!("{}{}", prompt, self.input_buffer);
+
+        // Calculate available width (area width minus borders)
+        let available_width = area.width.saturating_sub(2) as usize;
+
+        if available_width == 0 {
+            return;
+        }
+
+        // Truncate display text if too long (show end of input, UTF-8 safe)
+        let char_count = input_text.chars().count();
+        let display_text = if char_count > available_width {
+            let skip = char_count.saturating_sub(available_width.saturating_sub(1));
+            format!("…{}", input_text.chars().skip(skip).collect::<String>())
+        } else {
+            input_text.clone()
+        };
+
+        let paragraph = Paragraph::new(display_text)
+            .block(components::bordered_block(Line::from(" C Commit ")));
+
+        frame.render_widget(paragraph, area);
+
+        // Show cursor
+        let cursor_pos = char_count.min(available_width);
+        frame.set_cursor_position((area.x + cursor_pos as u16 + 1, area.y + 1));
     }
 
     /// Render the file list

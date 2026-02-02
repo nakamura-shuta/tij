@@ -176,6 +176,14 @@ impl JjExecutor {
         self.run(&[commands::NEW])
     }
 
+    /// Run `jj commit` to commit current changes with a message
+    ///
+    /// This is equivalent to `jj describe` + `jj new`, but atomic.
+    /// After commit, a new empty change is created on top.
+    pub fn commit(&self, message: &str) -> Result<String, JjError> {
+        self.run(&[commands::COMMIT, "-m", message])
+    }
+
     /// Run `jj undo` to undo the last operation
     ///
     /// Returns the raw output from the command for notification display.

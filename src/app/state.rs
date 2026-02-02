@@ -227,6 +227,23 @@ impl App {
         }
     }
 
+    /// Execute commit operation (describe current change + create new change)
+    pub(crate) fn execute_commit(&mut self, message: &str) {
+        match self.jj.commit(message) {
+            Ok(_) => {
+                self.notification = Some(Notification::success("Changes committed"));
+                // Refresh status view to show clean state
+                self.refresh_status();
+                // Also refresh log view
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Commit failed: {}", e));
+            }
+        }
+    }
+
     /// Execute redo operation
     ///
     /// Only works if the last operation was an undo.
