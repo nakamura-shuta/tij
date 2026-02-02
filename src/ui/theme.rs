@@ -58,6 +58,10 @@ pub mod status_view {
     pub const RENAMED: Color = Color::Cyan;
     /// Conflicted file color
     pub const CONFLICTED: Color = Color::Magenta;
+    /// Selected row background
+    pub const SELECTED_BG: Color = Color::DarkGray;
+    /// Header text color (change ID, etc.)
+    pub const HEADER: Color = Color::Cyan;
 }
 
 #[cfg(test)]

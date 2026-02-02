@@ -4,7 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::state::{App, View};
 use crate::keys;
-use crate::ui::views::{DiffAction, InputMode, LogAction};
+use crate::ui::views::{DiffAction, InputMode, LogAction, StatusAction};
 
 impl App {
     /// Handle key events
@@ -88,7 +88,9 @@ impl App {
                 }
             }
             View::Status => {
-                // TODO: Status view key handling
+                let visible_height = self.last_frame_height.get() as usize;
+                let action = self.status_view.handle_key_with_height(key, visible_height);
+                self.handle_status_action(action);
             }
             View::Help => {
                 // Help view only uses global keys
@@ -116,6 +118,24 @@ impl App {
             DiffAction::None => {}
             DiffAction::Back => {
                 self.go_back();
+            }
+        }
+    }
+
+    fn handle_status_action(&mut self, action: StatusAction) {
+        match action {
+            StatusAction::None => {}
+            StatusAction::Back => {
+                self.go_back();
+            }
+            StatusAction::SwitchToLog => {
+                self.go_to_view(View::Log);
+            }
+            StatusAction::ShowFileDiff {
+                change_id,
+                file_path,
+            } => {
+                self.open_diff_at_file(&change_id, &file_path);
             }
         }
     }

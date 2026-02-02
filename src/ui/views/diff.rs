@@ -248,6 +248,49 @@ impl DiffView {
             .unwrap_or(0);
     }
 
+    /// Jump to a specific file by path
+    ///
+    /// If the file is found, scrolls to its header position.
+    /// If not found, does nothing.
+    ///
+    /// This handles renamed files where jj show outputs `prefix{old => new}`
+    /// but StatusView passes just the new path `prefix/new`.
+    pub fn jump_to_file(&mut self, file_path: &str) {
+        // First try exact match
+        if let Some(idx) = self.file_names.iter().position(|name| name == file_path) {
+            if let Some(&pos) = self.file_header_positions.get(idx) {
+                self.scroll_offset = pos;
+                self.current_file_index = idx;
+                return;
+            }
+        }
+
+        // Try matching renamed files: "prefix{old => new}" should match "prefix/new"
+        for (idx, name) in self.file_names.iter().enumerate() {
+            if let Some(new_path) = Self::extract_new_path_from_rename(name) {
+                if new_path == file_path {
+                    if let Some(&pos) = self.file_header_positions.get(idx) {
+                        self.scroll_offset = pos;
+                        self.current_file_index = idx;
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Extract the new path from a rename pattern like "prefix{old => new}"
+    ///
+    /// Returns the reconstructed new path: "prefix/new"
+    fn extract_new_path_from_rename(name: &str) -> Option<String> {
+        let brace_start = name.find('{')?;
+        let brace_end = name.find('}')?;
+        let prefix = &name[..brace_start];
+        let inner = &name[brace_start + 1..brace_end];
+        let (_, new_part) = inner.split_once(" => ")?;
+        Some(format!("{}{}", prefix, new_part))
+    }
+
     // =========================================================================
     // Key handling
     // =========================================================================
@@ -722,6 +765,77 @@ mod tests {
 
         // Try half page down with 0 height
         view.scroll_half_page_down(0);
+        assert_eq!(view.scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_diff_view_jump_to_file() {
+        let mut view = DiffView::new("test".to_string(), create_test_content());
+
+        // Start at first file
+        assert_eq!(view.current_file_index, 0);
+        assert_eq!(view.scroll_offset, 0);
+
+        // Jump to second file by path
+        view.jump_to_file("src/lib.rs");
+        assert_eq!(view.current_file_index, 1);
+        assert_eq!(view.scroll_offset, 6); // Second file header is at position 6
+
+        // Jump back to first file
+        view.jump_to_file("src/main.rs");
+        assert_eq!(view.current_file_index, 0);
+        assert_eq!(view.scroll_offset, 0);
+
+        // Jump to non-existent file should do nothing
+        view.jump_to_file("non_existent.rs");
+        assert_eq!(view.current_file_index, 0);
+        assert_eq!(view.scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_extract_new_path_from_rename() {
+        // Standard rename with prefix
+        assert_eq!(
+            DiffView::extract_new_path_from_rename("src/{old.rs => new.rs}"),
+            Some("src/new.rs".to_string())
+        );
+
+        // Rename without prefix
+        assert_eq!(
+            DiffView::extract_new_path_from_rename("{old.rs => new.rs}"),
+            Some("new.rs".to_string())
+        );
+
+        // Deep path rename
+        assert_eq!(
+            DiffView::extract_new_path_from_rename("src/components/{Button.tsx => button.tsx}"),
+            Some("src/components/button.tsx".to_string())
+        );
+
+        // Not a rename pattern
+        assert_eq!(DiffView::extract_new_path_from_rename("src/main.rs"), None);
+    }
+
+    #[test]
+    fn test_jump_to_file_with_rename() {
+        // Create content with a renamed file
+        let content = DiffContent {
+            commit_id: "test123".to_string(),
+            author: "Test".to_string(),
+            timestamp: "2024-01-30".to_string(),
+            description: "Test".to_string(),
+            lines: vec![
+                DiffLine::file_header("src/{old.rs => new.rs}"),
+                DiffLine::added(1, "content"),
+            ],
+        };
+
+        let mut view = DiffView::new("test".to_string(), content);
+        assert_eq!(view.file_names, vec!["src/{old.rs => new.rs}"]);
+
+        // Jump using the new path (as StatusView would provide)
+        view.jump_to_file("src/new.rs");
+        assert_eq!(view.current_file_index, 0);
         assert_eq!(view.scroll_offset, 0);
     }
 }

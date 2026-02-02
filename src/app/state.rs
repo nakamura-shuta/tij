@@ -3,7 +3,7 @@
 use std::cell::Cell;
 
 use crate::jj::JjExecutor;
-use crate::ui::views::{DiffView, LogView};
+use crate::ui::views::{DiffView, LogView, StatusView};
 
 /// Available views in the application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -28,6 +28,8 @@ pub struct App {
     pub log_view: LogView,
     /// Diff view state (created on demand)
     pub diff_view: Option<DiffView>,
+    /// Status view state
+    pub status_view: StatusView,
     /// jj executor
     pub jj: JjExecutor,
     /// Error message to display
@@ -51,6 +53,7 @@ impl App {
             previous_view: None,
             log_view: LogView::new(),
             diff_view: None,
+            status_view: StatusView::new(),
             jj: JjExecutor::new(),
             error_message: None,
             last_frame_height: Cell::new(24), // Default terminal height
@@ -92,6 +95,24 @@ impl App {
         if self.current_view != view {
             self.previous_view = Some(self.current_view);
             self.current_view = view;
+
+            // Refresh data when entering certain views
+            if view == View::Status {
+                self.refresh_status();
+            }
+        }
+    }
+
+    /// Refresh the status view
+    pub fn refresh_status(&mut self) {
+        match self.jj.status() {
+            Ok(status) => {
+                self.status_view.set_status(status);
+                self.error_message = None;
+            }
+            Err(e) => {
+                self.error_message = Some(format!("jj status error: {}", e));
+            }
         }
     }
 
@@ -114,6 +135,23 @@ impl App {
         match self.jj.show(change_id) {
             Ok(content) => {
                 self.diff_view = Some(DiffView::new(change_id.to_string(), content));
+                self.go_to_view(View::Diff);
+                self.error_message = None;
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to load diff: {}", e));
+            }
+        }
+    }
+
+    /// Open diff view for a specific change and jump to a file
+    pub(crate) fn open_diff_at_file(&mut self, change_id: &str, file_path: &str) {
+        match self.jj.show(change_id) {
+            Ok(content) => {
+                let mut diff_view = DiffView::new(change_id.to_string(), content);
+                // Jump to the specified file
+                diff_view.jump_to_file(file_path);
+                self.diff_view = Some(diff_view);
                 self.go_to_view(View::Diff);
                 self.error_message = None;
             }

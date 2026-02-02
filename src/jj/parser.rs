@@ -429,8 +429,14 @@ impl Parser {
     }
 
     /// Parse a single status line into FileStatus
+    ///
+    /// Formats:
+    /// - "A path" (added)
+    /// - "M path" (modified)
+    /// - "D path" (deleted)
+    /// - "R prefix{old => new}" (renamed, jj format)
+    /// - "C path" (conflicted)
     fn parse_status_line(line: &str) -> Option<FileStatus> {
-        // Status line format: "X path" or "X path -> new_path"
         if line.len() < 2 {
             return None;
         }
@@ -447,14 +453,23 @@ impl Parser {
             'M' => FileState::Modified,
             'D' => FileState::Deleted,
             'R' => {
-                // Renamed: "R old_path -> new_path"
-                if let Some((from, to)) = rest.split_once(" -> ") {
-                    return Some(FileStatus {
-                        path: to.to_string(), // 新パスを使用
-                        state: FileState::Renamed {
-                            from: from.to_string(),
-                        },
-                    });
+                // Renamed: "R prefix{old => new}" (jj format)
+                // Examples:
+                // - "R src/{old.rs => new.rs}" -> from: "src/old.rs", to: "src/new.rs"
+                // - "R {old.rs => new.rs}" -> from: "old.rs", to: "new.rs"
+                if let Some(brace_start) = rest.find('{') {
+                    if let Some(brace_end) = rest.find('}') {
+                        let prefix = &rest[..brace_start];
+                        let inner = &rest[brace_start + 1..brace_end];
+                        if let Some((old_part, new_part)) = inner.split_once(" => ") {
+                            let from = format!("{}{}", prefix, old_part);
+                            let to = format!("{}{}", prefix, new_part);
+                            return Some(FileStatus {
+                                path: to,
+                                state: FileState::Renamed { from },
+                            });
+                        }
+                    }
                 }
                 return None;
             }
@@ -581,11 +596,34 @@ Parent commit: xyz98765 uvw43210 parent"#;
 
     #[test]
     fn test_parse_status_line_renamed() {
-        let file = Parser::parse_status_line("R old_name.rs -> new_name.rs").unwrap();
-        // path should be the NEW path, not "old -> new"
-        assert_eq!(file.path, "new_name.rs");
+        // jj format: "R prefix{old => new}"
+        let file = Parser::parse_status_line("R src/{old_name.rs => new_name.rs}").unwrap();
+        assert_eq!(file.path, "src/new_name.rs");
         match file.state {
-            FileState::Renamed { from } => assert_eq!(from, "old_name.rs"),
+            FileState::Renamed { from } => assert_eq!(from, "src/old_name.rs"),
+            _ => panic!("Expected Renamed state"),
+        }
+    }
+
+    #[test]
+    fn test_parse_status_line_renamed_no_prefix() {
+        // jj format without common prefix
+        let file = Parser::parse_status_line("R {old.rs => new.rs}").unwrap();
+        assert_eq!(file.path, "new.rs");
+        match file.state {
+            FileState::Renamed { from } => assert_eq!(from, "old.rs"),
+            _ => panic!("Expected Renamed state"),
+        }
+    }
+
+    #[test]
+    fn test_parse_status_line_renamed_deep_path() {
+        // Nested path
+        let file =
+            Parser::parse_status_line("R src/ui/views/{status.rs => status_view.rs}").unwrap();
+        assert_eq!(file.path, "src/ui/views/status_view.rs");
+        match file.state {
+            FileState::Renamed { from } => assert_eq!(from, "src/ui/views/status.rs"),
             _ => panic!("Expected Renamed state"),
         }
     }

@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::model::{Change, DiffContent};
+use crate::model::{Change, DiffContent, Status};
 
 use super::JjError;
 use super::constants::{self, commands, errors, flags, special};
@@ -132,6 +132,12 @@ impl JjExecutor {
     /// Run `jj status`
     pub fn status_raw(&self) -> Result<String, JjError> {
         self.run(&[commands::STATUS])
+    }
+
+    /// Run `jj status` and parse the output into Status
+    pub fn status(&self) -> Result<Status, JjError> {
+        let output = self.status_raw()?;
+        Parser::parse_status(&output)
     }
 
     /// Run `jj diff` for a specific change

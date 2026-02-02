@@ -5,7 +5,7 @@ use ratatui::{Frame, prelude::*};
 use super::state::{App, View};
 use crate::ui::widgets::{
     render_diff_status_bar, render_error_banner, render_help_panel, render_placeholder,
-    render_status_bar,
+    render_status_bar, render_status_view_status_bar,
 };
 
 impl App {
@@ -65,12 +65,21 @@ impl App {
     }
 
     fn render_status_view(&self, frame: &mut Frame) {
-        render_placeholder(
-            frame,
-            " Tij - Status View ",
-            Color::Green,
-            "Status view - Press q or Tab to go back",
-        );
+        let area = frame.area();
+
+        // Reserve space for status bar
+        let main_area = Rect {
+            height: area.height.saturating_sub(1),
+            ..area
+        };
+
+        // Store visible height for file list (2 borders + 3 header lines)
+        // This is used by key handling for accurate scroll bounds
+        let file_list_height = main_area.height.saturating_sub(5);
+        self.last_frame_height.set(file_list_height);
+
+        self.status_view.render(frame, main_area);
+        render_status_view_status_bar(frame);
     }
 
     fn render_help_view(&self, frame: &mut Frame) {
