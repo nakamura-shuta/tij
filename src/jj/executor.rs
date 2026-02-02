@@ -158,6 +158,24 @@ impl JjExecutor {
         Parser::parse_show(&output)
     }
 
+    /// Run `jj describe` to update change description
+    ///
+    /// Uses positional argument format: `jj describe <change-id> -m <message>`
+    /// Note: `-r` is accepted as an alias for compatibility but positional is preferred.
+    pub fn describe(&self, change_id: &str, message: &str) -> Result<String, JjError> {
+        self.run(&[commands::DESCRIBE, change_id, "-m", message])
+    }
+
+    /// Run `jj edit` to set working-copy revision
+    pub fn edit(&self, change_id: &str) -> Result<String, JjError> {
+        self.run(&[commands::EDIT, change_id])
+    }
+
+    /// Run `jj new` to create a new empty change
+    pub fn new_change(&self) -> Result<String, JjError> {
+        self.run(&[commands::NEW])
+    }
+
     /// Run `jj undo` to undo the last operation
     ///
     /// Returns the raw output from the command for notification display.

@@ -26,6 +26,7 @@ impl LogView {
             InputMode::Normal => self.handle_normal_key(key),
             InputMode::SearchInput => self.handle_search_input_key(key),
             InputMode::RevsetInput => self.handle_revset_input_key(key),
+            InputMode::DescribeInput => self.handle_describe_input_key(key),
         }
     }
 
@@ -55,6 +56,18 @@ impl LogView {
                 self.start_revset_input();
                 LogAction::None
             }
+            k if k == keys::DESCRIBE => {
+                self.start_describe_input();
+                LogAction::None
+            }
+            k if k == keys::EDIT => {
+                if let Some(change) = self.selected_change() {
+                    LogAction::Edit(change.change_id.clone())
+                } else {
+                    LogAction::None
+                }
+            }
+            k if k == keys::NEW_CHANGE => LogAction::NewChange,
             k if k == keys::SEARCH_NEXT => {
                 self.search_next();
                 LogAction::None
@@ -96,6 +109,21 @@ impl LogView {
             } else {
                 view.revset_history.push(revset.clone());
                 LogAction::ExecuteRevset(revset)
+            }
+        })
+    }
+
+    fn handle_describe_input_key(&mut self, key: KeyEvent) -> LogAction {
+        self.handle_text_input(key, |view, message| {
+            if let Some(change_id) = view.editing_change_id.take() {
+                if message.is_empty() {
+                    // Empty message = cancel
+                    LogAction::None
+                } else {
+                    LogAction::Describe { change_id, message }
+                }
+            } else {
+                LogAction::None
             }
         })
     }

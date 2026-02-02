@@ -67,6 +67,15 @@ pub const SUBMIT: KeyCode = KeyCode::Enter;
 /// Open diff view for selected commit
 pub const OPEN_DIFF: KeyCode = KeyCode::Enter;
 
+/// Edit change description
+pub const DESCRIBE: KeyCode = KeyCode::Char('d');
+
+/// Edit (set working-copy to selected change)
+pub const EDIT: KeyCode = KeyCode::Char('e');
+
+/// Create new change
+pub const NEW_CHANGE: KeyCode = KeyCode::Char('c');
+
 /// Open text search input (for n/N navigation)
 pub const SEARCH_INPUT: KeyCode = KeyCode::Char('/');
 
@@ -160,6 +169,18 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         description: "Show diff",
     },
     KeyBindEntry {
+        key: "d",
+        description: "Edit description",
+    },
+    KeyBindEntry {
+        key: "e",
+        description: "Edit change",
+    },
+    KeyBindEntry {
+        key: "c",
+        description: "Create new change",
+    },
+    KeyBindEntry {
         key: "/",
         description: "Search in list",
     },
@@ -229,13 +250,18 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         color: Color::Cyan,
     },
     KeyHint {
-        key: "/",
-        label: "Search",
+        key: "d",
+        label: "Describe",
+        color: Color::Green,
+    },
+    KeyHint {
+        key: "e",
+        label: "Edit",
         color: Color::Yellow,
     },
     KeyHint {
-        key: "r",
-        label: "Revset",
+        key: "c",
+        label: "New",
         color: Color::Magenta,
     },
     KeyHint {

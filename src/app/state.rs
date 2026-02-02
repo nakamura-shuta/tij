@@ -180,6 +180,53 @@ impl App {
         }
     }
 
+    /// Execute describe operation
+    pub(crate) fn execute_describe(&mut self, change_id: &str, message: &str) {
+        match self.jj.describe(change_id, message) {
+            Ok(_) => {
+                self.notification = Some(Notification::success("Description updated"));
+                // Refresh log to show updated description
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to update description: {}", e));
+            }
+        }
+    }
+
+    /// Execute edit operation (set working-copy to specified change)
+    pub(crate) fn execute_edit(&mut self, change_id: &str) {
+        match self.jj.edit(change_id) {
+            Ok(_) => {
+                let short_id = &change_id[..8.min(change_id.len())];
+                self.notification =
+                    Some(Notification::success(format!("Now editing: {}", short_id)));
+                // Refresh log to show @ marker moved
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to edit: {}", e));
+            }
+        }
+    }
+
+    /// Execute new change operation
+    pub(crate) fn execute_new_change(&mut self) {
+        match self.jj.new_change() {
+            Ok(_) => {
+                self.notification = Some(Notification::success("Created new change"));
+                // Refresh log to show new change
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to create change: {}", e));
+            }
+        }
+    }
+
     /// Execute redo operation
     ///
     /// Only works if the last operation was an undo.

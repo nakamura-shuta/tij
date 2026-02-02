@@ -127,6 +127,15 @@ impl App {
             LogAction::ClearRevset => {
                 self.refresh_log(None);
             }
+            LogAction::Describe { change_id, message } => {
+                self.execute_describe(&change_id, &message);
+            }
+            LogAction::Edit(change_id) => {
+                self.execute_edit(&change_id);
+            }
+            LogAction::NewChange => {
+                self.execute_new_change();
+            }
         }
     }
 

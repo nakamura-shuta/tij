@@ -16,6 +16,7 @@ pub mod commands {
     pub const SHOW: &str = "show";
     pub const DESCRIBE: &str = "describe";
     pub const NEW: &str = "new";
+    pub const EDIT: &str = "edit";
     pub const UNDO: &str = "undo";
     pub const OP: &str = "op";
     pub const OP_LOG: &str = "log";

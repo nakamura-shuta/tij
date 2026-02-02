@@ -17,6 +17,8 @@ pub enum InputMode {
     SearchInput,
     /// Revset input mode (for jj filtering)
     RevsetInput,
+    /// Describe input mode (editing change description)
+    DescribeInput,
 }
 
 impl InputMode {
@@ -24,6 +26,7 @@ impl InputMode {
         match self {
             InputMode::SearchInput => Some(("Search: ", " / Search ")),
             InputMode::RevsetInput => Some(("Revset: ", " r Revset ")),
+            InputMode::DescribeInput => Some(("Description: ", " d Describe ")),
             InputMode::Normal => None,
         }
     }
@@ -40,6 +43,12 @@ pub enum LogAction {
     ExecuteRevset(String),
     /// Clear revset filter (reset to default)
     ClearRevset,
+    /// Update change description
+    Describe { change_id: String, message: String },
+    /// Edit a specific change (jj edit)
+    Edit(String),
+    /// Create a new empty change (jj new)
+    NewChange,
 }
 
 /// Log View state
@@ -53,7 +62,7 @@ pub struct LogView {
     pub scroll_offset: usize,
     /// Current input mode
     pub input_mode: InputMode,
-    /// Input buffer for revset
+    /// Input buffer for revset/search/describe
     pub input_buffer: String,
     /// Revset input history
     pub revset_history: Vec<String>,
@@ -61,6 +70,8 @@ pub struct LogView {
     pub current_revset: Option<String>,
     /// Last search query for n/N navigation
     pub(crate) last_search_query: Option<String>,
+    /// Change ID being edited (for DescribeInput mode)
+    pub editing_change_id: Option<String>,
     /// Indices of selectable changes (not graph-only)
     selectable_indices: Vec<usize>,
     /// Current position in selectable_indices
@@ -160,6 +171,22 @@ impl LogView {
     pub fn cancel_input(&mut self) {
         self.input_mode = InputMode::Normal;
         self.input_buffer.clear();
+        self.editing_change_id = None;
+    }
+
+    /// Start describe input mode for the selected change
+    pub fn start_describe_input(&mut self) {
+        // Clone values first to avoid borrow conflict
+        let change_data = self
+            .selected_change()
+            .map(|c| (c.change_id.clone(), c.description.clone()));
+
+        if let Some((change_id, description)) = change_data {
+            self.editing_change_id = Some(change_id);
+            // Pre-fill with current description
+            self.input_buffer = description;
+            self.input_mode = InputMode::DescribeInput;
+        }
     }
 }
 

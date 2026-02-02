@@ -62,6 +62,9 @@ tij /path/to/jj-repo
 | `g` | Go to top |
 | `G` | Go to bottom |
 | `Enter` | Open diff view |
+| `d` | Edit description |
+| `e` | Edit change (set working copy) |
+| `c` | Create new change |
 | `r` | Revset filter |
 | `/` | Search |
 | `n` / `N` | Next/prev search result |
