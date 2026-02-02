@@ -7,12 +7,12 @@ use ratatui::{
     prelude::*,
     style::Stylize,
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::Paragraph,
 };
 
 use crate::keys;
 use crate::model::{DiffContent, DiffLine, DiffLineKind};
-use crate::ui::theme;
+use crate::ui::{components, theme};
 
 /// Action returned by DiffView key handling
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -371,11 +371,7 @@ impl DiffView {
             )]),
         ];
 
-        let header = Paragraph::new(header_text).block(
-            Block::default()
-                .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
-                .title(title),
-        );
+        let header = Paragraph::new(header_text).block(components::header_block(title));
 
         frame.render_widget(header, area);
     }
@@ -398,7 +394,7 @@ impl DiffView {
             file_info,
             Style::default().fg(Color::Cyan).bold(),
         )]))
-        .block(Block::default().borders(Borders::LEFT | Borders::RIGHT));
+        .block(components::side_borders_block());
 
         frame.render_widget(bar, area);
     }
@@ -410,11 +406,7 @@ impl DiffView {
 
         if !self.has_changes() {
             // Empty state
-            let empty_msg = Paragraph::new(vec![
-                Line::from(""),
-                Line::from("No changes in this revision.").centered(),
-            ])
-            .block(Block::default().borders(Borders::LEFT | Borders::RIGHT));
+            let empty_msg = components::no_changes_state().block(components::side_borders_block());
             frame.render_widget(empty_msg, area);
             return;
         }
@@ -429,8 +421,7 @@ impl DiffView {
             .map(|diff_line| self.render_diff_line(diff_line))
             .collect();
 
-        let diff =
-            Paragraph::new(lines).block(Block::default().borders(Borders::LEFT | Borders::RIGHT));
+        let diff = Paragraph::new(lines).block(components::side_borders_block());
 
         frame.render_widget(diff, area);
     }

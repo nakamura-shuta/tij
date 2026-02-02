@@ -3,6 +3,7 @@
 //! All keybindings are defined here for easy modification and future config file support.
 
 use crossterm::event::KeyCode;
+use ratatui::style::Color;
 
 // =============================================================================
 // Global keys (available in all views)
@@ -172,5 +173,89 @@ pub const DIFF_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "q",
         description: "Back to log",
+    },
+];
+
+// =============================================================================
+// Status bar hints
+// =============================================================================
+
+/// Key hint for status bar display (colored badges)
+#[derive(Clone, Copy)]
+pub struct KeyHint {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub color: Color,
+}
+
+/// Log view status bar hints
+pub const LOG_VIEW_HINTS: &[KeyHint] = &[
+    KeyHint {
+        key: "?",
+        label: "Help",
+        color: Color::Cyan,
+    },
+    KeyHint {
+        key: "/",
+        label: "Search",
+        color: Color::Yellow,
+    },
+    KeyHint {
+        key: "r",
+        label: "Revset",
+        color: Color::Magenta,
+    },
+    KeyHint {
+        key: "Tab",
+        label: "Switch",
+        color: Color::Blue,
+    },
+    KeyHint {
+        key: "q",
+        label: "Quit",
+        color: Color::Red,
+    },
+];
+
+/// Diff view status bar hints
+pub const DIFF_VIEW_HINTS: &[KeyHint] = &[
+    KeyHint {
+        key: "j/k",
+        label: "Scroll",
+        color: Color::Cyan,
+    },
+    KeyHint {
+        key: "]/[",
+        label: "File",
+        color: Color::Magenta,
+    },
+    KeyHint {
+        key: "q",
+        label: "Back",
+        color: Color::Red,
+    },
+];
+
+/// Status view status bar hints
+pub const STATUS_VIEW_HINTS: &[KeyHint] = &[
+    KeyHint {
+        key: "?",
+        label: "Help",
+        color: Color::Cyan,
+    },
+    KeyHint {
+        key: "Enter",
+        label: "Diff",
+        color: Color::Green,
+    },
+    KeyHint {
+        key: "Tab",
+        label: "Switch",
+        color: Color::Blue,
+    },
+    KeyHint {
+        key: "q",
+        label: "Quit",
+        color: Color::Red,
     },
 ];

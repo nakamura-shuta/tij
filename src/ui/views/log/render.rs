@@ -5,12 +5,12 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::Paragraph,
 };
 
 use crate::jj::constants;
 use crate::model::Change;
-use crate::ui::{symbols, theme};
+use crate::ui::{components, symbols, theme};
 
 use super::{InputMode, LogView, empty_text};
 
@@ -64,8 +64,7 @@ impl LogView {
             lines.push(line);
         }
 
-        let paragraph =
-            Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(title));
+        let paragraph = Paragraph::new(lines).block(components::bordered_block(title));
 
         frame.render_widget(paragraph, area);
     }
@@ -87,16 +86,8 @@ impl LogView {
     }
 
     fn render_empty_state(&self, frame: &mut Frame, area: Rect, title: &Line) {
-        let empty_text = vec![
-            Line::from(""),
-            Line::from(empty_text::TITLE).centered(),
-            Line::from(""),
-            Line::from(empty_text::HINT).dark_gray().centered(),
-            Line::from(""),
-        ];
-
-        let paragraph = Paragraph::new(empty_text)
-            .block(Block::default().borders(Borders::ALL).title(title.clone()));
+        let paragraph = components::empty_state(empty_text::TITLE, Some(empty_text::HINT))
+            .block(components::bordered_block(title.clone()));
 
         frame.render_widget(paragraph, area);
     }
@@ -220,7 +211,7 @@ impl LogView {
         };
 
         let paragraph =
-            Paragraph::new(display_text).block(Block::default().borders(Borders::ALL).title(title));
+            Paragraph::new(display_text).block(components::bordered_block(Line::from(title)));
 
         frame.render_widget(paragraph, area);
 
