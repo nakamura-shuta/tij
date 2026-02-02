@@ -197,17 +197,14 @@ impl JjExecutor {
     /// (i.e., we're in an undo/redo chain).
     /// Returns `None` if there's nothing to redo.
     ///
-    /// # Undo/Redo Chain
+    /// # Limitations
     ///
-    /// After multiple undos and redos, the op log might look like:
-    /// ```text
-    /// restore operation xyz  ← latest (redo)
-    /// undo operation abc
-    /// undo operation def
-    /// original operation
-    /// ```
+    /// **Single redo only**: This implementation only supports redoing after a single undo.
+    /// After multiple consecutive undos, this returns `None` because the second line
+    /// in the op log is also an undo operation.
     ///
-    /// Redo continues the chain by restoring the next operation.
+    /// For multiple undo recovery, users should use Operation History View ('o' key)
+    /// to restore to any arbitrary point in history.
     ///
     /// # Implementation Note
     ///

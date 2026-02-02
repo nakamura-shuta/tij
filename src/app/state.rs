@@ -247,8 +247,11 @@ impl App {
                 }
             }
             Ok(None) => {
-                // Not in an undo/redo chain
-                self.notification = Some(Notification::info("Nothing to redo (not in undo chain)"));
+                // Not in an undo/redo chain, or multiple consecutive undos
+                // Note: After multiple undos, use 'o' (Operation History) to restore
+                self.notification = Some(Notification::info(
+                    "Nothing to redo (use 'o' for operation history after multiple undos)",
+                ));
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to check redo target: {}", e));
