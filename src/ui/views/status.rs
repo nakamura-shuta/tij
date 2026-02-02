@@ -155,11 +155,11 @@ impl StatusView {
     /// Handle key event with explicit visible height
     pub fn handle_key_with_height(&mut self, key: KeyEvent, visible_count: usize) -> StatusAction {
         match key.code {
-            code if code == keys::MOVE_DOWN => {
+            code if keys::is_move_down(code) => {
                 self.move_down(visible_count);
                 StatusAction::None
             }
-            code if code == keys::MOVE_UP => {
+            code if keys::is_move_up(code) => {
                 self.move_up(visible_count);
                 StatusAction::None
             }

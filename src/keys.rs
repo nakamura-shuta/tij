@@ -25,17 +25,33 @@ pub const ESC: KeyCode = KeyCode::Esc;
 // Navigation keys
 // =============================================================================
 
-/// Move cursor up
+/// Move cursor up (vim style)
 pub const MOVE_UP: KeyCode = KeyCode::Char('k');
 
-/// Move cursor down
+/// Move cursor up (arrow key)
+pub const MOVE_UP_ARROW: KeyCode = KeyCode::Up;
+
+/// Move cursor down (vim style)
 pub const MOVE_DOWN: KeyCode = KeyCode::Char('j');
+
+/// Move cursor down (arrow key)
+pub const MOVE_DOWN_ARROW: KeyCode = KeyCode::Down;
 
 /// Go to top
 pub const GO_TOP: KeyCode = KeyCode::Char('g');
 
 /// Go to bottom
 pub const GO_BOTTOM: KeyCode = KeyCode::Char('G');
+
+/// Check if key is move up (k or ↑)
+pub fn is_move_up(code: KeyCode) -> bool {
+    matches!(code, MOVE_UP | MOVE_UP_ARROW)
+}
+
+/// Check if key is move down (j or ↓)
+pub fn is_move_down(code: KeyCode) -> bool {
+    matches!(code, MOVE_DOWN | MOVE_DOWN_ARROW)
+}
 
 // =============================================================================
 // Input keys (used in input modes)

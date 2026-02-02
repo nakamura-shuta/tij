@@ -31,11 +31,11 @@ impl LogView {
 
     fn handle_normal_key(&mut self, key: KeyEvent) -> LogAction {
         match key.code {
-            k if k == keys::MOVE_DOWN || k == KeyCode::Down => {
+            k if keys::is_move_down(k) => {
                 self.move_down();
                 LogAction::None
             }
-            k if k == keys::MOVE_UP || k == KeyCode::Up => {
+            k if keys::is_move_up(k) => {
                 self.move_up();
                 LogAction::None
             }

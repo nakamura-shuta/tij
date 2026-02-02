@@ -309,11 +309,11 @@ impl DiffView {
         self.visible_height = visible_height;
 
         match key.code {
-            keys::MOVE_DOWN => {
+            code if keys::is_move_down(code) => {
                 self.scroll_down();
                 DiffAction::None
             }
-            keys::MOVE_UP => {
+            code if keys::is_move_up(code) => {
                 self.scroll_up();
                 DiffAction::None
             }
