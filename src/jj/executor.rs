@@ -157,6 +157,102 @@ impl JjExecutor {
         let output = self.show_raw(change_id)?;
         Parser::parse_show(&output)
     }
+
+    /// Run `jj undo` to undo the last operation
+    ///
+    /// Returns the raw output from the command for notification display.
+    pub fn undo(&self) -> Result<String, JjError> {
+        self.run(&[commands::UNDO])
+    }
+
+    /// Run `jj op restore` to restore a previous operation (redo)
+    ///
+    /// This restores the operation before the most recent undo, effectively redoing.
+    /// The operation ID should be obtained from `get_redo_target()`.
+    pub fn redo(&self, operation_id: &str) -> Result<String, JjError> {
+        self.run(&[commands::OP, commands::OP_RESTORE, operation_id])
+    }
+
+    /// Get the redo target operation ID, if we're in an undo/redo chain.
+    ///
+    /// Returns `Some(operation_id)` if the most recent operation is an undo or restore
+    /// (i.e., we're in an undo/redo chain).
+    /// Returns `None` if there's nothing to redo.
+    ///
+    /// # Undo/Redo Chain
+    ///
+    /// After multiple undos and redos, the op log might look like:
+    /// ```text
+    /// restore operation xyz  ← latest (redo)
+    /// undo operation abc
+    /// undo operation def
+    /// original operation
+    /// ```
+    ///
+    /// Redo continues the chain by restoring the next operation.
+    ///
+    /// # Implementation Note
+    ///
+    /// This uses string matching on `description.first_line()` to detect undo/restore.
+    /// The detection checks if the description starts with "undo" or "restore" (case-insensitive).
+    ///
+    /// **Known limitation**: If jj changes the operation description format,
+    /// this detection may break. As of jj 0.37+:
+    /// - Undo: "undo operation <id>"
+    /// - Restore: "restore operation <id>"
+    ///
+    /// If jj adds a native `jj redo` command in the future, this implementation
+    /// should be updated to use it instead.
+    pub fn get_redo_target(&self) -> Result<Option<String>, JjError> {
+        // Template: id<TAB>description.first_line()
+        let output = self.run(&[
+            commands::OP,
+            commands::OP_LOG,
+            "--no-graph",
+            "-T",
+            r#"id.short() ++ "\t" ++ description.first_line() ++ "\n""#,
+            "--limit",
+            "2",
+        ])?;
+
+        let lines: Vec<&str> = output.lines().collect();
+
+        // We need at least 2 operations to redo
+        if lines.len() < 2 {
+            return Ok(None);
+        }
+
+        // Parse first line: check if it's an undo or restore operation
+        let first_line = lines[0];
+        let parts: Vec<&str> = first_line.split('\t').collect();
+        if parts.len() < 2 {
+            return Ok(None);
+        }
+
+        let first_desc = parts[1].to_lowercase();
+
+        // Allow redo if the latest operation is an undo OR restore (in redo chain)
+        if !first_desc.starts_with("undo") && !first_desc.starts_with("restore") {
+            return Ok(None);
+        }
+
+        // Parse second line to get the operation to restore
+        let second_line = lines[1];
+        let second_parts: Vec<&str> = second_line.split('\t').collect();
+        if second_parts.len() < 2 {
+            return Ok(None);
+        }
+
+        let second_desc = second_parts[1].to_lowercase();
+
+        // If second line is also an undo/restore, we can't redo properly
+        // (multiple consecutive undos - need more complex logic)
+        if second_desc.starts_with("undo") || second_desc.starts_with("restore") {
+            return Ok(None);
+        }
+
+        Ok(Some(second_parts[0].trim().to_string()))
+    }
 }
 
 /// Compare version strings (simple semver comparison)

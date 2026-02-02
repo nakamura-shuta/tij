@@ -6,7 +6,9 @@
 
 - **Log View**: Browse commit history with DAG graph visualization
 - **Diff View**: View changes with syntax-highlighted diffs (added/deleted/context lines)
-- **Vim-like Navigation**: Familiar keybindings (j/k, g/G, etc.)
+- **Status View**: See working copy status and changed files
+- **Undo/Redo**: Safely undo and redo jj operations
+- **Vim-like Navigation**: Familiar keybindings (j/k, g/G, ↑/↓)
 - **Revset Filtering**: Filter commits using jj's powerful revset expressions
 - **Search**: Find commits by description, author, or bookmark name
 
@@ -59,12 +61,15 @@ tij /path/to/jj-repo
 | `k` / `↑` | Move up |
 | `g` | Go to top |
 | `G` | Go to bottom |
-| `Enter` | Open diff view for selected commit |
-| `r` | Enter revset filter mode |
-| `/` | Search commits |
-| `n` | Next search result |
-| `N` | Previous search result |
-| `?` | Show help |
+| `Enter` | Open diff view |
+| `r` | Revset filter |
+| `/` | Search |
+| `n` / `N` | Next/prev search result |
+| `u` | Undo |
+| `Ctrl+R` | Redo |
+| `s` | Status view |
+| `Tab` | Switch view |
+| `?` | Help |
 | `q` | Quit |
 
 ### Diff View
@@ -73,11 +78,20 @@ tij /path/to/jj-repo
 |-----|--------|
 | `j` / `↓` | Scroll down |
 | `k` / `↑` | Scroll up |
-| `g` | Go to top |
-| `G` | Go to bottom |
-| `Tab` | Next file |
-| `Shift+Tab` | Previous file |
-| `q` / `Esc` | Back to log view |
+| `d` / `u` | Half page down/up |
+| `g` / `G` | Top/bottom |
+| `]` / `[` | Next/prev file |
+| `q` | Back |
+
+### Status View
+
+| Key | Action |
+|-----|--------|
+| `j` / `↓` | Move down |
+| `k` / `↑` | Move up |
+| `Enter` | Open diff for file |
+| `Tab` | Switch view |
+| `q` | Quit |
 
 ### Input Mode (Revset/Search)
 

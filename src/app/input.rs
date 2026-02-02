@@ -9,14 +9,26 @@ use crate::ui::views::{DiffAction, InputMode, LogAction, StatusAction};
 impl App {
     /// Handle key events
     pub fn on_key_event(&mut self, key: KeyEvent) {
-        // Clear error message on any key press
+        // Clear error message and expired notification on any key press
         self.error_message = None;
+        self.clear_expired_notification();
 
         // Handle Ctrl+C globally
         if key.modifiers.contains(KeyModifiers::CONTROL)
             && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('C'))
         {
             self.quit();
+            return;
+        }
+
+        // Handle Ctrl+R for redo (only in Log view, normal mode)
+        if key.modifiers.contains(KeyModifiers::CONTROL)
+            && matches!(key.code, KeyCode::Char('r') | KeyCode::Char('R'))
+            && self.current_view == View::Log
+            && self.log_view.input_mode == InputMode::Normal
+        {
+            self.notification = None; // Clear any existing notification
+            self.execute_redo();
             return;
         }
 
@@ -54,6 +66,11 @@ impl App {
             }
             keys::STATUS_VIEW if self.current_view == View::Log => {
                 self.go_to_view(View::Status);
+                true
+            }
+            keys::UNDO if self.current_view == View::Log => {
+                self.notification = None; // Clear any existing notification
+                self.execute_undo();
                 true
             }
             _ => false,

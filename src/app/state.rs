@@ -3,6 +3,7 @@
 use std::cell::Cell;
 
 use crate::jj::JjExecutor;
+use crate::model::Notification;
 use crate::ui::views::{DiffView, LogView, StatusView};
 
 /// Available views in the application
@@ -34,6 +35,8 @@ pub struct App {
     pub jj: JjExecutor,
     /// Error message to display
     pub error_message: Option<String>,
+    /// Notification to display (success/info/warning messages)
+    pub notification: Option<Notification>,
     /// Last known frame height (updated during render, uses Cell for interior mutability)
     pub(crate) last_frame_height: Cell<u16>,
 }
@@ -56,6 +59,7 @@ impl App {
             status_view: StatusView::new(),
             jj: JjExecutor::new(),
             error_message: None,
+            notification: None,
             last_frame_height: Cell::new(24), // Default terminal height
         };
 
@@ -157,6 +161,59 @@ impl App {
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to load diff: {}", e));
+            }
+        }
+    }
+
+    /// Execute undo operation
+    pub(crate) fn execute_undo(&mut self) {
+        match self.jj.undo() {
+            Ok(_) => {
+                self.notification = Some(Notification::success("Undo complete"));
+                // Refresh log to show updated state
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Undo failed: {}", e));
+            }
+        }
+    }
+
+    /// Execute redo operation
+    ///
+    /// Only works if the last operation was an undo.
+    pub(crate) fn execute_redo(&mut self) {
+        // First, check if last operation was an undo and get the target
+        match self.jj.get_redo_target() {
+            Ok(Some(op_id)) => {
+                match self.jj.redo(&op_id) {
+                    Ok(_) => {
+                        self.notification = Some(Notification::success("Redo complete"));
+                        // Refresh log to show updated state
+                        let revset = self.log_view.current_revset.clone();
+                        self.refresh_log(revset.as_deref());
+                    }
+                    Err(e) => {
+                        self.error_message = Some(format!("Redo failed: {}", e));
+                    }
+                }
+            }
+            Ok(None) => {
+                // Not in an undo/redo chain
+                self.notification = Some(Notification::info("Nothing to redo (not in undo chain)"));
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to check redo target: {}", e));
+            }
+        }
+    }
+
+    /// Clear expired notification
+    pub(crate) fn clear_expired_notification(&mut self) {
+        if let Some(ref notification) = self.notification {
+            if notification.is_expired() {
+                self.notification = None;
             }
         }
     }

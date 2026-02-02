@@ -96,6 +96,15 @@ pub const HALF_PAGE_DOWN: KeyCode = KeyCode::Char('d');
 pub const HALF_PAGE_UP: KeyCode = KeyCode::Char('u');
 
 // =============================================================================
+// Undo/Redo keys
+// =============================================================================
+
+/// Undo last operation
+pub const UNDO: KeyCode = KeyCode::Char('u');
+
+// Note: Redo is Ctrl+R, handled via KeyModifiers in input.rs
+
+// =============================================================================
 // View switching keys
 // =============================================================================
 
@@ -166,6 +175,14 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         key: "s",
         description: "Status view",
     },
+    KeyBindEntry {
+        key: "u",
+        description: "Undo",
+    },
+    KeyBindEntry {
+        key: "Ctrl+r",
+        description: "Redo",
+    },
 ];
 
 /// Diff view key bindings for help display
@@ -220,6 +237,11 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         key: "r",
         label: "Revset",
         color: Color::Magenta,
+    },
+    KeyHint {
+        key: "u",
+        label: "Undo",
+        color: Color::Green,
     },
     KeyHint {
         key: "Tab",

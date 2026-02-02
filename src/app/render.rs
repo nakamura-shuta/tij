@@ -4,8 +4,8 @@ use ratatui::{Frame, prelude::*};
 
 use super::state::{App, View};
 use crate::ui::widgets::{
-    render_diff_status_bar, render_error_banner, render_help_panel, render_placeholder,
-    render_status_bar, render_status_view_status_bar,
+    render_diff_status_bar, render_error_banner, render_help_panel, render_notification_banner,
+    render_placeholder, render_status_bar, render_status_view_status_bar,
 };
 
 impl App {
@@ -18,9 +18,14 @@ impl App {
             View::Help => self.render_help_view(frame),
         }
 
-        // Render error message if present
+        // Render error message if present (takes priority over notification)
         if let Some(ref error) = self.error_message {
             render_error_banner(frame, error);
+        } else if let Some(ref notification) = self.notification {
+            // Render notification if no error and notification exists
+            if !notification.is_expired() {
+                render_notification_banner(frame, notification);
+            }
         }
     }
 
