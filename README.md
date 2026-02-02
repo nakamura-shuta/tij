@@ -93,6 +93,7 @@ tij /path/to/jj-repo
 | `j` / `↓` | Move down |
 | `k` / `↑` | Move up |
 | `Enter` | Open diff for file |
+| `C` | Commit changes |
 | `Tab` | Switch view |
 | `q` | Quit |
 
@@ -126,6 +127,26 @@ ancestors(main) & author(me)
 ```
 
 See [jj revset documentation](https://jj-vcs.dev/latest/revsets/) for more.
+
+## Default Display Behavior
+
+Tij respects jj's default revset configuration. By default, jj shows only "relevant" commits:
+
+- Current working copy (`@`)
+- Recent mutable commits
+- Trunk branch (main/master)
+
+This means older commits and unrelated branches may not appear in the initial view. To see all commits:
+
+1. Press `r` to open revset input
+2. Enter `all()` and press Enter
+
+To permanently change the default, add to `~/.jjconfig.toml`:
+
+```toml
+[revsets]
+log = "all()"
+```
 
 ## Development
 
