@@ -323,8 +323,16 @@ impl StatusView {
             input_text.clone()
         };
 
-        let paragraph = Paragraph::new(display_text)
-            .block(components::bordered_block(Line::from(" C Commit ")));
+        // Title with key hints
+        let title = Line::from(vec![
+            Span::raw(" "),
+            Span::styled("[Enter]", Style::default().fg(theme::status_view::ADDED)),
+            Span::raw(" Save  "),
+            Span::styled("[Esc]", Style::default().fg(theme::status_view::DELETED)),
+            Span::raw(" Cancel "),
+        ]);
+
+        let paragraph = Paragraph::new(display_text).block(components::bordered_block(title));
 
         frame.render_widget(paragraph, area);
 
