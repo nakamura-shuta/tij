@@ -19,11 +19,17 @@
 
 ## Installation
 
+### From crates.io (Recommended)
+
+```bash
+cargo install tij
+```
+
 ### From Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/tij.git
+git clone https://github.com/nakamura-shuta/tij.git
 cd tij
 
 # Build and install
