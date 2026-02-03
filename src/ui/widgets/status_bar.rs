@@ -97,6 +97,16 @@ pub fn render_status_view_status_bar(frame: &mut Frame) {
     frame.render_widget(Paragraph::new(status), status_area);
 }
 
+/// Render the status bar for operation history view
+pub fn render_operation_status_bar(frame: &mut Frame) {
+    let Some(status_area) = status_bar_area(frame) else {
+        return;
+    };
+
+    let status = build_status_bar(keys::OPERATION_VIEW_HINTS);
+    frame.render_widget(Paragraph::new(status), status_area);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

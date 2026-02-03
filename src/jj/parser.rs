@@ -4,7 +4,9 @@
 
 use super::JjError;
 use super::template::FIELD_SEPARATOR;
-use crate::model::{Change, DiffContent, DiffLine, DiffLineKind, FileState, FileStatus, Status};
+use crate::model::{
+    Change, DiffContent, DiffLine, DiffLineKind, FileState, FileStatus, Operation, Status,
+};
 
 /// File operation type from jj show output
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -486,6 +488,35 @@ impl Parser {
             state,
         })
     }
+
+    /// Parse `jj op log` output into a list of Operations
+    ///
+    /// Expected format (tab-separated):
+    /// `<id>\t<user>\t<timestamp>\t<description>`
+    pub fn parse_op_log(output: &str) -> Result<Vec<Operation>, JjError> {
+        let mut operations = Vec::new();
+
+        for (index, line) in output.lines().enumerate() {
+            if line.is_empty() {
+                continue;
+            }
+
+            let parts: Vec<&str> = line.split(FIELD_SEPARATOR).collect();
+            if parts.len() < 4 {
+                continue; // Skip malformed lines
+            }
+
+            operations.push(Operation {
+                id: parts[0].to_string(),
+                user: parts[1].to_string(),
+                timestamp: parts[2].to_string(),
+                description: parts[3].to_string(),
+                is_current: index == 0,
+            });
+        }
+
+        Ok(operations)
+    }
 }
 
 #[cfg(test)]
@@ -940,5 +971,62 @@ Modified regular file src/lib.rs:
 
         let changes = Parser::parse_log(output).unwrap();
         assert_eq!(changes.len(), 2);
+    }
+
+    // =========================================================================
+    // parse_op_log tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_op_log_single() {
+        // Tab-separated: id, user, timestamp, description
+        let output = "abc123def456\tuser@example.com\t5 minutes ago\tsnapshot working copy";
+
+        let operations = Parser::parse_op_log(output).unwrap();
+        assert_eq!(operations.len(), 1);
+        assert_eq!(operations[0].id, "abc123def456");
+        assert_eq!(operations[0].user, "user@example.com");
+        assert_eq!(operations[0].timestamp, "5 minutes ago");
+        assert_eq!(operations[0].description, "snapshot working copy");
+        assert!(operations[0].is_current); // First operation is current
+    }
+
+    #[test]
+    fn test_parse_op_log_multiple() {
+        let output = "abc123def456\tuser@example.com\t5 minutes ago\tsnapshot working copy\n\
+                      xyz789uvw012\tuser@example.com\t10 minutes ago\tdescribe commit abc\n\
+                      def456ghi789\tuser@example.com\t1 hour ago\tnew empty commit";
+
+        let operations = Parser::parse_op_log(output).unwrap();
+        assert_eq!(operations.len(), 3);
+
+        // First is current
+        assert!(operations[0].is_current);
+        assert!(!operations[1].is_current);
+        assert!(!operations[2].is_current);
+
+        // Check order preserved
+        assert_eq!(operations[0].description, "snapshot working copy");
+        assert_eq!(operations[1].description, "describe commit abc");
+        assert_eq!(operations[2].description, "new empty commit");
+    }
+
+    #[test]
+    fn test_parse_op_log_empty_lines_skipped() {
+        let output = "abc123\tuser\t5 min ago\top1\n\n\nxyz789\tuser\t10 min ago\top2";
+
+        let operations = Parser::parse_op_log(output).unwrap();
+        assert_eq!(operations.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_op_log_malformed_lines_skipped() {
+        // Lines with fewer than 4 tab-separated fields should be skipped
+        let output = "abc123\tuser\t5 min ago\tvalid op\n\
+                      malformed line\n\
+                      xyz789\tuser\t10 min ago\tanother valid op";
+
+        let operations = Parser::parse_op_log(output).unwrap();
+        assert_eq!(operations.len(), 2);
     }
 }

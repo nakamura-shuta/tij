@@ -4,7 +4,9 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::state::{App, View};
 use crate::keys;
-use crate::ui::views::{DiffAction, InputMode, LogAction, StatusAction, StatusInputMode};
+use crate::ui::views::{
+    DiffAction, InputMode, LogAction, OperationAction, StatusAction, StatusInputMode,
+};
 
 impl App {
     /// Handle key events
@@ -82,6 +84,10 @@ impl App {
                 self.execute_undo();
                 true
             }
+            keys::OPERATION_HISTORY if self.current_view == View::Log => {
+                self.open_operation_history();
+                true
+            }
             _ => false,
         }
     }
@@ -117,6 +123,10 @@ impl App {
                 let visible_height = self.last_frame_height.get() as usize;
                 let action = self.status_view.handle_key_with_height(key, visible_height);
                 self.handle_status_action(action);
+            }
+            View::Operation => {
+                let action = self.operation_view.handle_key(key);
+                self.handle_operation_action(action);
             }
             View::Help => {
                 // Help view only uses global keys
@@ -183,6 +193,18 @@ impl App {
             }
             StatusAction::Commit { message } => {
                 self.execute_commit(&message);
+            }
+        }
+    }
+
+    fn handle_operation_action(&mut self, action: OperationAction) {
+        match action {
+            OperationAction::None => {}
+            OperationAction::Back => {
+                self.go_back();
+            }
+            OperationAction::Restore(operation_id) => {
+                self.execute_op_restore(&operation_id);
             }
         }
     }

@@ -132,6 +132,9 @@ pub const UNDO: KeyCode = KeyCode::Char('u');
 /// Go to status view
 pub const STATUS_VIEW: KeyCode = KeyCode::Char('s');
 
+/// Open operation history view
+pub const OPERATION_HISTORY: KeyCode = KeyCode::Char('o');
+
 // =============================================================================
 // Help text generation
 // =============================================================================
@@ -207,6 +210,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "s",
         description: "Status view",
+    },
+    KeyBindEntry {
+        key: "o",
+        description: "Operation history",
     },
     KeyBindEntry {
         key: "u",
@@ -304,6 +311,11 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         color: Color::Yellow,
     },
     KeyHint {
+        key: "o",
+        label: "Ops",
+        color: Color::Blue,
+    },
+    KeyHint {
         key: "u",
         label: "Undo",
         color: Color::Green,
@@ -393,5 +405,44 @@ pub const STATUS_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "q",
         description: "Quit",
+    },
+];
+
+/// Operation history view key bindings for help display
+pub const OPERATION_KEYS: &[KeyBindEntry] = &[
+    KeyBindEntry {
+        key: "j/k",
+        description: "Move down/up",
+    },
+    KeyBindEntry {
+        key: "g/G",
+        description: "Go to top/bottom",
+    },
+    KeyBindEntry {
+        key: "Enter",
+        description: "Restore operation",
+    },
+    KeyBindEntry {
+        key: "q",
+        description: "Back to log",
+    },
+];
+
+/// Operation history view status bar hints
+pub const OPERATION_VIEW_HINTS: &[KeyHint] = &[
+    KeyHint {
+        key: "j/k",
+        label: "Move",
+        color: Color::Cyan,
+    },
+    KeyHint {
+        key: "Enter",
+        label: "Restore",
+        color: Color::Green,
+    },
+    KeyHint {
+        key: "q",
+        label: "Back",
+        color: Color::Red,
     },
 ];

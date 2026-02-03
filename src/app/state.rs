@@ -4,7 +4,7 @@ use std::cell::Cell;
 
 use crate::jj::JjExecutor;
 use crate::model::Notification;
-use crate::ui::views::{DiffView, LogView, StatusView};
+use crate::ui::views::{DiffView, LogView, OperationView, StatusView};
 
 /// Available views in the application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -13,6 +13,7 @@ pub enum View {
     Log,
     Diff,
     Status,
+    Operation,
     Help,
 }
 
@@ -31,6 +32,8 @@ pub struct App {
     pub diff_view: Option<DiffView>,
     /// Status view state
     pub status_view: StatusView,
+    /// Operation history view state
+    pub operation_view: OperationView,
     /// jj executor
     pub jj: JjExecutor,
     /// Error message to display
@@ -57,6 +60,7 @@ impl App {
             log_view: LogView::new(),
             diff_view: None,
             status_view: StatusView::new(),
+            operation_view: OperationView::new(),
             jj: JjExecutor::new(),
             error_message: None,
             notification: None,
@@ -89,6 +93,7 @@ impl App {
             View::Log => View::Status,
             View::Status => View::Log,
             View::Diff => View::Log,
+            View::Operation => View::Log,
             View::Help => View::Log,
         };
         self.go_to_view(next);
@@ -101,8 +106,10 @@ impl App {
             self.current_view = view;
 
             // Refresh data when entering certain views
-            if view == View::Status {
-                self.refresh_status();
+            match view {
+                View::Status => self.refresh_status(),
+                View::Operation => self.refresh_operation_log(),
+                _ => {}
             }
         }
     }
@@ -341,6 +348,50 @@ impl App {
         if let Some(ref notification) = self.notification {
             if notification.is_expired() {
                 self.notification = None;
+            }
+        }
+    }
+
+    /// Refresh the operation history view
+    pub fn refresh_operation_log(&mut self) {
+        match self.jj.op_log(Some(50)) {
+            Ok(operations) => {
+                self.operation_view.set_operations(operations);
+                self.error_message = None;
+            }
+            Err(e) => {
+                self.error_message = Some(format!("jj op log error: {}", e));
+            }
+        }
+    }
+
+    /// Open operation history view
+    pub(crate) fn open_operation_history(&mut self) {
+        self.go_to_view(View::Operation);
+    }
+
+    /// Execute operation restore
+    ///
+    /// **Warning**: This is a destructive operation that modifies repository history.
+    /// TODO: Add confirmation dialog (Phase 5.2) before executing.
+    /// Currently, users can undo with `u` key if needed.
+    pub(crate) fn execute_op_restore(&mut self, operation_id: &str) {
+        match self.jj.op_restore(operation_id) {
+            Ok(_) => {
+                let short_id = &operation_id[..12.min(operation_id.len())];
+                self.notification = Some(Notification::success(format!(
+                    "Restored to {} (undo: u)",
+                    short_id
+                )));
+                // Refresh log and status after restore
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.refresh_status();
+                // Go back to log view
+                self.go_to_view(View::Log);
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Restore failed: {}", e));
             }
         }
     }

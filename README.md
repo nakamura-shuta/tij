@@ -7,6 +7,7 @@
 - **Log View**: Browse commit history with DAG graph visualization
 - **Diff View**: View changes with syntax-highlighted diffs (added/deleted/context lines)
 - **Status View**: See working copy status and changed files
+- **Operation History**: Browse and restore to any previous jj operation
 - **Undo/Redo**: Safely undo and redo jj operations
 - **Vim-like Navigation**: Familiar keybindings (j/k, g/G, ↑/↓)
 - **Revset Filtering**: Filter commits using jj's powerful revset expressions
@@ -80,6 +81,7 @@ tij /path/to/jj-repo
 | `u` | Undo |
 | `Ctrl+R` | Redo |
 | `s` | Status view |
+| `o` | Operation history |
 | `Tab` | Switch view |
 | `?` | Help |
 | `q` | Quit |
@@ -105,6 +107,16 @@ tij /path/to/jj-repo
 | `C` | Commit changes |
 | `Tab` | Switch view |
 | `q` | Quit |
+
+### Operation History View
+
+| Key | Action |
+|-----|--------|
+| `j` / `↓` | Move down |
+| `k` / `↑` | Move up |
+| `g` / `G` | Top/bottom |
+| `Enter` | Restore to operation |
+| `q` | Back |
 
 ### Input Mode (Revset/Search)
 

@@ -53,6 +53,26 @@ impl Templates {
         // status doesn't need a custom template
         None
     }
+
+    /// Template for `jj op log` output
+    ///
+    /// Fields (separated by tab):
+    /// 1. operation_id (short, 12 chars)
+    /// 2. user
+    /// 3. timestamp
+    /// 4. description
+    pub fn op_log() -> &'static str {
+        concat!(
+            "self.id().short(12)",
+            " ++ \"\\t\" ++ ",
+            "self.user()",
+            " ++ \"\\t\" ++ ",
+            "self.time().start().ago()",
+            " ++ \"\\t\" ++ ",
+            "self.description().first_line()",
+            " ++ \"\\n\""
+        )
+    }
 }
 
 #[cfg(test)]

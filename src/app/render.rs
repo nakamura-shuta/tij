@@ -5,7 +5,8 @@ use ratatui::{Frame, prelude::*};
 use super::state::{App, View};
 use crate::ui::widgets::{
     render_diff_status_bar, render_error_banner, render_help_panel, render_notification_banner,
-    render_placeholder, render_status_bar, render_status_view_status_bar,
+    render_operation_status_bar, render_placeholder, render_status_bar,
+    render_status_view_status_bar,
 };
 
 impl App {
@@ -15,6 +16,7 @@ impl App {
             View::Log => self.render_log_view(frame),
             View::Diff => self.render_diff_view(frame),
             View::Status => self.render_status_view(frame),
+            View::Operation => self.render_operation_view(frame),
             View::Help => self.render_help_view(frame),
         }
 
@@ -85,6 +87,19 @@ impl App {
 
         self.status_view.render(frame, main_area);
         render_status_view_status_bar(frame);
+    }
+
+    fn render_operation_view(&self, frame: &mut Frame) {
+        let area = frame.area();
+
+        // Reserve space for status bar
+        let main_area = Rect {
+            height: area.height.saturating_sub(1),
+            ..area
+        };
+
+        self.operation_view.render(frame, main_area);
+        render_operation_status_bar(frame);
     }
 
     fn render_help_view(&self, frame: &mut Frame) {

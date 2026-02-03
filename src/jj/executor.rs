@@ -6,7 +6,7 @@ use std::io;
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 
-use crate::model::{Change, DiffContent, Status};
+use crate::model::{Change, DiffContent, Operation, Status};
 
 use super::JjError;
 use super::constants::{self, commands, errors, flags, special};
@@ -271,8 +271,8 @@ impl JjExecutor {
         let output = self.run(&[
             commands::OP,
             commands::OP_LOG,
-            "--no-graph",
-            "-T",
+            flags::NO_GRAPH,
+            flags::TEMPLATE,
             r#"id.short() ++ "\t" ++ description.first_line() ++ "\n""#,
             "--limit",
             "2",
@@ -315,6 +315,40 @@ impl JjExecutor {
         }
 
         Ok(Some(second_parts[0].trim().to_string()))
+    }
+
+    /// Run `jj op log` and parse the output into Operations
+    ///
+    /// Returns a list of operations, most recent first.
+    /// The first operation in the list is the current operation.
+    pub fn op_log(&self, limit: Option<usize>) -> Result<Vec<Operation>, JjError> {
+        let template = Templates::op_log();
+        let mut args = vec![
+            commands::OP,
+            commands::OP_LOG,
+            flags::NO_GRAPH,
+            flags::TEMPLATE,
+            template,
+        ];
+
+        // Convert limit to String and store it
+        let limit_str;
+        if let Some(n) = limit {
+            limit_str = n.to_string();
+            args.push("--limit");
+            args.push(&limit_str);
+        }
+
+        let output = self.run(&args)?;
+        Parser::parse_op_log(&output)
+    }
+
+    /// Run `jj op restore <operation_id>` to restore a previous state
+    ///
+    /// This restores the repository state to what it was after the specified operation.
+    /// Use with caution - this is a powerful operation.
+    pub fn op_restore(&self, operation_id: &str) -> Result<String, JjError> {
+        self.run(&[commands::OP, commands::OP_RESTORE, operation_id])
     }
 }
 
