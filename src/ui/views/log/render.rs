@@ -20,7 +20,10 @@ impl LogView {
         // Split area for input bar if in input mode
         let (log_area, input_area) = match self.input_mode {
             InputMode::Normal => (area, None),
-            InputMode::SearchInput | InputMode::RevsetInput | InputMode::DescribeInput => {
+            InputMode::SearchInput
+            | InputMode::RevsetInput
+            | InputMode::DescribeInput
+            | InputMode::BookmarkInput => {
                 let chunks =
                     Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).split(area);
                 (chunks[0], Some(chunks[1]))

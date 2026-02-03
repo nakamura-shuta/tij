@@ -25,6 +25,9 @@ pub mod commands {
     pub const OP: &str = "op";
     pub const OP_LOG: &str = "log";
     pub const OP_RESTORE: &str = "restore";
+    pub const BOOKMARK: &str = "bookmark";
+    pub const BOOKMARK_CREATE: &str = "create";
+    pub const BOOKMARK_DELETE: &str = "delete";
 }
 
 /// jj command flags

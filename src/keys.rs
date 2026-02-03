@@ -88,6 +88,12 @@ pub const ABANDON: KeyCode = KeyCode::Char('A');
 /// Split change (Log View, opens external diff editor)
 pub const SPLIT: KeyCode = KeyCode::Char('x');
 
+/// Create bookmark (Log View)
+pub const BOOKMARK: KeyCode = KeyCode::Char('b');
+
+/// Delete bookmark (Log View)
+pub const BOOKMARK_DELETE: KeyCode = KeyCode::Char('D');
+
 /// Open text search input (for n/N navigation)
 pub const SEARCH_INPUT: KeyCode = KeyCode::Char('/');
 
@@ -235,6 +241,14 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         key: "x",
         description: "Split change",
     },
+    KeyBindEntry {
+        key: "b",
+        description: "Create bookmark",
+    },
+    KeyBindEntry {
+        key: "D",
+        description: "Delete bookmark",
+    },
 ];
 
 /// Diff view key bindings for help display
@@ -309,6 +323,16 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         key: "x",
         label: "Split",
         color: Color::Yellow,
+    },
+    KeyHint {
+        key: "b",
+        label: "Bookmark",
+        color: Color::Cyan,
+    },
+    KeyHint {
+        key: "D",
+        label: "Del Bkm",
+        color: Color::Red,
     },
     KeyHint {
         key: "o",

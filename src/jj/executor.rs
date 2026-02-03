@@ -350,6 +350,29 @@ impl JjExecutor {
     pub fn op_restore(&self, operation_id: &str) -> Result<String, JjError> {
         self.run(&[commands::OP, commands::OP_RESTORE, operation_id])
     }
+
+    /// Run `jj bookmark create <name> -r <change-id>` to create a bookmark
+    ///
+    /// Creates a new bookmark pointing to the specified change.
+    /// Returns an error if a bookmark with the same name already exists.
+    pub fn bookmark_create(&self, name: &str, change_id: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::BOOKMARK,
+            commands::BOOKMARK_CREATE,
+            name,
+            "-r",
+            change_id,
+        ])
+    }
+
+    /// Run `jj bookmark delete <names>...` to delete bookmarks
+    ///
+    /// Deletes the specified bookmarks. Deletions propagate to remotes on push.
+    pub fn bookmark_delete(&self, names: &[&str]) -> Result<String, JjError> {
+        let mut args = vec![commands::BOOKMARK, commands::BOOKMARK_DELETE];
+        args.extend(names);
+        self.run(&args)
+    }
 }
 
 /// Compare version strings (simple semver comparison)

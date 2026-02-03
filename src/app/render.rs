@@ -29,6 +29,11 @@ impl App {
                 render_notification_banner(frame, notification);
             }
         }
+
+        // Render dialog on top of everything
+        if let Some(ref dialog) = self.active_dialog {
+            dialog.render(frame, frame.area());
+        }
     }
 
     fn render_log_view(&self, frame: &mut Frame) {

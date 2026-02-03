@@ -27,6 +27,7 @@ impl LogView {
             InputMode::SearchInput => self.handle_search_input_key(key),
             InputMode::RevsetInput => self.handle_revset_input_key(key),
             InputMode::DescribeInput => self.handle_describe_input_key(key),
+            InputMode::BookmarkInput => self.handle_bookmark_input_key(key),
         }
     }
 
@@ -92,6 +93,14 @@ impl LogView {
                     LogAction::None
                 }
             }
+            k if k == keys::BOOKMARK => {
+                self.start_bookmark_input();
+                LogAction::None
+            }
+            k if k == keys::BOOKMARK_DELETE => {
+                // Let state.rs handle the dialog
+                LogAction::StartBookmarkDelete
+            }
             k if k == keys::SEARCH_NEXT => {
                 self.search_next();
                 LogAction::None
@@ -145,6 +154,21 @@ impl LogView {
                     LogAction::None
                 } else {
                     LogAction::Describe { change_id, message }
+                }
+            } else {
+                LogAction::None
+            }
+        })
+    }
+
+    fn handle_bookmark_input_key(&mut self, key: KeyEvent) -> LogAction {
+        self.handle_text_input(key, |view, name| {
+            if let Some(change_id) = view.editing_change_id.take() {
+                if name.is_empty() {
+                    // Empty name = cancel
+                    LogAction::None
+                } else {
+                    LogAction::CreateBookmark { change_id, name }
                 }
             } else {
                 LogAction::None

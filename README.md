@@ -75,6 +75,8 @@ tij /path/to/jj-repo
 | `S` | Squash into parent |
 | `A` | Abandon change |
 | `x` | Split change (opens diff editor) |
+| `b` | Create bookmark |
+| `D` | Delete bookmark |
 | `r` | Revset filter |
 | `/` | Search |
 | `n` / `N` | Next/prev search result |

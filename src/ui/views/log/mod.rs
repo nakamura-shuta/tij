@@ -19,6 +19,8 @@ pub enum InputMode {
     RevsetInput,
     /// Describe input mode (editing change description)
     DescribeInput,
+    /// Bookmark input mode (creating bookmark)
+    BookmarkInput,
 }
 
 impl InputMode {
@@ -27,6 +29,7 @@ impl InputMode {
             InputMode::SearchInput => Some(("Search: ", " / Search ")),
             InputMode::RevsetInput => Some(("Revset: ", " r Revset ")),
             InputMode::DescribeInput => Some(("Description: ", " d Describe ")),
+            InputMode::BookmarkInput => Some(("Bookmark: ", " b Bookmark ")),
             InputMode::Normal => None,
         }
     }
@@ -55,6 +58,10 @@ pub enum LogAction {
     Abandon(String),
     /// Split a change (jj split, opens external editor)
     Split(String),
+    /// Create a bookmark on a change
+    CreateBookmark { change_id: String, name: String },
+    /// Start bookmark deletion (opens selection dialog)
+    StartBookmarkDelete,
 }
 
 /// Log View state
@@ -192,6 +199,18 @@ impl LogView {
             // Pre-fill with current description
             self.input_buffer = description;
             self.input_mode = InputMode::DescribeInput;
+        }
+    }
+
+    /// Start bookmark input mode for the selected change
+    pub fn start_bookmark_input(&mut self) {
+        // Clone change_id first to avoid borrow conflict
+        let change_id = self.selected_change().map(|c| c.change_id.clone());
+
+        if let Some(change_id) = change_id {
+            self.editing_change_id = Some(change_id);
+            self.input_buffer.clear();
+            self.input_mode = InputMode::BookmarkInput;
         }
     }
 }

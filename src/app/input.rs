@@ -11,6 +11,15 @@ use crate::ui::views::{
 impl App {
     /// Handle key events
     pub fn on_key_event(&mut self, key: KeyEvent) {
+        // Handle active dialog first (blocks other input)
+        if let Some(ref mut dialog) = self.active_dialog {
+            if let Some(result) = dialog.handle_key(key) {
+                self.handle_dialog_result(result);
+                self.active_dialog = None;
+            }
+            return;
+        }
+
         // Clear error message and expired notification on any key press
         self.error_message = None;
         self.clear_expired_notification();
@@ -163,6 +172,12 @@ impl App {
             }
             LogAction::Split(change_id) => {
                 self.execute_split(&change_id);
+            }
+            LogAction::CreateBookmark { change_id, name } => {
+                self.execute_bookmark_create(&change_id, &name);
+            }
+            LogAction::StartBookmarkDelete => {
+                self.start_bookmark_delete();
             }
         }
     }

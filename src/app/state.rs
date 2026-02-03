@@ -4,6 +4,7 @@ use std::cell::Cell;
 
 use crate::jj::JjExecutor;
 use crate::model::Notification;
+use crate::ui::components::{Dialog, DialogCallback, DialogResult, SelectItem};
 use crate::ui::views::{DiffView, LogView, OperationView, StatusView};
 
 /// Available views in the application
@@ -42,6 +43,8 @@ pub struct App {
     pub notification: Option<Notification>,
     /// Last known frame height (updated during render, uses Cell for interior mutability)
     pub(crate) last_frame_height: Cell<u16>,
+    /// Active dialog (blocks other input when Some)
+    pub active_dialog: Option<Dialog>,
 }
 
 impl Default for App {
@@ -65,6 +68,7 @@ impl App {
             error_message: None,
             notification: None,
             last_frame_height: Cell::new(24), // Default terminal height
+            active_dialog: None,
         };
 
         // Load initial log
@@ -447,5 +451,102 @@ impl App {
         let revset = self.log_view.current_revset.clone();
         self.refresh_log(revset.as_deref());
         self.refresh_status();
+    }
+
+    /// Execute bookmark creation
+    pub(crate) fn execute_bookmark_create(&mut self, change_id: &str, name: &str) {
+        match self.jj.bookmark_create(name, change_id) {
+            Ok(_) => {
+                self.notification =
+                    Some(Notification::success(format!("Created bookmark: {}", name)));
+                // Refresh log to show bookmark
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to create bookmark: {}", e));
+            }
+        }
+    }
+
+    /// Start bookmark deletion flow (opens dialog)
+    ///
+    /// Gets bookmarks from the currently selected change in LogView.
+    pub(crate) fn start_bookmark_delete(&mut self) {
+        // Get bookmarks from currently selected change
+        let (change_id, bookmarks) = match self.log_view.selected_change() {
+            Some(change) => (change.change_id.clone(), change.bookmarks.clone()),
+            None => return,
+        };
+
+        if bookmarks.is_empty() {
+            self.notification = Some(Notification::info("No bookmarks to delete"));
+            return;
+        }
+
+        // Create selection dialog
+        let items: Vec<SelectItem> = bookmarks
+            .iter()
+            .map(|name| SelectItem {
+                label: name.clone(),
+                value: name.clone(),
+                selected: false,
+            })
+            .collect();
+
+        self.active_dialog = Some(Dialog::select(
+            "Delete Bookmarks",
+            format!(
+                "Select bookmarks to delete from {}:",
+                &change_id[..8.min(change_id.len())]
+            ),
+            items,
+            Some("Deletions will propagate to remotes on push.".to_string()),
+            DialogCallback::DeleteBookmarks,
+        ));
+    }
+
+    /// Execute bookmark deletion
+    pub(crate) fn execute_bookmark_delete(&mut self, names: &[String]) {
+        if names.is_empty() {
+            return;
+        }
+
+        let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+        match self.jj.bookmark_delete(&name_refs) {
+            Ok(_) => {
+                let names_str = names.join(", ");
+                self.notification = Some(Notification::success(format!(
+                    "Deleted bookmarks: {}",
+                    names_str
+                )));
+                // Refresh log
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to delete bookmarks: {}", e));
+            }
+        }
+    }
+
+    /// Handle dialog result
+    ///
+    /// Called when a dialog is closed. The active_dialog is still Some at this point.
+    pub(crate) fn handle_dialog_result(&mut self, result: DialogResult) {
+        let callback = self.active_dialog.as_ref().map(|d| d.callback_id);
+
+        match (callback, result) {
+            (Some(DialogCallback::DeleteBookmarks), DialogResult::Confirmed(names)) => {
+                self.execute_bookmark_delete(&names);
+            }
+            (Some(DialogCallback::OpRestore), DialogResult::Confirmed(_)) => {
+                // TODO: Implement op restore with dialog
+            }
+            (_, DialogResult::Cancelled) => {
+                // Cancelled - do nothing
+            }
+            _ => {}
+        }
     }
 }

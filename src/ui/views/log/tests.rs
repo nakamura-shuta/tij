@@ -605,3 +605,122 @@ fn test_handle_key_split_no_selection() {
     let action = press_key(&mut view, keys::SPLIT);
     assert_eq!(action, LogAction::None);
 }
+
+// =============================================================================
+// Bookmark tests
+// =============================================================================
+
+#[test]
+fn test_handle_key_bookmark_create() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Press b to start bookmark input
+    let action = press_key(&mut view, keys::BOOKMARK);
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::BookmarkInput);
+    assert_eq!(view.editing_change_id, Some("abc12345".to_string()));
+}
+
+#[test]
+fn test_handle_key_bookmark_create_no_selection() {
+    let mut view = LogView::new();
+    // Empty changes list
+
+    let action = press_key(&mut view, keys::BOOKMARK);
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::Normal); // Should stay in normal mode
+}
+
+#[test]
+fn test_bookmark_input_submit() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Start bookmark input
+    press_key(&mut view, keys::BOOKMARK);
+    assert_eq!(view.input_mode, InputMode::BookmarkInput);
+
+    // Type bookmark name
+    type_text(&mut view, "my-bookmark");
+    assert_eq!(view.input_buffer, "my-bookmark");
+
+    // Submit
+    let action = submit(&mut view);
+    assert_eq!(
+        action,
+        LogAction::CreateBookmark {
+            change_id: "abc12345".to_string(),
+            name: "my-bookmark".to_string()
+        }
+    );
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert!(view.input_buffer.is_empty());
+}
+
+#[test]
+fn test_bookmark_input_empty_submit_cancels() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Start bookmark input
+    press_key(&mut view, keys::BOOKMARK);
+
+    // Submit empty - should cancel
+    let action = submit(&mut view);
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::Normal);
+}
+
+#[test]
+fn test_bookmark_input_cancel() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Start bookmark input
+    press_key(&mut view, keys::BOOKMARK);
+    type_text(&mut view, "test");
+
+    // Cancel with Esc
+    let action = escape(&mut view);
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert!(view.input_buffer.is_empty());
+    assert!(view.editing_change_id.is_none());
+}
+
+#[test]
+fn test_handle_key_bookmark_delete() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Press D to start bookmark delete
+    let action = press_key(&mut view, keys::BOOKMARK_DELETE);
+    assert_eq!(action, LogAction::StartBookmarkDelete);
+}
+
+#[test]
+fn test_bookmark_delete_on_change_with_bookmarks() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // First change has "main" bookmark
+    assert_eq!(view.selected_change().unwrap().bookmarks, vec!["main"]);
+
+    let action = press_key(&mut view, keys::BOOKMARK_DELETE);
+    assert_eq!(action, LogAction::StartBookmarkDelete);
+}
+
+#[test]
+fn test_bookmark_delete_on_change_without_bookmarks() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Move to second change (no bookmarks)
+    view.move_down();
+    assert!(view.selected_change().unwrap().bookmarks.is_empty());
+
+    // Should still return action - state.rs handles the "no bookmarks" case
+    let action = press_key(&mut view, keys::BOOKMARK_DELETE);
+    assert_eq!(action, LogAction::StartBookmarkDelete);
+}
