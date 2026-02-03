@@ -79,6 +79,9 @@ pub const NEW_CHANGE: KeyCode = KeyCode::Char('c');
 /// Commit changes (Status View, uppercase)
 pub const COMMIT: KeyCode = KeyCode::Char('C');
 
+/// Squash change into parent (Log View, uppercase)
+pub const SQUASH: KeyCode = KeyCode::Char('S');
+
 /// Open text search input (for n/N navigation)
 pub const SEARCH_INPUT: KeyCode = KeyCode::Char('/');
 
@@ -207,6 +210,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         key: "Ctrl+r",
         description: "Redo",
     },
+    KeyBindEntry {
+        key: "S",
+        description: "Squash into parent",
+    },
 ];
 
 /// Diff view key bindings for help display
@@ -266,6 +273,11 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         key: "c",
         label: "New",
         color: Color::Magenta,
+    },
+    KeyHint {
+        key: "S",
+        label: "Squash",
+        color: Color::Red,
     },
     KeyHint {
         key: "u",

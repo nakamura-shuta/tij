@@ -68,6 +68,14 @@ impl LogView {
                 }
             }
             k if k == keys::NEW_CHANGE => LogAction::NewChange,
+            k if k == keys::SQUASH => {
+                if let Some(change) = self.selected_change() {
+                    // Let state.rs handle validation and show appropriate notification
+                    LogAction::Squash(change.change_id.clone())
+                } else {
+                    LogAction::None
+                }
+            }
             k if k == keys::SEARCH_NEXT => {
                 self.search_next();
                 LogAction::None

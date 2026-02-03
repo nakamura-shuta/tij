@@ -46,6 +46,11 @@ impl Change {
         &self.change_id
     }
 
+    /// Check if this is the root change (all 'z' change ID)
+    pub fn is_root(&self) -> bool {
+        crate::jj::constants::ROOT_CHANGE_ID == self.change_id
+    }
+
     /// Get a display string for the description
     pub fn display_description(&self) -> &str {
         if self.description.is_empty() {

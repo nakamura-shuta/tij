@@ -60,17 +60,8 @@ src/
 | `.work/docs/plan.md` | 開発計画・進捗 |
 | `.work/docs/architecture.md` | アーキテクチャ設計 |
 | `.work/docs/about_jujutsu.md` | Jujutsu解説 |
+| `.work/docs/spec-detail`以下に作成 | 各機能のSoW |
 
-## Current Phase
-
-**Phase 2: Log View** - ✅ 完了、次は Phase 3: Diff View
-
-```
-[x] Phase 1: プロジェクト基盤
-[x] Phase 2: Log View（jj log表示、ナビゲーション、検索、revset）
-[ ] Phase 3: Diff View
-[ ] Phase 4: Status View
-```
 
 ## Conventions
 
@@ -100,3 +91,4 @@ jj出力のパースにタブ区切りを使用しているため、以下のフ
 - Jujutsu: https://github.com/jj-vcs/jj
 - ratatui: https://ratatui.rs/
 - tig: https://github.com/jonas/tig
+- Jujutsu turorial : https://steveklabnik.github.io/jujutsu-tutorial/

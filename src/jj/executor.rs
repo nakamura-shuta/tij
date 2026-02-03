@@ -184,6 +184,14 @@ impl JjExecutor {
         self.run(&[commands::COMMIT, "-m", message])
     }
 
+    /// Run `jj squash -r <change-id>` to squash into parent
+    ///
+    /// Moves changes from the specified revision into its parent.
+    /// If the source becomes empty, it is automatically abandoned.
+    pub fn squash(&self, change_id: &str) -> Result<String, JjError> {
+        self.run(&[commands::SQUASH, "-r", change_id])
+    }
+
     /// Run `jj undo` to undo the last operation
     ///
     /// Returns the raw output from the command for notification display.

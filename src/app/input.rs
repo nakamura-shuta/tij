@@ -145,6 +145,9 @@ impl App {
             LogAction::NewChange => {
                 self.execute_new_change();
             }
+            LogAction::Squash(change_id) => {
+                self.execute_squash(&change_id);
+            }
         }
     }
 

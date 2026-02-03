@@ -49,6 +49,8 @@ pub enum LogAction {
     Edit(String),
     /// Create a new empty change (jj new)
     NewChange,
+    /// Squash a change into its parent (jj squash -r)
+    Squash(String),
 }
 
 /// Log View state
