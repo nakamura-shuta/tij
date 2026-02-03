@@ -11,6 +11,7 @@ pub use help_panel::render_help_panel;
 pub use notification_banner::render_notification_banner;
 pub use placeholder::render_placeholder;
 pub use status_bar::{
-    render_diff_status_bar, render_operation_status_bar, render_status_bar,
-    render_status_view_status_bar,
+    log_view_status_bar_height, operation_view_status_bar_height, render_diff_status_bar,
+    render_operation_status_bar, render_status_bar, render_status_view_status_bar,
+    status_view_status_bar_height,
 };

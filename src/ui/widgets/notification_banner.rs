@@ -10,11 +10,19 @@ use crate::model::{Notification, NotificationKind};
 ///
 /// Position: Above the status bar, similar to error_banner but with
 /// different colors based on notification kind.
-pub fn render_notification_banner(frame: &mut Frame, notification: &Notification) {
+///
+/// `status_bar_height` - The height of the status bar (1 or 3 for 2-row mode)
+pub fn render_notification_banner(
+    frame: &mut Frame,
+    notification: &Notification,
+    status_bar_height: u16,
+) {
     let area = frame.area();
+    // Position just above the status bar
+    let y_offset = status_bar_height + 1;
     let banner_area = Rect {
         x: area.x + 2,
-        y: area.y + area.height.saturating_sub(3),
+        y: area.y + area.height.saturating_sub(y_offset),
         width: area.width.saturating_sub(4),
         height: 1,
     };
