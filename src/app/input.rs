@@ -148,6 +148,9 @@ impl App {
             LogAction::Squash(change_id) => {
                 self.execute_squash(&change_id);
             }
+            LogAction::Abandon(change_id) => {
+                self.execute_abandon(&change_id);
+            }
         }
     }
 

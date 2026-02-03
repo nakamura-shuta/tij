@@ -192,6 +192,14 @@ impl JjExecutor {
         self.run(&[commands::SQUASH, "-r", change_id])
     }
 
+    /// Run `jj abandon <change-id>` to abandon a revision
+    ///
+    /// Descendants are automatically rebased onto the parent.
+    /// If @ is abandoned, a new empty change is created.
+    pub fn abandon(&self, change_id: &str) -> Result<String, JjError> {
+        self.run(&[commands::ABANDON, change_id])
+    }
+
     /// Run `jj undo` to undo the last operation
     ///
     /// Returns the raw output from the command for notification display.

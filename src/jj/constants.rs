@@ -20,6 +20,7 @@ pub mod commands {
     pub const COMMIT: &str = "commit";
     pub const UNDO: &str = "undo";
     pub const SQUASH: &str = "squash";
+    pub const ABANDON: &str = "abandon";
     pub const OP: &str = "op";
     pub const OP_LOG: &str = "log";
     pub const OP_RESTORE: &str = "restore";

@@ -82,6 +82,9 @@ pub const COMMIT: KeyCode = KeyCode::Char('C');
 /// Squash change into parent (Log View, uppercase)
 pub const SQUASH: KeyCode = KeyCode::Char('S');
 
+/// Abandon change (Log View, uppercase)
+pub const ABANDON: KeyCode = KeyCode::Char('A');
+
 /// Open text search input (for n/N navigation)
 pub const SEARCH_INPUT: KeyCode = KeyCode::Char('/');
 
@@ -214,6 +217,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         key: "S",
         description: "Squash into parent",
     },
+    KeyBindEntry {
+        key: "A",
+        description: "Abandon change",
+    },
 ];
 
 /// Diff view key bindings for help display
@@ -277,6 +284,11 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
     KeyHint {
         key: "S",
         label: "Squash",
+        color: Color::Red,
+    },
+    KeyHint {
+        key: "A",
+        label: "Abandon",
         color: Color::Red,
     },
     KeyHint {

@@ -66,6 +66,7 @@ tij /path/to/jj-repo
 | `e` | Edit change (set working copy) |
 | `c` | Create new change |
 | `S` | Squash into parent |
+| `A` | Abandon change |
 | `r` | Revset filter |
 | `/` | Search |
 | `n` / `N` | Next/prev search result |

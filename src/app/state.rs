@@ -275,6 +275,32 @@ impl App {
         }
     }
 
+    /// Execute abandon operation (abandon a change)
+    pub(crate) fn execute_abandon(&mut self, change_id: &str) {
+        use crate::jj::constants::ROOT_CHANGE_ID;
+
+        // Guard: cannot abandon root commit
+        if change_id == ROOT_CHANGE_ID {
+            self.notification = Some(Notification::info("Cannot abandon: root commit"));
+            return;
+        }
+
+        match self.jj.abandon(change_id) {
+            Ok(_) => {
+                let short_id = &change_id[..8.min(change_id.len())];
+                self.notification = Some(Notification::success(format!("Abandoned {}", short_id)));
+                // Refresh log to show updated state
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                // Also refresh status view (abandon may affect working copy)
+                self.refresh_status();
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Abandon failed: {}", e));
+            }
+        }
+    }
+
     /// Execute redo operation
     ///
     /// Only works if the last operation was an undo.

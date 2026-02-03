@@ -51,6 +51,8 @@ pub enum LogAction {
     NewChange,
     /// Squash a change into its parent (jj squash -r)
     Squash(String),
+    /// Abandon a change (jj abandon)
+    Abandon(String),
 }
 
 /// Log View state
