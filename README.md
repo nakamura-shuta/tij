@@ -1,194 +1,96 @@
 # Tij
 
-**T**ext-mode **I**nterface for **J**ujutsu - A terminal user interface (TUI) for the [Jujutsu](https://github.com/jj-vcs/jj) version control system, inspired by [tig](https://github.com/jonas/tig).
+**T**ext-mode **I**nterface for **J**ujutsu - A TUI for the [Jujutsu](https://github.com/jj-vcs/jj) version control system, inspired by [tig](https://github.com/jonas/tig).
 
-## Features
+![Rust](https://img.shields.io/badge/rust-1.85+-orange.svg)
+[![Crates.io](https://img.shields.io/crates/v/tij.svg)](https://crates.io/crates/tij)
 
-- **Log View**: Browse commit history with DAG graph visualization
-- **Diff View**: View changes with syntax-highlighted diffs (added/deleted/context lines)
-- **Status View**: See working copy status and changed files
-- **Operation History**: Browse and restore to any previous jj operation
-- **Undo/Redo**: Safely undo and redo jj operations
-- **Vim-like Navigation**: Familiar keybindings (j/k, g/G, ↑/↓)
-- **Revset Filtering**: Filter commits using jj's powerful revset expressions
-- **Search**: Find commits by description, author, or bookmark name
+## Why Tij?
 
-## Requirements
+Jujutsu (jj) makes Git's painful operations easy and safe. Tij brings that power to a visual interface:
 
-- Rust 1.85+ (Edition 2024)
-- [Jujutsu](https://github.com/jj-vcs/jj) installed and available in PATH
+| Git's Pain | jj's Solution | Tij's UI |
+|------------|---------------|----------|
+| `git stash` management | Always-committed working copy | One-key context switching |
+| `git rebase -i` complexity | `jj edit` + auto-rebase | Visual history editing |
+| `git reflog` recovery | `jj undo` / `jj op log` | Operation history view |
+| Commit splitting | `jj split` | Integrated diff editor |
+| Conflicts block work | Keep conflicts, continue working | Visual conflict status |
 
 ## Installation
 
-### From crates.io (Recommended)
-
 ```bash
+# From crates.io (recommended)
 cargo install tij
-```
 
-### From Source
-
-```bash
-# Clone the repository
+# From source
 git clone https://github.com/nakamura-shuta/tij.git
-cd tij
-
-# Build and install
-cargo install --path .
+cd tij && cargo install --path .
 ```
 
-### Development Build
+**Requirements**: Rust 1.85+, [Jujutsu](https://github.com/jj-vcs/jj) in PATH
 
-```bash
-cargo build --release
-```
-
-## Usage
-
-Run `tij` in any Jujutsu repository:
+## Quick Start
 
 ```bash
 cd /path/to/jj-repo
 tij
 ```
 
-Or specify a path:
+Press `?` for help, `q` to quit.
 
-```bash
-tij /path/to/jj-repo
-```
+## Features
 
-## Key Bindings
+### Implemented
 
-### Log View
+| Area | Features |
+|------|----------|
+| Views | Log / Diff / Status / Help / Operation History |
+| History Editing | Describe / Edit / New / Commit / Squash / Abandon / Split |
+| Recovery | Undo / Redo / Operation Restore |
+| Bookmarks | Create / Delete (multi-select) |
+| Usability | Revset filtering / Text search / Adaptive status bar |
 
-| Key | Action |
-|-----|--------|
-| `j` / `↓` | Move down |
-| `k` / `↑` | Move up |
-| `g` | Go to top |
-| `G` | Go to bottom |
-| `Enter` | Open diff view |
-| `d` | Edit description |
-| `e` | Edit change (set working copy) |
-| `c` | Create new change |
-| `S` | Squash into parent |
-| `A` | Abandon change |
-| `x` | Split change (opens diff editor) |
-| `b` | Create bookmark |
-| `D` | Delete bookmark |
-| `r` | Revset filter |
-| `/` | Search |
-| `n` / `N` | Next/prev search result |
-| `u` | Undo |
-| `Ctrl+R` | Redo |
-| `s` | Status view |
-| `o` | Operation history |
-| `Tab` | Switch view |
-| `?` | Help |
-| `q` | Quit |
+### Planned
 
-### Diff View
-
-| Key | Action |
-|-----|--------|
-| `j` / `↓` | Scroll down |
-| `k` / `↑` | Scroll up |
-| `d` / `u` | Half page down/up |
-| `g` / `G` | Top/bottom |
-| `]` / `[` | Next/prev file |
-| `q` | Back |
-
-### Status View
-
-| Key | Action |
-|-----|--------|
-| `j` / `↓` | Move down |
-| `k` / `↑` | Move up |
-| `Enter` | Open diff for file |
-| `C` | Commit changes |
-| `Tab` | Switch view |
-| `q` | Quit |
-
-### Operation History View
-
-| Key | Action |
-|-----|--------|
-| `j` / `↓` | Move down |
-| `k` / `↑` | Move up |
-| `g` / `G` | Top/bottom |
-| `Enter` | Restore to operation |
-| `q` | Back |
-
-### Input Mode (Revset/Search)
-
-| Key | Action |
-|-----|--------|
-| `Enter` | Submit |
-| `Esc` | Cancel |
-| `Backspace` | Delete character |
+| Area | Features |
+|------|----------|
+| Views | Blame View / Bookmark View |
+| History Editing | Rebase / Absorb |
+| Safety | Confirmation dialogs for destructive actions |
+| Git Integration | Fetch / Push / Conflict resolution UI |
+| Customization | Keybindings config / Themes |
 
 ## Revset Examples
 
-Filter commits using jj's revset expressions:
+Press `r` to filter commits:
 
 ```
-# Show all commits
-all()
-
-# Show recent commits
-@-..@
-
-# Show commits by author
-author(email)
-
-# Show commits on a branch
-ancestors(bookmark_name)
-
-# Combine expressions
-ancestors(main) & author(me)
+all()                    # Show all commits
+@-..@                    # Recent commits
+author(email)            # By author
+ancestors(main)          # Branch history
 ```
 
-See [jj revset documentation](https://jj-vcs.dev/latest/revsets/) for more.
+See [jj revset docs](https://jj-vcs.dev/latest/revsets/) for more.
 
-## Default Display Behavior
+## Default Display
 
-Tij respects jj's default revset configuration. By default, jj shows only "relevant" commits:
+Tij uses jj's default revset (recent/relevant commits). To see all:
 
-- Current working copy (`@`)
-- Recent mutable commits
-- Trunk branch (main/master)
-
-This means older commits and unrelated branches may not appear in the initial view. To see all commits:
-
-1. Press `r` to open revset input
-2. Enter `all()` and press Enter
-
-To permanently change the default, add to `~/.jjconfig.toml`:
-
-```toml
-[revsets]
-log = "all()"
-```
-
-## Development
-
-```bash
-# Run with cargo
-cargo run
-
-# Run tests
-cargo test
-
-# Run linter
-cargo clippy
-
-# Format code
-cargo fmt
-```
+1. Press `r`, type `all()`, Enter
+2. Or set in `~/.jjconfig.toml`:
+   ```toml
+   [revsets]
+   log = "all()"
+   ```
 
 ## Acknowledgments
 
-- [Jujutsu](https://github.com/jj-vcs/jj) - The modern version control system
-- [tig](https://github.com/jonas/tig) - Text-mode interface for Git (inspiration)
-- [ratatui](https://ratatui.rs/) - Rust TUI framework
+- [Jujutsu](https://github.com/jj-vcs/jj) - The modern VCS
+- [tig](https://github.com/jonas/tig) - Inspiration
+- [ratatui](https://ratatui.rs/) - TUI framework
+
+## License
+
+MIT
