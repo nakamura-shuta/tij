@@ -489,3 +489,94 @@ fn test_revset_empty_enter_returns_clear_action() {
     // Should return ClearRevset action
     assert_eq!(action, LogAction::ClearRevset);
 }
+
+// =============================================================================
+// Squash tests
+// =============================================================================
+
+#[test]
+fn test_handle_key_squash() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Move to second change (not root)
+    view.move_down();
+    assert_eq!(view.selected_change().unwrap().change_id, "xyz98765");
+
+    let action = press_key(&mut view, keys::SQUASH);
+    assert_eq!(action, LogAction::Squash("xyz98765".to_string()));
+}
+
+#[test]
+fn test_handle_key_squash_on_root() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Move to root
+    view.move_to_bottom();
+    assert_eq!(
+        view.selected_change().unwrap().change_id,
+        constants::ROOT_CHANGE_ID
+    );
+
+    // Should still return action (state.rs will handle the guard)
+    let action = press_key(&mut view, keys::SQUASH);
+    assert_eq!(
+        action,
+        LogAction::Squash(constants::ROOT_CHANGE_ID.to_string())
+    );
+}
+
+#[test]
+fn test_handle_key_squash_no_selection() {
+    let mut view = LogView::new();
+    // Empty changes list
+
+    let action = press_key(&mut view, keys::SQUASH);
+    assert_eq!(action, LogAction::None);
+}
+
+// =============================================================================
+// Abandon tests
+// =============================================================================
+
+#[test]
+fn test_handle_key_abandon() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Select first change
+    assert_eq!(view.selected_change().unwrap().change_id, "abc12345");
+
+    let action = press_key(&mut view, keys::ABANDON);
+    assert_eq!(action, LogAction::Abandon("abc12345".to_string()));
+}
+
+#[test]
+fn test_handle_key_abandon_on_root() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Move to root
+    view.move_to_bottom();
+    assert_eq!(
+        view.selected_change().unwrap().change_id,
+        constants::ROOT_CHANGE_ID
+    );
+
+    // Should still return action (state.rs will handle the guard)
+    let action = press_key(&mut view, keys::ABANDON);
+    assert_eq!(
+        action,
+        LogAction::Abandon(constants::ROOT_CHANGE_ID.to_string())
+    );
+}
+
+#[test]
+fn test_handle_key_abandon_no_selection() {
+    let mut view = LogView::new();
+    // Empty changes list
+
+    let action = press_key(&mut view, keys::ABANDON);
+    assert_eq!(action, LogAction::None);
+}

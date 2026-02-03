@@ -260,7 +260,7 @@ impl App {
             Ok(_) => {
                 let short_id = &change_id[..8.min(change_id.len())];
                 self.notification = Some(Notification::success(format!(
-                    "Squashed {} into parent",
+                    "Squashed {} into parent (undo: u)",
                     short_id
                 )));
                 // Refresh log to show updated state
@@ -288,7 +288,10 @@ impl App {
         match self.jj.abandon(change_id) {
             Ok(_) => {
                 let short_id = &change_id[..8.min(change_id.len())];
-                self.notification = Some(Notification::success(format!("Abandoned {}", short_id)));
+                self.notification = Some(Notification::success(format!(
+                    "Abandoned {} (undo: u)",
+                    short_id
+                )));
                 // Refresh log to show updated state
                 let revset = self.log_view.current_revset.clone();
                 self.refresh_log(revset.as_deref());
