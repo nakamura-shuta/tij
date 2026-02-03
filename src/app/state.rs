@@ -344,4 +344,57 @@ impl App {
             }
         }
     }
+
+    /// Execute split operation (requires terminal control transfer)
+    ///
+    /// This method temporarily exits raw mode to allow jj split
+    /// to use its external diff editor.
+    ///
+    /// Uses scope guard to ensure terminal state is always restored,
+    /// even if jj split panics or returns early.
+    pub(crate) fn execute_split(&mut self, change_id: &str) {
+        use crossterm::execute;
+        use crossterm::terminal::{
+            Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+            enable_raw_mode,
+        };
+        use std::io::stdout;
+
+        // 1. Exit TUI mode
+        let _ = disable_raw_mode();
+        let _ = execute!(stdout(), LeaveAlternateScreen, Clear(ClearType::All));
+
+        // 2. Scope guard to ensure terminal restoration on any exit path
+        //    (panic, early return, normal completion)
+        let _guard = scopeguard::guard((), |_| {
+            let _ = enable_raw_mode();
+            let _ = execute!(stdout(), EnterAlternateScreen);
+        });
+
+        // 3. Run jj split (blocking)
+        let result = self.jj.split_interactive(change_id);
+
+        // 4. Handle result and refresh
+        // Note: _guard will restore terminal when this function returns
+        match result {
+            Ok(status) if status.success() => {
+                let short_id = &change_id[..8.min(change_id.len())];
+                self.notification = Some(Notification::success(format!(
+                    "Split {} complete (undo: u)",
+                    short_id
+                )));
+            }
+            Ok(_) => {
+                self.notification = Some(Notification::info("Split cancelled or failed"));
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Split failed: {}", e));
+            }
+        }
+
+        // 5. Refresh views
+        let revset = self.log_view.current_revset.clone();
+        self.refresh_log(revset.as_deref());
+        self.refresh_status();
+    }
 }

@@ -2,8 +2,9 @@
 //!
 //! Handles running jj commands and capturing their output.
 
+use std::io;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, ExitStatus, Stdio};
 
 use crate::model::{Change, DiffContent, Status};
 
@@ -205,6 +206,29 @@ impl JjExecutor {
     /// Returns the raw output from the command for notification display.
     pub fn undo(&self) -> Result<String, JjError> {
         self.run(&[commands::UNDO])
+    }
+
+    /// Run `jj split -r <change-id>` interactively
+    ///
+    /// This spawns jj as a child process with inherited stdio,
+    /// allowing the user to interact with their configured diff editor.
+    /// The caller must disable raw mode before calling this method.
+    ///
+    /// Note: Unlike `run()`, this method does NOT use `--color=never`
+    /// because interactive mode benefits from color output in the diff editor.
+    pub fn split_interactive(&self, change_id: &str) -> io::Result<ExitStatus> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+
+        // repo_path がある場合は -R を付与（tij /path/to/repo 対応）
+        if let Some(ref repo_path) = self.repo_path {
+            cmd.arg(flags::REPO_PATH).arg(repo_path);
+        }
+
+        cmd.args([commands::SPLIT, "-r", change_id])
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
     }
 
     /// Run `jj op restore` to restore a previous operation (redo)

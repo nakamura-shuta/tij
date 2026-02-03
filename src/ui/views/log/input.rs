@@ -84,6 +84,14 @@ impl LogView {
                     LogAction::None
                 }
             }
+            k if k == keys::SPLIT => {
+                if let Some(change) = self.selected_change() {
+                    // Let state.rs handle the interactive split
+                    LogAction::Split(change.change_id.clone())
+                } else {
+                    LogAction::None
+                }
+            }
             k if k == keys::SEARCH_NEXT => {
                 self.search_next();
                 LogAction::None

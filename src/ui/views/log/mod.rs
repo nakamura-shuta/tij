@@ -53,6 +53,8 @@ pub enum LogAction {
     Squash(String),
     /// Abandon a change (jj abandon)
     Abandon(String),
+    /// Split a change (jj split, opens external editor)
+    Split(String),
 }
 
 /// Log View state

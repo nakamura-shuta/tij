@@ -67,6 +67,7 @@ tij /path/to/jj-repo
 | `c` | Create new change |
 | `S` | Squash into parent |
 | `A` | Abandon change |
+| `x` | Split change (opens diff editor) |
 | `r` | Revset filter |
 | `/` | Search |
 | `n` / `N` | Next/prev search result |

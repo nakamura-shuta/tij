@@ -151,6 +151,9 @@ impl App {
             LogAction::Abandon(change_id) => {
                 self.execute_abandon(&change_id);
             }
+            LogAction::Split(change_id) => {
+                self.execute_split(&change_id);
+            }
         }
     }
 

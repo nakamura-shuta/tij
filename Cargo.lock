@@ -1407,6 +1407,7 @@ dependencies = [
  "color-eyre",
  "crossterm 0.28.1",
  "ratatui",
+ "scopeguard",
  "thiserror 2.0.18",
 ]
 

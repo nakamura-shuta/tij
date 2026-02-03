@@ -85,6 +85,9 @@ pub const SQUASH: KeyCode = KeyCode::Char('S');
 /// Abandon change (Log View, uppercase)
 pub const ABANDON: KeyCode = KeyCode::Char('A');
 
+/// Split change (Log View, opens external diff editor)
+pub const SPLIT: KeyCode = KeyCode::Char('x');
+
 /// Open text search input (for n/N navigation)
 pub const SEARCH_INPUT: KeyCode = KeyCode::Char('/');
 
@@ -221,6 +224,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         key: "A",
         description: "Abandon change",
     },
+    KeyBindEntry {
+        key: "x",
+        description: "Split change",
+    },
 ];
 
 /// Diff view key bindings for help display
@@ -290,6 +297,11 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         key: "A",
         label: "Abandon",
         color: Color::Red,
+    },
+    KeyHint {
+        key: "x",
+        label: "Split",
+        color: Color::Yellow,
     },
     KeyHint {
         key: "u",

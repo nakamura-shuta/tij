@@ -580,3 +580,28 @@ fn test_handle_key_abandon_no_selection() {
     let action = press_key(&mut view, keys::ABANDON);
     assert_eq!(action, LogAction::None);
 }
+
+// =============================================================================
+// Split tests
+// =============================================================================
+
+#[test]
+fn test_handle_key_split() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Select first change
+    assert_eq!(view.selected_change().unwrap().change_id, "abc12345");
+
+    let action = press_key(&mut view, keys::SPLIT);
+    assert_eq!(action, LogAction::Split("abc12345".to_string()));
+}
+
+#[test]
+fn test_handle_key_split_no_selection() {
+    let mut view = LogView::new();
+    // Empty changes list
+
+    let action = press_key(&mut view, keys::SPLIT);
+    assert_eq!(action, LogAction::None);
+}
