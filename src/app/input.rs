@@ -208,12 +208,6 @@ impl App {
     fn handle_status_action(&mut self, action: StatusAction) {
         match action {
             StatusAction::None => {}
-            StatusAction::Back => {
-                self.go_back();
-            }
-            StatusAction::SwitchToLog => {
-                self.go_to_view(View::Log);
-            }
             StatusAction::ShowFileDiff {
                 change_id,
                 file_path,

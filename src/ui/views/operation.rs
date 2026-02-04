@@ -229,12 +229,14 @@ impl OperationView {
         line
     }
 
-    /// Get operation count for status display
+    /// Get operation count for status display (test-only helper)
+    #[cfg(test)]
     pub fn operation_count(&self) -> usize {
         self.operations.len()
     }
 
-    /// Check if the view is empty
+    /// Check if the view is empty (test-only helper)
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.operations.is_empty()
     }

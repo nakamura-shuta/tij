@@ -36,8 +36,6 @@ pub mod diff_view {
     pub const ADDED: Color = Color::Green;
     /// Deleted line color
     pub const DELETED: Color = Color::Red;
-    /// Context line color
-    pub const CONTEXT: Color = Color::Reset;
     /// File header color (bold applied in rendering)
     pub const FILE_HEADER: Color = Color::Cyan;
     /// Line number color

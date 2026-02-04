@@ -33,6 +33,7 @@ impl JjExecutor {
     }
 
     /// Create a new executor for a specific repository path
+    #[allow(dead_code)]
     pub fn with_repo_path(path: PathBuf) -> Self {
         Self {
             repo_path: Some(path),

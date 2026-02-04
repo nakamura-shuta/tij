@@ -35,10 +35,6 @@ pub enum StatusAction {
         /// File path to jump to
         file_path: String,
     },
-    /// Go back to Log View
-    Back,
-    /// Switch to Log View (Tab)
-    SwitchToLog,
     /// Commit with message
     Commit { message: String },
     /// No action
@@ -108,11 +104,6 @@ impl StatusView {
                 self.scroll_offset = 0;
             }
         }
-    }
-
-    /// Get the current status
-    pub fn status(&self) -> Option<&Status> {
-        self.status.as_ref()
     }
 
     /// Get the selected file path

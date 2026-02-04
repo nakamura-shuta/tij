@@ -88,7 +88,8 @@ impl DiffView {
         self.current_file_index = 0;
     }
 
-    /// Clear the view
+    /// Clear the view (test-only helper)
+    #[cfg(test)]
     pub fn clear(&mut self) {
         self.change_id.clear();
         self.content = DiffContent::default();
@@ -299,6 +300,7 @@ impl DiffView {
     const DEFAULT_VISIBLE_HEIGHT: usize = 20;
 
     /// Handle key input
+    #[cfg(test)]
     pub fn handle_key(&mut self, key: KeyEvent) -> DiffAction {
         self.handle_key_with_height(key, Self::DEFAULT_VISIBLE_HEIGHT)
     }

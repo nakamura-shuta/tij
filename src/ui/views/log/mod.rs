@@ -125,14 +125,6 @@ impl LogView {
         self.changes.get(self.selected_index)
     }
 
-    /// Check if the given index is selectable (not graph-only)
-    pub fn is_selectable(&self, index: usize) -> bool {
-        self.changes
-            .get(index)
-            .map(|c| !c.is_graph_only)
-            .unwrap_or(false)
-    }
-
     /// Move selection up (skips graph-only lines)
     pub fn move_up(&mut self) {
         if self.selection_cursor > 0 {
@@ -161,11 +153,6 @@ impl LogView {
             self.selection_cursor = self.selectable_indices.len().saturating_sub(1);
             self.selected_index = last;
         }
-    }
-
-    /// Get the number of selectable changes
-    pub fn selectable_count(&self) -> usize {
-        self.selectable_indices.len()
     }
 
     /// Start text search input mode
