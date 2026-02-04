@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use super::state::{App, View};
 use crate::keys;
 use crate::ui::views::{
-    DiffAction, InputMode, LogAction, OperationAction, StatusAction, StatusInputMode,
+    BlameAction, DiffAction, InputMode, LogAction, OperationAction, StatusAction, StatusInputMode,
 };
 
 impl App {
@@ -153,6 +153,12 @@ impl App {
                 let action = self.operation_view.handle_key(key);
                 self.handle_operation_action(action);
             }
+            View::Blame => {
+                if let Some(ref mut blame_view) = self.blame_view {
+                    let action = blame_view.handle_key(key);
+                    self.handle_blame_action(action);
+                }
+            }
             View::Help => {
                 // Help view only uses global keys
             }
@@ -216,6 +222,11 @@ impl App {
             DiffAction::Back => {
                 self.go_back();
             }
+            DiffAction::OpenBlame { file_path } => {
+                // Get the current change_id from diff_view for proper revision
+                let revision = self.diff_view.as_ref().map(|v| v.change_id.clone());
+                self.open_blame(&file_path, revision.as_deref());
+            }
         }
     }
 
@@ -227,6 +238,9 @@ impl App {
                 file_path,
             } => {
                 self.open_diff_at_file(&change_id, &file_path);
+            }
+            StatusAction::OpenBlame { file_path } => {
+                self.open_blame(&file_path, None);
             }
             StatusAction::Commit { message } => {
                 self.execute_commit(&message);
@@ -242,6 +256,18 @@ impl App {
             }
             OperationAction::Restore(operation_id) => {
                 self.execute_op_restore(&operation_id);
+            }
+        }
+    }
+
+    fn handle_blame_action(&mut self, action: BlameAction) {
+        match action {
+            BlameAction::None => {}
+            BlameAction::Back => {
+                self.go_back();
+            }
+            BlameAction::OpenDiff(change_id) => {
+                self.open_diff(&change_id);
             }
         }
     }

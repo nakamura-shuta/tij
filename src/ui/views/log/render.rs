@@ -212,7 +212,8 @@ impl LogView {
         } else if is_selected {
             line = line.style(
                 Style::default()
-                    .bg(theme::log_view::SELECTED_BG)
+                    .fg(theme::selection::FG)
+                    .bg(theme::selection::BG)
                     .add_modifier(Modifier::BOLD),
             );
         }

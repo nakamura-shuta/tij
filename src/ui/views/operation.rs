@@ -11,7 +11,7 @@ use ratatui::{
 
 use crate::keys;
 use crate::model::{Notification, Operation};
-use crate::ui::components;
+use crate::ui::{components, theme};
 
 /// Action returned by the Operation View after handling input
 #[derive(Debug, Clone)]
@@ -221,7 +221,8 @@ impl OperationView {
         if is_selected {
             line = line.style(
                 Style::default()
-                    .bg(Color::DarkGray)
+                    .fg(theme::selection::FG)
+                    .bg(theme::selection::BG)
                     .add_modifier(Modifier::BOLD),
             );
         }

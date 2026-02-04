@@ -45,7 +45,7 @@ Press `?` for help, `q` to quit.
 
 | Area | Features |
 |------|----------|
-| Views | Log / Diff / Status / Help / Operation History |
+| Views | Log / Diff / Status / Help / Operation History / Blame |
 | History Editing | Describe (multi-line) / Edit / New / Commit / Squash / Abandon / Split / Rebase / Absorb |
 | Recovery | Undo / Redo / Operation Restore |
 | Bookmarks | Create / Move / Delete (multi-select) |
@@ -55,7 +55,7 @@ Press `?` for help, `q` to quit.
 
 | Area | Features |
 |------|----------|
-| Views | Blame View / Bookmark View |
+| Views | Bookmark View |
 | Safety | Confirmation dialogs for destructive actions |
 | Git Integration | Fetch / Push / Conflict resolution UI |
 | Customization | Keybindings config / Themes |

@@ -6,7 +6,7 @@ use std::io;
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 
-use crate::model::{Change, DiffContent, Operation, Status};
+use crate::model::{AnnotationContent, Change, DiffContent, Operation, Status};
 
 use super::JjError;
 use super::constants::{self, commands, errors, flags};
@@ -416,6 +416,33 @@ impl JjExecutor {
     /// Returns the command output which describes what was absorbed.
     pub fn absorb(&self) -> Result<String, JjError> {
         self.run(&[commands::ABSORB])
+    }
+
+    /// Run `jj file annotate` to show blame information for a file
+    ///
+    /// Shows the change responsible for each line of the specified file.
+    /// Optionally annotates at a specific revision.
+    ///
+    /// Returns AnnotationContent containing line-by-line blame information.
+    ///
+    /// Note: Uses default output format (no custom template) for jj 0.37.x compatibility.
+    /// The AnnotationLine template methods are only available in jj 0.38+.
+    pub fn file_annotate(
+        &self,
+        file_path: &str,
+        revision: Option<&str>,
+    ) -> Result<AnnotationContent, JjError> {
+        let mut args = vec![commands::FILE, commands::FILE_ANNOTATE];
+
+        if let Some(rev) = revision {
+            args.push(flags::REVISION);
+            args.push(rev);
+        }
+
+        args.push(file_path);
+
+        let output = self.run(&args)?;
+        Parser::parse_file_annotate(&output, file_path)
     }
 }
 

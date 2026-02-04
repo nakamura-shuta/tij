@@ -67,6 +67,15 @@ impl Templates {
             " ++ \"\\n\""
         )
     }
+
+    // Note: `jj file annotate` does NOT use a custom template.
+    // The AnnotationLine template methods (line_number(), content(), first_line_in_hunk())
+    // are only available in jj 0.38+. For compatibility with jj 0.37.x, we parse
+    // the default output format instead.
+    //
+    // Default output format:
+    // `<change_id> <author> <timestamp>  <line_number>: <content>`
+    // Example: `twzksoxt nakamura 2026-01-30 10:43:19    1: //! Tij`
 }
 
 #[cfg(test)]

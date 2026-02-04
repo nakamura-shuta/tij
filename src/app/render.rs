@@ -4,9 +4,10 @@ use ratatui::{Frame, prelude::*};
 
 use super::state::{App, View};
 use crate::ui::widgets::{
-    log_view_status_bar_height, operation_view_status_bar_height, render_diff_status_bar,
-    render_error_banner, render_help_panel, render_operation_status_bar, render_placeholder,
-    render_status_bar, render_status_view_status_bar, status_view_status_bar_height,
+    blame_view_status_bar_height, log_view_status_bar_height, operation_view_status_bar_height,
+    render_blame_status_bar, render_diff_status_bar, render_error_banner, render_help_panel,
+    render_operation_status_bar, render_placeholder, render_status_bar,
+    render_status_view_status_bar, status_view_status_bar_height,
 };
 
 impl App {
@@ -21,6 +22,7 @@ impl App {
             View::Diff => self.render_diff_view(frame, notification),
             View::Status => self.render_status_view(frame, notification),
             View::Operation => self.render_operation_view(frame, notification),
+            View::Blame => self.render_blame_view(frame),
             View::Help => self.render_help_view(frame),
         }
 
@@ -43,6 +45,7 @@ impl App {
             View::Diff => 1,
             View::Status => status_view_status_bar_height(width),
             View::Operation => operation_view_status_bar_height(width),
+            View::Blame => blame_view_status_bar_height(width),
             View::Help => 0,
         }
     }
@@ -147,5 +150,34 @@ impl App {
 
     fn render_help_view(&self, frame: &mut Frame) {
         render_help_panel(frame, frame.area());
+    }
+
+    fn render_blame_view(&self, frame: &mut Frame) {
+        if let Some(ref blame_view) = self.blame_view {
+            let area = frame.area();
+            let status_bar_height = blame_view_status_bar_height(area.width);
+
+            // Reserve space for status bar at bottom
+            let main_area = Rect {
+                x: area.x,
+                y: area.y,
+                width: area.width,
+                height: area.height.saturating_sub(status_bar_height),
+            };
+
+            // Store visible height for blame content
+            let blame_content_height = main_area.height.saturating_sub(2);
+            self.last_frame_height.set(blame_content_height);
+
+            blame_view.render(frame, main_area);
+            render_blame_status_bar(frame, blame_view);
+        } else {
+            render_placeholder(
+                frame,
+                " Tij - Blame View ",
+                Color::Yellow,
+                "No file loaded - Press q to go back",
+            );
+        }
     }
 }

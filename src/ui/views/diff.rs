@@ -21,6 +21,11 @@ pub enum DiffAction {
     None,
     /// Return to log view
     Back,
+    /// Open blame/annotation for current file
+    OpenBlame {
+        /// File path to annotate
+        file_path: String,
+    },
 }
 
 /// Diff view state
@@ -342,6 +347,15 @@ impl DiffView {
             keys::PREV_FILE => {
                 self.prev_file();
                 DiffAction::None
+            }
+            keys::ANNOTATE => {
+                if let Some(file_name) = self.current_file_name() {
+                    DiffAction::OpenBlame {
+                        file_path: file_name.to_string(),
+                    }
+                } else {
+                    DiffAction::None
+                }
             }
             keys::QUIT | keys::ESC => DiffAction::Back,
             _ => DiffAction::None,

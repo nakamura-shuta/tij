@@ -27,6 +27,8 @@ pub mod commands {
     pub const BOOKMARK_DELETE: &str = "delete";
     pub const REBASE: &str = "rebase";
     pub const ABSORB: &str = "absorb";
+    pub const FILE: &str = "file";
+    pub const FILE_ANNOTATE: &str = "annotate";
 }
 
 /// jj command flags

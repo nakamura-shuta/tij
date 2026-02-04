@@ -111,6 +111,9 @@ pub const REBASE: KeyCode = KeyCode::Char('R');
 /// Absorb changes into ancestors (Log View, uppercase)
 pub const ABSORB: KeyCode = KeyCode::Char('B');
 
+/// Show file annotation/blame (Status/Diff View)
+pub const ANNOTATE: KeyCode = KeyCode::Char('a');
+
 /// Open text search input (for n/N navigation)
 pub const SEARCH_INPUT: KeyCode = KeyCode::Char('/');
 
@@ -299,6 +302,10 @@ pub const DIFF_KEYS: &[KeyBindEntry] = &[
         description: "Next/prev file",
     },
     KeyBindEntry {
+        key: "a",
+        description: "Show file blame",
+    },
+    KeyBindEntry {
         key: "q",
         description: "Back to log",
     },
@@ -413,6 +420,11 @@ pub const DIFF_VIEW_HINTS: &[KeyHint] = &[
         color: Color::Magenta,
     },
     KeyHint {
+        key: "a",
+        label: "Blame",
+        color: Color::Magenta,
+    },
+    KeyHint {
         key: "^L",
         label: "Refresh",
         color: Color::Blue,
@@ -435,6 +447,11 @@ pub const STATUS_VIEW_HINTS: &[KeyHint] = &[
         key: "Enter",
         label: "Diff",
         color: Color::Green,
+    },
+    KeyHint {
+        key: "a",
+        label: "Blame",
+        color: Color::Magenta,
     },
     KeyHint {
         key: "C",
@@ -473,6 +490,10 @@ pub const STATUS_KEYS: &[KeyBindEntry] = &[
         description: "Show file diff",
     },
     KeyBindEntry {
+        key: "a",
+        description: "Show file blame",
+    },
+    KeyBindEntry {
         key: "C",
         description: "Commit changes",
     },
@@ -506,6 +527,26 @@ pub const OPERATION_KEYS: &[KeyBindEntry] = &[
     },
 ];
 
+/// Blame view key bindings for help display
+pub const BLAME_KEYS: &[KeyBindEntry] = &[
+    KeyBindEntry {
+        key: "j/k",
+        description: "Move down/up",
+    },
+    KeyBindEntry {
+        key: "g/G",
+        description: "Go to top/bottom",
+    },
+    KeyBindEntry {
+        key: "Enter",
+        description: "Show diff",
+    },
+    KeyBindEntry {
+        key: "q",
+        description: "Back",
+    },
+];
+
 /// Operation history view status bar hints
 pub const OPERATION_VIEW_HINTS: &[KeyHint] = &[
     KeyHint {
@@ -516,6 +557,30 @@ pub const OPERATION_VIEW_HINTS: &[KeyHint] = &[
     KeyHint {
         key: "Enter",
         label: "Restore",
+        color: Color::Green,
+    },
+    KeyHint {
+        key: "^L",
+        label: "Refresh",
+        color: Color::Blue,
+    },
+    KeyHint {
+        key: "q",
+        label: "Back",
+        color: Color::Red,
+    },
+];
+
+/// Blame view status bar hints
+pub const BLAME_VIEW_HINTS: &[KeyHint] = &[
+    KeyHint {
+        key: "j/k",
+        label: "Move",
+        color: Color::Cyan,
+    },
+    KeyHint {
+        key: "Enter",
+        label: "Diff",
         color: Color::Green,
     },
     KeyHint {

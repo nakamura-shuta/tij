@@ -2,11 +2,30 @@
 //!
 //! Parses the output from jj commands into structured data.
 
+use regex::Regex;
+use std::sync::LazyLock;
+
 use super::JjError;
 use super::template::FIELD_SEPARATOR;
 use crate::model::{
-    Change, DiffContent, DiffLine, DiffLineKind, FileState, FileStatus, Operation, Status,
+    AnnotationContent, AnnotationLine, Change, DiffContent, DiffLine, DiffLineKind, FileState,
+    FileStatus, Operation, Status,
 };
+
+/// Regex for parsing jj file annotate default output
+/// Format: `<change_id> <author> <timestamp>  <line_number>: <content>`
+/// Example: `twzksoxt nakamura 2026-01-30 10:43:19    1: //! Tij`
+///
+/// Groups:
+/// 1. change_id (first token, variable length)
+/// 2. author (between change_id and timestamp)
+/// 3. timestamp (YYYY-MM-DD HH:MM:SS)
+/// 4. line_number (digits after timestamp, before colon)
+/// 5. content (everything after `: ` or `:`)
+static ANNOTATE_LINE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(\S+)\s+(.+?)\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\d+):\s?(.*)$")
+        .expect("Invalid annotate line regex")
+});
 
 /// File operation type from jj show output
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -516,6 +535,73 @@ impl Parser {
         }
 
         Ok(operations)
+    }
+
+    /// Parse `jj file annotate` default output into AnnotationContent
+    ///
+    /// Default output format (jj 0.37.x compatible):
+    /// `<change_id> <author> <timestamp>  <line_number>: <content>`
+    ///
+    /// Example: `twzksoxt nakamura 2026-01-30 10:43:19    1: //! Tij`
+    ///
+    /// Note: first_in_hunk is calculated by comparing consecutive change_ids.
+    pub fn parse_file_annotate(
+        output: &str,
+        file_path: &str,
+    ) -> Result<AnnotationContent, JjError> {
+        let mut content = AnnotationContent::new(file_path.to_string());
+        let mut prev_change_id: Option<String> = None;
+
+        for line in output.lines() {
+            if line.is_empty() {
+                continue;
+            }
+
+            // Parse the default annotate output format
+            if let Some(annotation) = Self::parse_annotate_line(line, &prev_change_id) {
+                prev_change_id = Some(annotation.change_id.clone());
+                content.lines.push(annotation);
+            }
+        }
+
+        Ok(content)
+    }
+
+    /// Parse a single line of `jj file annotate` default output using regex
+    ///
+    /// Format: `<change_id> <author> <timestamp>  <line_number>: <content>`
+    /// Example: `twzksoxt nakamura 2026-01-30 10:43:19    1: //! Tij`
+    ///
+    /// Handles edge cases:
+    /// - change_id of variable length (not fixed 8 chars)
+    /// - author containing digits (e.g., "user1")
+    /// - content containing patterns like "1: foo"
+    fn parse_annotate_line(line: &str, prev_change_id: &Option<String>) -> Option<AnnotationLine> {
+        let caps = ANNOTATE_LINE_REGEX.captures(line)?;
+
+        let change_id = caps.get(1)?.as_str().to_string();
+        let author = caps.get(2)?.as_str().trim().to_string();
+        let timestamp = caps.get(3)?.as_str().to_string();
+        let line_number: usize = caps.get(4)?.as_str().parse().ok()?;
+        let content = caps
+            .get(5)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
+
+        // Determine if this is the first line in hunk (different change_id from previous)
+        let first_in_hunk = match prev_change_id {
+            Some(prev) => prev != &change_id,
+            None => true,
+        };
+
+        Some(AnnotationLine {
+            change_id,
+            author,
+            timestamp,
+            line_number,
+            content,
+            first_in_hunk,
+        })
     }
 }
 
@@ -1028,5 +1114,120 @@ Modified regular file src/lib.rs:
 
         let operations = Parser::parse_op_log(output).unwrap();
         assert_eq!(operations.len(), 2);
+    }
+
+    // =========================================================================
+    // parse_file_annotate tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_file_annotate_basic() {
+        // Default output format: "<change_id> <author> <timestamp>  <line_number>: <content>"
+        let output = "twzksoxt nakamura 2026-01-30 10:43:19    1: //! Tij\n\
+                      twzksoxt nakamura 2026-01-30 10:43:19    2: //!\n\
+                      qplomrst taro 2026-01-28 15:22:00    3: mod app;";
+
+        let content = Parser::parse_file_annotate(output, "src/main.rs").unwrap();
+        assert_eq!(content.file_path, "src/main.rs");
+        assert_eq!(content.len(), 3);
+
+        // First line - first in hunk
+        assert_eq!(content.lines[0].change_id, "twzksoxt");
+        assert_eq!(content.lines[0].author, "nakamura");
+        assert_eq!(content.lines[0].line_number, 1);
+        assert!(content.lines[0].first_in_hunk);
+        assert_eq!(content.lines[0].content, "//! Tij");
+
+        // Second line - continuation (same change_id)
+        assert_eq!(content.lines[1].change_id, "twzksoxt");
+        assert_eq!(content.lines[1].line_number, 2);
+        assert!(!content.lines[1].first_in_hunk);
+
+        // Third line - new hunk (different change_id)
+        assert_eq!(content.lines[2].change_id, "qplomrst");
+        assert_eq!(content.lines[2].line_number, 3);
+        assert!(content.lines[2].first_in_hunk);
+    }
+
+    #[test]
+    fn test_parse_file_annotate_with_tabs_in_content() {
+        // Content contains tabs - should be handled correctly
+        let output = "twzksoxt nakamura 2026-01-30 10:43:19    1: \tindented\twith\ttabs";
+
+        let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
+        assert_eq!(content.len(), 1);
+        assert_eq!(content.lines[0].content, "\tindented\twith\ttabs");
+    }
+
+    #[test]
+    fn test_parse_file_annotate_empty_content() {
+        // Empty content after line number
+        let output = "twzksoxt nakamura 2026-01-30 10:43:19    1:";
+
+        let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
+        assert_eq!(content.len(), 1);
+        assert_eq!(content.lines[0].content, "");
+    }
+
+    #[test]
+    fn test_parse_file_annotate_skips_empty_lines() {
+        // Empty lines in output are skipped
+        let output = "twzksoxt nakamura 2026-01-30 10:43:19    1: line1\n\n\nqplomrst taro 2026-01-28 15:22:00    4: line4";
+
+        let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
+        assert_eq!(content.len(), 2);
+        assert_eq!(content.lines[0].line_number, 1);
+        assert_eq!(content.lines[1].line_number, 4); // Preserves original line numbers from jj
+    }
+
+    #[test]
+    fn test_parse_file_annotate_author_with_digits() {
+        // Author name contains digits - should still parse correctly
+        let output = "abc12345 user1 2026-01-30 10:43:19    1: some content";
+
+        let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
+        assert_eq!(content.len(), 1);
+        assert_eq!(content.lines[0].change_id, "abc12345");
+        assert_eq!(content.lines[0].author, "user1");
+        assert_eq!(content.lines[0].line_number, 1);
+        assert_eq!(content.lines[0].content, "some content");
+    }
+
+    #[test]
+    fn test_parse_file_annotate_content_with_colon_pattern() {
+        // Content contains patterns like "1: foo" - should not confuse parser
+        let output = "twzksoxt nakamura 2026-01-30 10:43:19   10: let x = 1: foo";
+
+        let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
+        assert_eq!(content.len(), 1);
+        assert_eq!(content.lines[0].line_number, 10);
+        assert_eq!(content.lines[0].content, "let x = 1: foo");
+    }
+
+    #[test]
+    fn test_parse_file_annotate_variable_change_id_length() {
+        // change_id longer than 8 chars (if jj config changes)
+        let output = "abcdefghij user 2026-01-30 10:43:19    1: content";
+
+        let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
+        assert_eq!(content.len(), 1);
+        assert_eq!(content.lines[0].change_id, "abcdefghij");
+
+        // change_id shorter than 8 chars
+        let output2 = "abc user 2026-01-30 10:43:19    1: content";
+
+        let content2 = Parser::parse_file_annotate(output2, "test.rs").unwrap();
+        assert_eq!(content2.len(), 1);
+        assert_eq!(content2.lines[0].change_id, "abc");
+    }
+
+    #[test]
+    fn test_parse_file_annotate_complex_author_name() {
+        // Author with spaces (full name) or special characters
+        let output = "twzksoxt John Doe 2026-01-30 10:43:19    1: content";
+
+        let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
+        assert_eq!(content.len(), 1);
+        assert_eq!(content.lines[0].author, "John Doe");
     }
 }

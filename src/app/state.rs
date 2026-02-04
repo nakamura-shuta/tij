@@ -5,7 +5,7 @@ use std::cell::Cell;
 use crate::jj::JjExecutor;
 use crate::model::Notification;
 use crate::ui::components::{Dialog, DialogCallback, DialogResult, SelectItem};
-use crate::ui::views::{DiffView, LogView, OperationView, StatusView};
+use crate::ui::views::{BlameView, DiffView, LogView, OperationView, StatusView};
 
 /// Available views in the application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -15,6 +15,7 @@ pub enum View {
     Diff,
     Status,
     Operation,
+    Blame,
     Help,
 }
 
@@ -31,6 +32,8 @@ pub struct App {
     pub log_view: LogView,
     /// Diff view state (created on demand)
     pub diff_view: Option<DiffView>,
+    /// Blame view state (created on demand)
+    pub blame_view: Option<BlameView>,
     /// Status view state
     pub status_view: StatusView,
     /// Operation history view state
@@ -62,6 +65,7 @@ impl App {
             previous_view: None,
             log_view: LogView::new(),
             diff_view: None,
+            blame_view: None,
             status_view: StatusView::new(),
             operation_view: OperationView::new(),
             jj: JjExecutor::new(),
@@ -98,6 +102,7 @@ impl App {
             View::Status => View::Log,
             View::Diff => View::Log,
             View::Operation => View::Log,
+            View::Blame => View::Log,
             View::Help => View::Log,
         };
         self.go_to_view(next);
@@ -172,6 +177,24 @@ impl App {
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to load diff: {}", e));
+            }
+        }
+    }
+
+    /// Open blame view for a specific file
+    ///
+    /// Optionally accepts a revision to annotate. If None, uses the working copy.
+    pub(crate) fn open_blame(&mut self, file_path: &str, revision: Option<&str>) {
+        match self.jj.file_annotate(file_path, revision) {
+            Ok(content) => {
+                let mut blame_view = BlameView::new();
+                blame_view.set_content(content, revision.map(|s| s.to_string()));
+                self.blame_view = Some(blame_view);
+                self.go_to_view(View::Blame);
+                self.error_message = None;
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to load blame: {}", e));
             }
         }
     }
@@ -407,6 +430,15 @@ impl App {
                     self.notification = Some(Notification::info("Refreshed"));
                 }
                 // If diff_view is None, do nothing (no notification)
+            }
+            View::Blame => {
+                // Only refresh if blame_view is loaded
+                if let Some(ref blame_view) = self.blame_view {
+                    let file_path = blame_view.file_path().to_string();
+                    let revision = blame_view.revision().map(|s| s.to_string());
+                    self.open_blame(&file_path, revision.as_deref());
+                    self.notification = Some(Notification::info("Refreshed"));
+                }
             }
             View::Help => {
                 // Help is static content, no refresh needed, no notification

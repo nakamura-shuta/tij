@@ -6,7 +6,7 @@
 use ratatui::{Frame, prelude::*, text::Line, widgets::Paragraph};
 
 use crate::keys::{self, KeyHint};
-use crate::ui::views::DiffView;
+use crate::ui::views::{BlameView, DiffView};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hint formatting
@@ -128,6 +128,11 @@ pub fn operation_view_status_bar_height(width: u16) -> u16 {
     calc_height(keys::OPERATION_VIEW_HINTS, width)
 }
 
+/// Get the status bar height for blame view
+pub fn blame_view_status_bar_height(width: u16) -> u16 {
+    calc_height(keys::BLAME_VIEW_HINTS, width)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Rendering
 // ─────────────────────────────────────────────────────────────────────────────
@@ -199,6 +204,25 @@ pub fn render_diff_status_bar(frame: &mut Frame, diff_view: &DiffView) {
     ];
 
     let status = build_status_bar_with_prefix(prefix, keys::DIFF_VIEW_HINTS);
+    frame.render_widget(Paragraph::new(status), status_area);
+}
+
+/// Render the status bar for blame view (special: includes file path prefix)
+pub fn render_blame_status_bar(frame: &mut Frame, blame_view: &BlameView) {
+    let Some(status_area) = status_bar_area(frame, keys::BLAME_VIEW_HINTS) else {
+        return;
+    };
+
+    let file_path = blame_view.file_path();
+    let prefix = vec![
+        Span::styled(
+            format!(" {} ", file_path),
+            Style::default().fg(Color::Black).bg(Color::Yellow),
+        ),
+        Span::raw(" "),
+    ];
+
+    let status = build_status_bar_with_prefix(prefix, keys::BLAME_VIEW_HINTS);
     frame.render_widget(Paragraph::new(status), status_area);
 }
 

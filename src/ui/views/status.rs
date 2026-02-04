@@ -35,6 +35,11 @@ pub enum StatusAction {
         /// File path to jump to
         file_path: String,
     },
+    /// Show blame/annotation for selected file
+    OpenBlame {
+        /// File path to annotate
+        file_path: String,
+    },
     /// Commit with message
     Commit { message: String },
     /// No action
@@ -227,6 +232,15 @@ impl StatusView {
                     self.start_commit_input();
                 }
                 StatusAction::None
+            }
+            code if code == keys::ANNOTATE => {
+                if let Some(file_path) = self.selected_file_path() {
+                    StatusAction::OpenBlame {
+                        file_path: file_path.to_string(),
+                    }
+                } else {
+                    StatusAction::None
+                }
             }
             // Note: QUIT, TAB, ESC are handled by global key handler in input.rs
             _ => StatusAction::None,
@@ -447,7 +461,8 @@ impl StatusView {
         if is_selected {
             line = line.style(
                 Style::default()
-                    .bg(theme::status_view::SELECTED_BG)
+                    .fg(theme::selection::FG)
+                    .bg(theme::selection::BG)
                     .add_modifier(Modifier::BOLD),
             );
         }

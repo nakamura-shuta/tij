@@ -4,6 +4,18 @@
 
 use ratatui::style::Color;
 
+/// Common selection colors (used across all views)
+pub mod selection {
+    use super::*;
+
+    /// Selected row background - dark blue for good contrast on both light/dark terminals
+    /// Note: Indexed(24) requires 256-color terminal. Falls back to different color
+    /// on 16-color terminals (rare in modern use).
+    pub const BG: Color = Color::Indexed(24); // xterm-256: dark blue (#005f87)
+    /// Selected row foreground - bright white for visibility
+    pub const FG: Color = Color::White;
+}
+
 /// Colors for Log View
 pub mod log_view {
     use super::*;
@@ -22,8 +34,6 @@ pub mod log_view {
     pub const TIMESTAMP: Color = Color::DarkGray;
     /// Empty label color
     pub const EMPTY_LABEL: Color = Color::DarkGray;
-    /// Selected row background
-    pub const SELECTED_BG: Color = Color::DarkGray;
     /// Graph line color (DAG structure)
     pub const GRAPH_LINE: Color = Color::Blue;
 }
@@ -56,8 +66,6 @@ pub mod status_view {
     pub const RENAMED: Color = Color::Cyan;
     /// Conflicted file color
     pub const CONFLICTED: Color = Color::Magenta;
-    /// Selected row background
-    pub const SELECTED_BG: Color = Color::DarkGray;
     /// Header text color (change ID, etc.)
     pub const HEADER: Color = Color::Cyan;
 }
