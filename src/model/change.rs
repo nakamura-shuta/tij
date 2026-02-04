@@ -54,7 +54,6 @@ impl Change {
             &self.description
         }
     }
-
 }
 
 #[cfg(test)]

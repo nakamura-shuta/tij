@@ -493,10 +493,10 @@ impl App {
         self.refresh_status();
     }
 
-    /// Execute bookmark creation or move
+    /// Execute bookmark creation or show move confirmation dialog
     ///
     /// First tries `jj bookmark create`. If the bookmark already exists,
-    /// falls back to `jj bookmark set` to move it.
+    /// shows a confirmation dialog before moving it.
     pub(crate) fn execute_bookmark_create(&mut self, change_id: &str, name: &str) {
         match self.jj.bookmark_create(name, change_id) {
             Ok(_) => {
@@ -507,24 +507,36 @@ impl App {
                 self.refresh_log(revset.as_deref());
             }
             Err(e) => {
-                // Check if bookmark already exists - try to move it instead
+                // Check if bookmark already exists - show confirmation dialog
                 if is_bookmark_exists_error(&e) {
-                    // Fallback to bookmark set (move)
-                    match self.jj.bookmark_set(name, change_id) {
-                        Ok(_) => {
-                            self.notification =
-                                Some(Notification::success(format!("Moved bookmark: {}", name)));
-                            let revset = self.log_view.current_revset.clone();
-                            self.refresh_log(revset.as_deref());
-                        }
-                        Err(set_err) => {
-                            self.error_message =
-                                Some(format!("Failed to move bookmark: {}", set_err));
-                        }
-                    }
+                    // Show confirmation dialog for moving bookmark
+                    self.active_dialog = Some(Dialog::confirm(
+                        "Move Bookmark",
+                        format!("Move bookmark \"{}\" to this change?", name),
+                        Some("Bookmark will be updated.".to_string()),
+                        DialogCallback::MoveBookmark {
+                            name: name.to_string(),
+                            change_id: change_id.to_string(),
+                        },
+                    ));
                 } else {
                     self.error_message = Some(format!("Failed to create bookmark: {}", e));
                 }
+            }
+        }
+    }
+
+    /// Execute bookmark move (called after confirmation)
+    fn execute_bookmark_move(&mut self, name: &str, change_id: &str) {
+        match self.jj.bookmark_set(name, change_id) {
+            Ok(_) => {
+                self.notification =
+                    Some(Notification::success(format!("Moved bookmark: {}", name)));
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to move bookmark: {}", e));
             }
         }
     }
@@ -592,13 +604,33 @@ impl App {
 
     /// Handle dialog result
     ///
-    /// Called when a dialog is closed. The active_dialog is still Some at this point.
+    /// Called when a dialog is closed.
+    ///
+    /// Implementation order (important):
+    /// 1. Clone callback_id from active_dialog
+    /// 2. Set active_dialog to None
+    /// 3. Match on callback and result
     pub(crate) fn handle_dialog_result(&mut self, result: DialogResult) {
-        let callback = self.active_dialog.as_ref().map(|d| d.callback_id);
+        // Step 1: Clone callback_id (String clone cost is acceptable)
+        let callback = self.active_dialog.as_ref().map(|d| d.callback_id.clone());
 
+        // Step 2: Clear active_dialog (callback is already cloned)
+        self.active_dialog = None;
+
+        // Step 3: Match on callback and result
+        // Note: For Confirm dialogs, Confirmed(vec) always contains an empty vec.
+        //       Only Select dialogs return selected values.
         match (callback, result) {
             (Some(DialogCallback::DeleteBookmarks), DialogResult::Confirmed(names)) => {
+                // Select dialog - names contains selected bookmark names
                 self.execute_bookmark_delete(&names);
+            }
+            (
+                Some(DialogCallback::MoveBookmark { name, change_id }),
+                DialogResult::Confirmed(_),
+            ) => {
+                // Confirm dialog - execute bookmark move
+                self.execute_bookmark_move(&name, &change_id);
             }
             (Some(DialogCallback::OpRestore), DialogResult::Confirmed(_)) => {
                 // TODO: Implement op restore with dialog

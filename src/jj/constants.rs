@@ -48,7 +48,6 @@ pub mod special {
     /// In jj, the root commit has a special change ID consisting of all 'z'.
     /// This is used to identify and specially render the root in Log View.
     pub const ROOT_CHANGE_ID: &str = "zzzzzzzz";
-
 }
 
 /// Error detection patterns in jj output

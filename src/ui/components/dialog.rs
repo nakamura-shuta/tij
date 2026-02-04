@@ -16,10 +16,20 @@ use ratatui::{
 use crate::keys;
 
 /// Callback identifier for dialog results
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Note: `Copy` is not implemented because some variants contain `String` data.
+/// Use `clone()` when extracting from `active_dialog`.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DialogCallback {
-    /// Bookmark deletion
+    /// Bookmark deletion (Select dialog)
     DeleteBookmarks,
+    /// Bookmark move confirmation (Confirm dialog)
+    MoveBookmark {
+        /// Bookmark name to move
+        name: String,
+        /// Target change ID
+        change_id: String,
+    },
     /// Operation restore (future use)
     #[allow(dead_code)]
     OpRestore,
@@ -40,7 +50,6 @@ pub struct SelectItem {
 #[derive(Debug, Clone)]
 pub enum DialogKind {
     /// Simple Yes/No confirmation
-    #[allow(dead_code)]
     Confirm {
         title: String,
         message: String,
@@ -79,7 +88,6 @@ pub struct Dialog {
 
 impl Dialog {
     /// Create a new Confirm dialog
-    #[allow(dead_code)]
     pub fn confirm(
         title: impl Into<String>,
         message: impl Into<String>,
@@ -237,9 +245,8 @@ impl Dialog {
         }
 
         lines.push(Line::from(vec![
-            Span::raw("        "),
             Span::styled("[Y]", Style::default().fg(Color::Green)),
-            Span::raw("es         "),
+            Span::raw("es       "),
             Span::styled("[N]", Style::default().fg(Color::Red)),
             Span::raw("o"),
         ]));
@@ -558,5 +565,93 @@ mod tests {
             dialog2.handle_key(key(KeyCode::Char('q'))),
             Some(DialogResult::Cancelled)
         );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // DialogCallback tests (Phase 5.2)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_dialog_callback_clone_with_data() {
+        let callback = DialogCallback::MoveBookmark {
+            name: "main".to_string(),
+            change_id: "abc123".to_string(),
+        };
+        let cloned = callback.clone();
+        assert_eq!(callback, cloned);
+    }
+
+    #[test]
+    fn test_dialog_callback_equality_different_data() {
+        let callback1 = DialogCallback::MoveBookmark {
+            name: "main".to_string(),
+            change_id: "abc123".to_string(),
+        };
+        let callback2 = DialogCallback::MoveBookmark {
+            name: "feature".to_string(), // Different name
+            change_id: "abc123".to_string(),
+        };
+        assert_ne!(callback1, callback2);
+
+        let callback3 = DialogCallback::MoveBookmark {
+            name: "main".to_string(),
+            change_id: "xyz789".to_string(), // Different change_id
+        };
+        assert_ne!(callback1, callback3);
+    }
+
+    #[test]
+    fn test_dialog_callback_different_variants() {
+        let move_bm = DialogCallback::MoveBookmark {
+            name: "main".to_string(),
+            change_id: "abc123".to_string(),
+        };
+        let delete_bm = DialogCallback::DeleteBookmarks;
+        assert_ne!(move_bm, delete_bm);
+    }
+
+    #[test]
+    fn test_confirm_dialog_for_move_bookmark() {
+        let dialog = Dialog::confirm(
+            "Move Bookmark",
+            "Move bookmark \"main\" to this change?",
+            Some("Bookmark will be updated.".to_string()),
+            DialogCallback::MoveBookmark {
+                name: "main".to_string(),
+                change_id: "abc123".to_string(),
+            },
+        );
+
+        assert!(matches!(dialog.kind, DialogKind::Confirm { .. }));
+        assert!(matches!(
+            dialog.callback_id,
+            DialogCallback::MoveBookmark { .. }
+        ));
+    }
+
+    #[test]
+    fn test_confirm_dialog_with_detail() {
+        let dialog = Dialog::confirm(
+            "Test",
+            "Message",
+            Some("Warning detail".to_string()),
+            DialogCallback::DeleteBookmarks,
+        );
+
+        if let DialogKind::Confirm { detail, .. } = &dialog.kind {
+            assert_eq!(detail.as_deref(), Some("Warning detail"));
+        } else {
+            panic!("Expected Confirm dialog");
+        }
+    }
+
+    #[test]
+    fn test_confirm_dialog_ignores_other_keys() {
+        let mut dialog = Dialog::confirm("Test", "Message", None, DialogCallback::DeleteBookmarks);
+
+        // Other keys are ignored
+        assert!(dialog.handle_key(key(KeyCode::Char('x'))).is_none());
+        assert!(dialog.handle_key(key(KeyCode::Char(' '))).is_none());
+        assert!(dialog.handle_key(key(KeyCode::Tab)).is_none());
     }
 }

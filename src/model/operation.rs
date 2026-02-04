@@ -21,7 +21,6 @@ impl Operation {
     pub fn short_id(&self) -> &str {
         &self.id[..12.min(self.id.len())]
     }
-
 }
 
 #[cfg(test)]
