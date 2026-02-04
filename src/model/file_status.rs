@@ -22,7 +22,8 @@ impl Status {
         self.files.is_empty()
     }
 
-    /// Get count of files by state
+    /// Get count of files by state (test-only helper)
+    #[cfg(test)]
     pub fn count_by_state(&self, state: &FileState) -> usize {
         self.files
             .iter()

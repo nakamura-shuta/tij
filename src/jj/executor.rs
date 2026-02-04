@@ -9,7 +9,7 @@ use std::process::{Command, ExitStatus, Stdio};
 use crate::model::{Change, DiffContent, Operation, Status};
 
 use super::JjError;
-use super::constants::{self, commands, errors, flags, special};
+use super::constants::{self, commands, errors, flags};
 use super::parser::Parser;
 use super::template::Templates;
 
@@ -79,29 +79,6 @@ impl JjExecutor {
         }
     }
 
-    /// Get the jj version
-    pub fn version(&self) -> Result<String, JjError> {
-        let output = self.run(&[flags::VERSION])?;
-        // Output format: "jj 0.37.0"
-        let trimmed = output.trim();
-        Ok(trimmed
-            .strip_prefix(special::VERSION_PREFIX)
-            .unwrap_or(trimmed)
-            .to_string())
-    }
-
-    /// Check if jj version is supported
-    pub fn check_version(&self) -> Result<(), JjError> {
-        let version = self.version()?;
-        if !is_version_supported(&version, constants::MIN_JJ_VERSION) {
-            return Err(JjError::UnsupportedVersion {
-                version,
-                minimum: constants::MIN_JJ_VERSION.to_string(),
-            });
-        }
-        Ok(())
-    }
-
     /// Run `jj log` with optional revset filter (raw output)
     ///
     /// Note: Graph output is enabled to show DAG structure.
@@ -139,11 +116,6 @@ impl JjExecutor {
     pub fn status(&self) -> Result<Status, JjError> {
         let output = self.status_raw()?;
         Parser::parse_status(&output)
-    }
-
-    /// Run `jj diff` for a specific change
-    pub fn diff_raw(&self, change_id: &str) -> Result<String, JjError> {
-        self.run(&[commands::DIFF, flags::REVISION, change_id])
     }
 
     /// Run `jj show` for a specific change
@@ -365,6 +337,21 @@ impl JjExecutor {
         ])
     }
 
+    /// Run `jj bookmark set <name> -r <change-id> --allow-backwards` to move an existing bookmark
+    ///
+    /// Moves an existing bookmark to point to the specified change.
+    /// Uses `--allow-backwards` to permit moving in any direction.
+    pub fn bookmark_set(&self, name: &str, change_id: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::BOOKMARK,
+            commands::BOOKMARK_SET,
+            name,
+            "-r",
+            change_id,
+            "--allow-backwards",
+        ])
+    }
+
     /// Run `jj bookmark delete <names>...` to delete bookmarks
     ///
     /// Deletes the specified bookmarks. Deletions propagate to remotes on push.
@@ -375,56 +362,9 @@ impl JjExecutor {
     }
 }
 
-/// Compare version strings (simple semver comparison)
-///
-/// Handles prerelease suffixes like "0.37.0-rc1" by stripping the suffix.
-fn is_version_supported(version: &str, minimum: &str) -> bool {
-    let parse_version = |v: &str| -> Option<(u32, u32, u32)> {
-        let parts: Vec<&str> = v.split('.').collect();
-        if parts.len() >= 2 {
-            let major = parts[0].parse().ok()?;
-            let minor = parts[1].parse().ok()?;
-            // Strip prerelease suffix (e.g., "0-rc1" -> "0")
-            let patch = parts
-                .get(2)
-                .and_then(|p| {
-                    // Split on '-' to handle prerelease versions
-                    p.split('-').next().and_then(|n| n.parse().ok())
-                })
-                .unwrap_or(0);
-            Some((major, minor, patch))
-        } else {
-            None
-        }
-    };
-
-    match (parse_version(version), parse_version(minimum)) {
-        (Some(v), Some(m)) => v >= m,
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_version_comparison() {
-        assert!(is_version_supported("0.37.0", "0.20.0"));
-        assert!(is_version_supported("0.20.0", "0.20.0"));
-        assert!(is_version_supported("1.0.0", "0.20.0"));
-        assert!(!is_version_supported("0.19.0", "0.20.0"));
-        assert!(!is_version_supported("0.10.0", "0.20.0"));
-    }
-
-    #[test]
-    fn test_version_comparison_prerelease() {
-        // Prerelease versions should be supported if base version meets minimum
-        assert!(is_version_supported("0.37.0-rc1", "0.20.0"));
-        assert!(is_version_supported("0.20.0-beta", "0.20.0"));
-        assert!(is_version_supported("1.0.0-alpha.1", "0.20.0"));
-        assert!(!is_version_supported("0.19.0-rc1", "0.20.0"));
-    }
 
     #[test]
     fn test_executor_default() {

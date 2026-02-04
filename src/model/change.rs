@@ -46,11 +46,6 @@ impl Change {
         &self.change_id
     }
 
-    /// Check if this is the root change (all 'z' change ID)
-    pub fn is_root(&self) -> bool {
-        crate::jj::constants::ROOT_CHANGE_ID == self.change_id
-    }
-
     /// Get a display string for the description
     pub fn display_description(&self) -> &str {
         if self.description.is_empty() {
@@ -60,15 +55,18 @@ impl Change {
         }
     }
 
-    /// Get the marker character for this change
-    pub fn marker(&self) -> char {
-        if self.is_working_copy { '@' } else { '○' }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl Change {
+        /// Get the marker character for this change (test-only helper)
+        pub fn marker(&self) -> char {
+            if self.is_working_copy { '@' } else { '○' }
+        }
+    }
 
     fn sample_change() -> Change {
         Change {

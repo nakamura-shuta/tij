@@ -25,7 +25,8 @@ impl DiffContent {
             .any(|l| l.kind == DiffLineKind::FileHeader)
     }
 
-    /// Count the number of files changed
+    /// Count the number of files changed (test-only helper)
+    #[cfg(test)]
     pub fn file_count(&self) -> usize {
         self.lines
             .iter()
@@ -64,7 +65,8 @@ impl DiffLine {
         }
     }
 
-    /// Create a context line (unchanged)
+    /// Create a context line (unchanged, test-only helper)
+    #[cfg(test)]
     pub fn context(
         old_line: Option<usize>,
         new_line: Option<usize>,
@@ -77,7 +79,8 @@ impl DiffLine {
         }
     }
 
-    /// Create an added line
+    /// Create an added line (test-only helper)
+    #[cfg(test)]
     pub fn added(new_line: usize, content: impl Into<String>) -> Self {
         Self {
             kind: DiffLineKind::Added,
@@ -86,7 +89,8 @@ impl DiffLine {
         }
     }
 
-    /// Create a deleted line
+    /// Create a deleted line (test-only helper)
+    #[cfg(test)]
     pub fn deleted(old_line: usize, content: impl Into<String>) -> Self {
         Self {
             kind: DiffLineKind::Deleted,

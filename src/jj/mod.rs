@@ -29,7 +29,4 @@ pub enum JjError {
 
     #[error("jj is not installed or not in PATH")]
     JjNotFound,
-
-    #[error("Unsupported jj version: {version} (minimum: {minimum})")]
-    UnsupportedVersion { version: String, minimum: String },
 }

@@ -5,14 +5,10 @@
 /// jj command binary name
 pub const JJ_COMMAND: &str = "jj";
 
-/// Minimum supported jj version
-pub const MIN_JJ_VERSION: &str = "0.20.0";
-
 /// jj subcommands
 pub mod commands {
     pub const LOG: &str = "log";
     pub const STATUS: &str = "status";
-    pub const DIFF: &str = "diff";
     pub const SHOW: &str = "show";
     pub const DESCRIBE: &str = "describe";
     pub const NEW: &str = "new";
@@ -27,6 +23,7 @@ pub mod commands {
     pub const OP_RESTORE: &str = "restore";
     pub const BOOKMARK: &str = "bookmark";
     pub const BOOKMARK_CREATE: &str = "create";
+    pub const BOOKMARK_SET: &str = "set";
     pub const BOOKMARK_DELETE: &str = "delete";
 }
 
@@ -42,8 +39,6 @@ pub mod flags {
     pub const REVISION: &str = "-r";
     /// Specify repository path
     pub const REPO_PATH: &str = "-R";
-    /// Show version
-    pub const VERSION: &str = "--version";
 }
 
 /// Special jj values
@@ -54,8 +49,6 @@ pub mod special {
     /// This is used to identify and specially render the root in Log View.
     pub const ROOT_CHANGE_ID: &str = "zzzzzzzz";
 
-    /// Version output prefix (e.g., "jj 0.37.0")
-    pub const VERSION_PREFIX: &str = "jj ";
 }
 
 /// Error detection patterns in jj output

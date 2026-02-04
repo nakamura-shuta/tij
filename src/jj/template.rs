@@ -48,12 +48,6 @@ impl Templates {
         )
     }
 
-    /// Template for `jj status` - uses default output, parsed line by line
-    pub fn status() -> Option<&'static str> {
-        // status doesn't need a custom template
-        None
-    }
-
     /// Template for `jj op log` output
     ///
     /// Fields (separated by tab):

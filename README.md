@@ -48,7 +48,7 @@ Press `?` for help, `q` to quit.
 | Views | Log / Diff / Status / Help / Operation History |
 | History Editing | Describe / Edit / New / Commit / Squash / Abandon / Split |
 | Recovery | Undo / Redo / Operation Restore |
-| Bookmarks | Create / Delete (multi-select) |
+| Bookmarks | Create / Move / Delete (multi-select) |
 | Usability | Revset filtering / Text search / Adaptive status bar |
 
 ### Planned

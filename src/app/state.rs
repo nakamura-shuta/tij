@@ -493,7 +493,10 @@ impl App {
         self.refresh_status();
     }
 
-    /// Execute bookmark creation
+    /// Execute bookmark creation or move
+    ///
+    /// First tries `jj bookmark create`. If the bookmark already exists,
+    /// falls back to `jj bookmark set` to move it.
     pub(crate) fn execute_bookmark_create(&mut self, change_id: &str, name: &str) {
         match self.jj.bookmark_create(name, change_id) {
             Ok(_) => {
@@ -504,7 +507,24 @@ impl App {
                 self.refresh_log(revset.as_deref());
             }
             Err(e) => {
-                self.error_message = Some(format!("Failed to create bookmark: {}", e));
+                // Check if bookmark already exists - try to move it instead
+                if is_bookmark_exists_error(&e) {
+                    // Fallback to bookmark set (move)
+                    match self.jj.bookmark_set(name, change_id) {
+                        Ok(_) => {
+                            self.notification =
+                                Some(Notification::success(format!("Moved bookmark: {}", name)));
+                            let revset = self.log_view.current_revset.clone();
+                            self.refresh_log(revset.as_deref());
+                        }
+                        Err(set_err) => {
+                            self.error_message =
+                                Some(format!("Failed to move bookmark: {}", set_err));
+                        }
+                    }
+                } else {
+                    self.error_message = Some(format!("Failed to create bookmark: {}", e));
+                }
             }
         }
     }
@@ -588,5 +608,65 @@ impl App {
             }
             _ => {}
         }
+    }
+}
+
+/// Check if a JjError indicates that a bookmark already exists
+///
+/// This is used to determine whether to fallback from `bookmark create` to `bookmark set`.
+fn is_bookmark_exists_error(error: &crate::jj::JjError) -> bool {
+    if let crate::jj::JjError::CommandFailed { stderr, .. } = error {
+        let stderr_lower = stderr.to_lowercase();
+        stderr_lower.contains("already exists") || stderr_lower.contains("bookmark already")
+    } else {
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::jj::JjError;
+
+    #[test]
+    fn test_is_bookmark_exists_error_with_already_exists() {
+        let error = JjError::CommandFailed {
+            stderr: "Error: Bookmark 'main' already exists".to_string(),
+            exit_code: 1,
+        };
+        assert!(is_bookmark_exists_error(&error));
+    }
+
+    #[test]
+    fn test_is_bookmark_exists_error_with_bookmark_already() {
+        let error = JjError::CommandFailed {
+            stderr: "Error: bookmark already exists: feature".to_string(),
+            exit_code: 1,
+        };
+        assert!(is_bookmark_exists_error(&error));
+    }
+
+    #[test]
+    fn test_is_bookmark_exists_error_case_insensitive() {
+        let error = JjError::CommandFailed {
+            stderr: "Error: BOOKMARK ALREADY EXISTS".to_string(),
+            exit_code: 1,
+        };
+        assert!(is_bookmark_exists_error(&error));
+    }
+
+    #[test]
+    fn test_is_bookmark_exists_error_different_error() {
+        let error = JjError::CommandFailed {
+            stderr: "Error: Invalid revision".to_string(),
+            exit_code: 1,
+        };
+        assert!(!is_bookmark_exists_error(&error));
+    }
+
+    #[test]
+    fn test_is_bookmark_exists_error_not_command_failed() {
+        let error = JjError::NotARepository;
+        assert!(!is_bookmark_exists_error(&error));
     }
 }
