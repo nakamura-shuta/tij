@@ -12,6 +12,7 @@ pub enum NotificationKind {
     /// Info - informational message (cyan)
     Info,
     /// Warning - caution message (yellow)
+    #[allow(dead_code)]
     Warning,
 }
 
@@ -47,6 +48,7 @@ impl Notification {
     }
 
     /// Create a warning notification
+    #[allow(dead_code)]
     pub fn warning(message: impl Into<String>) -> Self {
         Self::new(message, NotificationKind::Warning)
     }

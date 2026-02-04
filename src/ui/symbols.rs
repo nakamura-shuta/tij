@@ -20,6 +20,7 @@ pub mod markers {
     /// Root change marker (◆)
     pub const ROOT: char = '◆';
     /// Vertical connector (│)
+    #[allow(dead_code)]
     pub const CONNECTOR: char = '│';
 }
 

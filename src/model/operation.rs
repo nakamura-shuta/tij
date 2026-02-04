@@ -6,6 +6,7 @@ pub struct Operation {
     /// Operation ID (e.g., "75ea3c2331bf")
     pub id: String,
     /// User who performed the operation
+    #[allow(dead_code)]
     pub user: String,
     /// Timestamp (e.g., "2026-02-02 11:25:54 +09:00")
     pub timestamp: String,
@@ -21,11 +22,6 @@ impl Operation {
         &self.id[..12.min(self.id.len())]
     }
 
-    /// Format timestamp for display (extract relative or short form)
-    pub fn display_timestamp(&self) -> &str {
-        // Return as-is for now, can be enhanced later
-        &self.timestamp
-    }
 }
 
 #[cfg(test)]

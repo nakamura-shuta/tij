@@ -21,6 +21,7 @@ pub enum DialogCallback {
     /// Bookmark deletion
     DeleteBookmarks,
     /// Operation restore (future use)
+    #[allow(dead_code)]
     OpRestore,
 }
 
@@ -39,6 +40,7 @@ pub struct SelectItem {
 #[derive(Debug, Clone)]
 pub enum DialogKind {
     /// Simple Yes/No confirmation
+    #[allow(dead_code)]
     Confirm {
         title: String,
         message: String,
@@ -77,6 +79,7 @@ pub struct Dialog {
 
 impl Dialog {
     /// Create a new Confirm dialog
+    #[allow(dead_code)]
     pub fn confirm(
         title: impl Into<String>,
         message: impl Into<String>,
