@@ -33,6 +33,7 @@ impl App {
         }
 
         // Handle Ctrl+R for redo (only in Log view, normal mode)
+        // Skip in DescribeInput mode because tui-textarea uses Ctrl+R for its own redo
         if key.modifiers.contains(KeyModifiers::CONTROL)
             && matches!(key.code, KeyCode::Char('r') | KeyCode::Char('R'))
             && self.current_view == View::Log
@@ -169,6 +170,9 @@ impl App {
             }
             LogAction::ClearRevset => {
                 self.refresh_log(None);
+            }
+            LogAction::StartDescribe(change_id) => {
+                self.start_describe_input(&change_id);
             }
             LogAction::Describe { change_id, message } => {
                 self.execute_describe(&change_id, &message);

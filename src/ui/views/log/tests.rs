@@ -858,3 +858,142 @@ fn test_absorb_key_works_without_selection() {
     let action = press_key(&mut view, keys::ABSORB);
     assert!(matches!(action, LogAction::Absorb));
 }
+
+// =============================================================================
+// Describe tests (multi-line textarea)
+// =============================================================================
+
+#[test]
+fn test_describe_key_returns_start_describe_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Press d - should return StartDescribe action (App will fetch full description)
+    let action = press_key(&mut view, keys::DESCRIBE);
+    assert_eq!(action, LogAction::StartDescribe("abc12345".to_string()));
+    // View should NOT yet be in DescribeInput mode (App sets it via set_describe_input)
+    assert_eq!(view.input_mode, InputMode::Normal);
+}
+
+#[test]
+fn test_set_describe_input() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Simulate App calling set_describe_input with full description
+    view.set_describe_input(
+        "abc12345".to_string(),
+        "Full description\nSecond line".to_string(),
+    );
+
+    assert_eq!(view.input_mode, InputMode::DescribeInput);
+    assert_eq!(view.editing_change_id, Some("abc12345".to_string()));
+    assert!(view.textarea.is_some());
+
+    // Check textarea contains the full multi-line description
+    let textarea = view.textarea.as_ref().unwrap();
+    assert_eq!(textarea.lines().join("\n"), "Full description\nSecond line");
+}
+
+#[test]
+fn test_describe_input_start_with_existing_description() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // First change has "First commit" description
+    view.start_describe_input();
+
+    assert!(view.textarea.is_some());
+    let textarea = view.textarea.as_ref().unwrap();
+    // TextArea should contain the existing description
+    assert_eq!(textarea.lines().join("\n"), "First commit");
+}
+
+#[test]
+fn test_describe_input_cancel() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Start describe input
+    view.start_describe_input();
+    assert_eq!(view.input_mode, InputMode::DescribeInput);
+    assert!(view.textarea.is_some());
+
+    // Cancel with cancel_describe_input
+    view.cancel_describe_input();
+
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert!(view.textarea.is_none());
+    assert!(view.editing_change_id.is_none());
+}
+
+#[test]
+fn test_describe_input_escape_cancels() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Start describe input via set_describe_input (simulating App)
+    view.set_describe_input("abc12345".to_string(), "Test description".to_string());
+    assert_eq!(view.input_mode, InputMode::DescribeInput);
+
+    // Press Esc to cancel
+    let action = escape(&mut view);
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert!(view.textarea.is_none());
+}
+
+#[test]
+fn test_describe_key_no_selection_returns_none() {
+    let mut view = LogView::new();
+    // Empty changes
+
+    // Press d - should return None when no change is selected
+    let action = press_key(&mut view, keys::DESCRIBE);
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert!(view.textarea.is_none());
+}
+
+#[test]
+fn test_describe_input_ctrl_s_saves() {
+    use crossterm::event::KeyModifiers;
+
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Start describe input
+    view.start_describe_input();
+    assert_eq!(view.editing_change_id, Some("abc12345".to_string()));
+
+    // The textarea already has "First commit" from start_describe_input
+
+    // Press Ctrl+S to save
+    let key = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+    let action = view.handle_key(key);
+
+    assert!(matches!(
+        action,
+        LogAction::Describe { change_id, message }
+        if change_id == "abc12345" && message == "First commit"
+    ));
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert!(view.textarea.is_none());
+}
+
+#[test]
+fn test_describe_input_enter_adds_newline() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Start describe input (starts with "First commit")
+    view.start_describe_input();
+
+    // Press Enter - should add newline, not submit
+    let action = press_key(&mut view, KeyCode::Enter);
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::DescribeInput);
+
+    // Should still have textarea
+    assert!(view.textarea.is_some());
+}

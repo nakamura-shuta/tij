@@ -1,6 +1,6 @@
 [package]
 name = "tij"
-version = "0.3.3"
+version = "0.3.4"
 description = "Text-mode interface for Jujutsu - a TUI for jj version control"
 authors = ["nakamura.shuta <nakamura.shuta@classmethod.jp>"]
 license = "MIT"
@@ -16,10 +16,11 @@ exclude = [".work/", ".github/", "CLAUDE.md"]
 
 [dependencies]
 crossterm = "0.28.1"
-ratatui = "0.30.0"
+ratatui = "0.29.0"
 color-eyre = "0.6.3"
 thiserror = "2.0"
 scopeguard = "1"
+tui-textarea = { version = "0.7", features = ["crossterm"] }
 
 # Read the optimization guideline for more details: https://ratatui.rs/recipes/apps/release-your-app/#optimizations
 [profile.release]

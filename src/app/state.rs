@@ -191,14 +191,32 @@ impl App {
         }
     }
 
+    /// Start describe input mode by fetching the full description
+    pub(crate) fn start_describe_input(&mut self, change_id: &str) {
+        // Fetch the full (multi-line) description from jj
+        match self.jj.get_description(change_id) {
+            Ok(full_description) => {
+                // Remove only trailing newline that jj adds, preserve intentional blank lines
+                let description = full_description.trim_end_matches('\n').to_string();
+                self.log_view
+                    .set_describe_input(change_id.to_string(), description);
+            }
+            Err(e) => {
+                // If we can't fetch the description, show error
+                self.error_message = Some(format!("Failed to get description: {}", e));
+            }
+        }
+    }
+
     /// Execute describe operation
     pub(crate) fn execute_describe(&mut self, change_id: &str, message: &str) {
         match self.jj.describe(change_id, message) {
             Ok(_) => {
                 self.notification = Some(Notification::success("Description updated"));
-                // Refresh log to show updated description
+                // Refresh log and status to show updated description
                 let revset = self.log_view.current_revset.clone();
                 self.refresh_log(revset.as_deref());
+                self.refresh_status();
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to update description: {}", e));

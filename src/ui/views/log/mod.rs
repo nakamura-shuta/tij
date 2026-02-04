@@ -5,6 +5,8 @@
 mod input;
 mod render;
 
+use tui_textarea::TextArea;
+
 use crate::model::Change;
 
 /// Input mode for Log View
@@ -30,9 +32,9 @@ impl InputMode {
         match self {
             InputMode::SearchInput => Some(("Search: ", " / Search ")),
             InputMode::RevsetInput => Some(("Revset: ", " r Revset ")),
-            InputMode::DescribeInput => Some(("Description: ", " d Describe ")),
             InputMode::BookmarkInput => Some(("Bookmark: ", " b Bookmark ")),
-            InputMode::Normal | InputMode::RebaseSelect => None,
+            // DescribeInput uses TextArea, not input bar
+            InputMode::DescribeInput | InputMode::Normal | InputMode::RebaseSelect => None,
         }
     }
 }
@@ -48,6 +50,8 @@ pub enum LogAction {
     ExecuteRevset(String),
     /// Clear revset filter (reset to default)
     ClearRevset,
+    /// Start describe input mode (App should fetch full description and call set_describe_input)
+    StartDescribe(String),
     /// Update change description
     Describe { change_id: String, message: String },
     /// Edit a specific change (jj edit)
@@ -81,7 +85,7 @@ pub struct LogView {
     pub scroll_offset: usize,
     /// Current input mode
     pub input_mode: InputMode,
-    /// Input buffer for revset/search/describe
+    /// Input buffer for revset/search/bookmark (NOT used for describe anymore)
     pub input_buffer: String,
     /// Revset input history
     pub revset_history: Vec<String>,
@@ -97,6 +101,8 @@ pub struct LogView {
     selection_cursor: usize,
     /// Source change ID for rebase (set when entering RebaseSelect mode)
     pub(crate) rebase_source: Option<String>,
+    /// Text area for multi-line description input
+    pub(crate) textarea: Option<TextArea<'static>>,
 }
 
 pub mod empty_text {
@@ -180,9 +186,32 @@ impl LogView {
         self.input_mode = InputMode::Normal;
         self.input_buffer.clear();
         self.editing_change_id = None;
+        self.textarea = None;
     }
 
-    /// Start describe input mode for the selected change
+    /// Set describe input mode with the full description text
+    ///
+    /// Called by App after fetching the full (multi-line) description.
+    /// The description parameter should contain the complete description text.
+    pub fn set_describe_input(&mut self, change_id: String, full_description: String) {
+        self.editing_change_id = Some(change_id);
+
+        // Initialize TextArea with full description
+        let textarea = if full_description.is_empty() {
+            TextArea::default()
+        } else {
+            let lines: Vec<String> = full_description.lines().map(|s| s.to_string()).collect();
+            TextArea::new(lines)
+        };
+        self.textarea = Some(textarea);
+        self.input_mode = InputMode::DescribeInput;
+    }
+
+    /// Start describe input mode for the selected change (legacy method for tests)
+    ///
+    /// Note: This uses the first-line description from Change.description.
+    /// For full multi-line support, use set_describe_input() instead.
+    #[cfg(test)]
     pub fn start_describe_input(&mut self) {
         // Clone values first to avoid borrow conflict
         let change_data = self
@@ -190,11 +219,15 @@ impl LogView {
             .map(|c| (c.change_id.clone(), c.description.clone()));
 
         if let Some((change_id, description)) = change_data {
-            self.editing_change_id = Some(change_id);
-            // Pre-fill with current description
-            self.input_buffer = description;
-            self.input_mode = InputMode::DescribeInput;
+            self.set_describe_input(change_id, description);
         }
+    }
+
+    /// Cancel describe input mode
+    pub fn cancel_describe_input(&mut self) {
+        self.input_mode = InputMode::Normal;
+        self.textarea = None;
+        self.editing_change_id = None;
     }
 
     /// Start bookmark input mode for the selected change

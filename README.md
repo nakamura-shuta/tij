@@ -46,7 +46,7 @@ Press `?` for help, `q` to quit.
 | Area | Features |
 |------|----------|
 | Views | Log / Diff / Status / Help / Operation History |
-| History Editing | Describe / Edit / New / Commit / Squash / Abandon / Split / Rebase / Absorb |
+| History Editing | Describe (multi-line) / Edit / New / Commit / Squash / Abandon / Split / Rebase / Absorb |
 | Recovery | Undo / Redo / Operation Restore |
 | Bookmarks | Create / Move / Delete (multi-select) |
 | Usability | Revset filtering / Text search / Adaptive status bar |

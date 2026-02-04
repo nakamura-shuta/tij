@@ -140,6 +140,23 @@ impl JjExecutor {
         self.run(&[commands::DESCRIBE, change_id, "-m", message])
     }
 
+    /// Get the full description (multi-line) for a change
+    ///
+    /// Uses `jj log -r <change-id> -T 'description'` to fetch the complete description.
+    /// Unlike the normal log output which uses `description.first_line()`, this returns
+    /// the entire description including all lines.
+    pub fn get_description(&self, change_id: &str) -> Result<String, JjError> {
+        let output = self.run(&[
+            commands::LOG,
+            flags::NO_GRAPH,
+            flags::REVISION,
+            change_id,
+            flags::TEMPLATE,
+            "description",
+        ])?;
+        Ok(output)
+    }
+
     /// Run `jj edit` to set working-copy revision
     pub fn edit(&self, change_id: &str) -> Result<String, JjError> {
         self.run(&[commands::EDIT, change_id])

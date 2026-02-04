@@ -1,6 +1,6 @@
 //! Input handling and search for LogView
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::keys;
 use crate::model::Change;
@@ -59,8 +59,11 @@ impl LogView {
                 LogAction::None
             }
             k if k == keys::DESCRIBE => {
-                self.start_describe_input();
-                LogAction::None
+                if let Some(change) = self.selected_change() {
+                    LogAction::StartDescribe(change.change_id.clone())
+                } else {
+                    LogAction::None
+                }
             }
             k if k == keys::EDIT => {
                 if let Some(change) = self.selected_change() {
@@ -153,18 +156,35 @@ impl LogView {
     }
 
     fn handle_describe_input_key(&mut self, key: KeyEvent) -> LogAction {
-        self.handle_text_input(key, |view, message| {
-            if let Some(change_id) = view.editing_change_id.take() {
-                if message.is_empty() {
-                    // Empty message = cancel
-                    LogAction::None
-                } else {
-                    LogAction::Describe { change_id, message }
+        // Ctrl+S to save
+        if key.modifiers.contains(KeyModifiers::CONTROL)
+            && matches!(key.code, KeyCode::Char('s') | KeyCode::Char('S'))
+        {
+            if let (Some(change_id), Some(textarea)) =
+                (self.editing_change_id.take(), self.textarea.take())
+            {
+                let message = textarea.lines().join("\n");
+                self.input_mode = InputMode::Normal;
+
+                if message.trim().is_empty() {
+                    return LogAction::None; // Empty = cancel
                 }
-            } else {
-                LogAction::None
+                return LogAction::Describe { change_id, message };
             }
-        })
+            return LogAction::None;
+        }
+
+        // Esc to cancel
+        if key.code == KeyCode::Esc {
+            self.cancel_describe_input();
+            return LogAction::None;
+        }
+
+        // All other keys delegate to textarea (Enter = newline, cursor movement, etc.)
+        if let Some(ref mut textarea) = self.textarea {
+            textarea.input(key);
+        }
+        LogAction::None
     }
 
     fn handle_bookmark_input_key(&mut self, key: KeyEvent) -> LogAction {
