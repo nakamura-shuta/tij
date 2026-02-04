@@ -6,11 +6,12 @@ use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::Paragraph,
 };
 
 use crate::keys;
-use crate::model::Operation;
+use crate::model::{Notification, Operation};
+use crate::ui::components;
 
 /// Action returned by the Operation View after handling input
 #[derive(Debug, Clone)]
@@ -127,13 +128,22 @@ impl OperationView {
         }
     }
 
-    /// Render the operation view
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    /// Render the operation view with optional notification in title bar
+    pub fn render(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
         let title = Line::from(" Operation History ").bold().cyan().centered();
 
+        // Build notification line for title bar
+        let title_width = title.width();
+        let available_for_notif = area.width.saturating_sub(title_width as u16 + 4) as usize;
+        let notif_line = notification
+            .filter(|n| !n.is_expired())
+            .map(|n| components::build_notification_title(n, Some(available_for_notif)))
+            .filter(|line| !line.spans.is_empty());
+
+        let block = components::bordered_block_with_notification(title, notif_line);
+
         if self.operations.is_empty() {
-            let paragraph = Paragraph::new("No operations found")
-                .block(Block::default().borders(Borders::ALL).title(title));
+            let paragraph = Paragraph::new("No operations found").block(block);
             frame.render_widget(paragraph, area);
             return;
         }
@@ -158,9 +168,7 @@ impl OperationView {
             lines.push(line);
         }
 
-        let paragraph =
-            Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(title));
-
+        let paragraph = Paragraph::new(lines).block(block);
         frame.render_widget(paragraph, area);
     }
 

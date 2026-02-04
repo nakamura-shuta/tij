@@ -17,6 +17,20 @@ pub fn bordered_block<'a>(title: Line<'a>) -> Block<'a> {
     titled_block(title, Borders::ALL)
 }
 
+/// Create a block with left-aligned title and right-aligned notification
+pub fn bordered_block_with_notification<'a>(
+    title: Line<'a>,
+    notification: Option<Line<'a>>,
+) -> Block<'a> {
+    let mut block = Block::default().borders(Borders::ALL).title(title);
+
+    if let Some(notif) = notification {
+        block = block.title(notif.right_aligned());
+    }
+
+    block
+}
+
 /// Create a block with only left and right borders (for continuation sections)
 pub fn side_borders_block() -> Block<'static> {
     Block::default().borders(Borders::LEFT | Borders::RIGHT)

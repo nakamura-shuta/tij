@@ -9,8 +9,7 @@ use ratatui::{
 use crate::keys;
 
 /// Render help content showing key bindings.
-pub fn render_help_panel(frame: &mut Frame) {
-    let area = frame.area();
+pub fn render_help_panel(frame: &mut Frame, area: Rect) {
     let title = Line::from(" Tij - Help ").bold().white().centered();
 
     let mut lines = vec![Line::from("Key bindings:".bold()), Line::from("")];

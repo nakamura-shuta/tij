@@ -43,6 +43,20 @@ impl App {
             return;
         }
 
+        // Handle Ctrl+L for refresh (all views, normal mode)
+        if keys::is_refresh_key(&key) {
+            // Skip if in input mode
+            let in_input_mode = match self.current_view {
+                View::Log => self.log_view.input_mode != InputMode::Normal,
+                View::Status => self.status_view.input_mode != StatusInputMode::Normal,
+                _ => false,
+            };
+            if !in_input_mode {
+                self.execute_refresh();
+                return;
+            }
+        }
+
         // If in input mode, delegate all keys to the view (skip global handling)
         if self.current_view == View::Log && self.log_view.input_mode != InputMode::Normal {
             let action = self.log_view.handle_key(key);

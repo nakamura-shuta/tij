@@ -356,6 +356,46 @@ impl App {
         }
     }
 
+    /// Execute refresh for current view (Ctrl+L)
+    ///
+    /// Refreshes the data for the current view:
+    /// - Log View: reloads commit log (preserves revset filter)
+    /// - Status View: reloads file status
+    /// - Operation View: reloads operation history
+    /// - Diff View: reloads diff for current change (if loaded)
+    /// - Help View: no-op (static content)
+    ///
+    /// Note: Selection position is NOT preserved after refresh.
+    pub(crate) fn execute_refresh(&mut self) {
+        match self.current_view {
+            View::Log => {
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.notification = Some(Notification::info("Refreshed"));
+            }
+            View::Status => {
+                self.refresh_status();
+                self.notification = Some(Notification::info("Refreshed"));
+            }
+            View::Operation => {
+                self.refresh_operation_log();
+                self.notification = Some(Notification::info("Refreshed"));
+            }
+            View::Diff => {
+                // Only refresh if diff_view is loaded
+                if let Some(ref diff_view) = self.diff_view {
+                    let change_id = diff_view.change_id.clone();
+                    self.open_diff(&change_id);
+                    self.notification = Some(Notification::info("Refreshed"));
+                }
+                // If diff_view is None, do nothing (no notification)
+            }
+            View::Help => {
+                // Help is static content, no refresh needed, no notification
+            }
+        }
+    }
+
     /// Refresh the operation history view
     pub fn refresh_operation_log(&mut self) {
         match self.jj.op_log(Some(50)) {

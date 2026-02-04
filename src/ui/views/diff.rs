@@ -11,7 +11,7 @@ use ratatui::{
 };
 
 use crate::keys;
-use crate::model::{DiffContent, DiffLine, DiffLineKind};
+use crate::model::{DiffContent, DiffLine, DiffLineKind, Notification};
 use crate::ui::{components, theme};
 
 /// Action returned by DiffView key handling
@@ -351,7 +351,7 @@ impl DiffView {
     // =========================================================================
 
     /// Render the diff view (without status bar - rendered by App)
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    pub fn render(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
         // Layout: header (4) + context bar (1) + diff (rest)
         // Header increased to 4 lines to include description
         let chunks = Layout::vertical([
@@ -361,13 +361,13 @@ impl DiffView {
         ])
         .split(area);
 
-        self.render_header(frame, chunks[0]);
+        self.render_header(frame, chunks[0], notification);
         self.render_context_bar(frame, chunks[1]);
         self.render_diff_content(frame, chunks[2]);
     }
 
     /// Render the header (commit info including description)
-    fn render_header(&self, frame: &mut Frame, area: Rect) {
+    fn render_header(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
         let title = Line::from(vec![
             Span::raw(" Tij - Diff View ").bold(),
             Span::raw("["),
@@ -375,9 +375,17 @@ impl DiffView {
                 self.change_id.chars().take(8).collect::<String>(),
                 Style::default().fg(theme::log_view::CHANGE_ID),
             ),
-            Span::raw("]"),
+            Span::raw("] "),
         ])
         .centered();
+
+        // Build notification line for title bar (right-aligned)
+        let title_width = title.width();
+        let available_for_notif = area.width.saturating_sub(title_width as u16 + 4) as usize;
+        let notif_line = notification
+            .filter(|n| !n.is_expired())
+            .map(|n| components::build_notification_title(n, Some(available_for_notif)))
+            .filter(|line| !line.spans.is_empty());
 
         // Truncate description to fit in one line
         let description = if self.content.description.is_empty() {
@@ -414,7 +422,14 @@ impl DiffView {
             )]),
         ];
 
-        let header = Paragraph::new(header_text).block(components::header_block(title));
+        // Use header_block with notification on right
+        let block = if let Some(notif) = notif_line {
+            components::header_block(title).title(notif.right_aligned())
+        } else {
+            components::header_block(title)
+        };
+
+        let header = Paragraph::new(header_text).block(block);
 
         frame.render_widget(header, area);
     }

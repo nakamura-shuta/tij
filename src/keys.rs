@@ -2,8 +2,19 @@
 //!
 //! All keybindings are defined here for easy modification and future config file support.
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::Color;
+
+// =============================================================================
+// Key detection helpers (for modifier keys)
+// =============================================================================
+
+/// Check if key is Ctrl+L (refresh)
+/// Note: Accept both 'l' and 'L' for terminal compatibility
+pub fn is_refresh_key(key: &KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char('l') | KeyCode::Char('L'))
+        && key.modifiers.contains(KeyModifiers::CONTROL)
+}
 
 // =============================================================================
 // Global keys (available in all views)
@@ -168,6 +179,10 @@ pub const GLOBAL_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "Esc",
         description: "Back to previous",
+    },
+    KeyBindEntry {
+        key: "Ctrl+l",
+        description: "Refresh",
     },
 ];
 
@@ -345,6 +360,11 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         color: Color::Green,
     },
     KeyHint {
+        key: "^L",
+        label: "Refresh",
+        color: Color::Blue,
+    },
+    KeyHint {
         key: "Tab",
         label: "Switch",
         color: Color::Blue,
@@ -369,6 +389,11 @@ pub const DIFF_VIEW_HINTS: &[KeyHint] = &[
         color: Color::Magenta,
     },
     KeyHint {
+        key: "^L",
+        label: "Refresh",
+        color: Color::Blue,
+    },
+    KeyHint {
         key: "q",
         label: "Back",
         color: Color::Red,
@@ -391,6 +416,11 @@ pub const STATUS_VIEW_HINTS: &[KeyHint] = &[
         key: "C",
         label: "Commit",
         color: Color::Yellow,
+    },
+    KeyHint {
+        key: "^L",
+        label: "Refresh",
+        color: Color::Blue,
     },
     KeyHint {
         key: "Tab",
@@ -463,6 +493,11 @@ pub const OPERATION_VIEW_HINTS: &[KeyHint] = &[
         key: "Enter",
         label: "Restore",
         color: Color::Green,
+    },
+    KeyHint {
+        key: "^L",
+        label: "Refresh",
+        color: Color::Blue,
     },
     KeyHint {
         key: "q",

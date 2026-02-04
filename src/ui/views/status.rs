@@ -12,7 +12,7 @@ use ratatui::{
 };
 
 use crate::keys;
-use crate::model::{FileState, Status};
+use crate::model::{FileState, Notification, Status};
 use crate::ui::{components, theme};
 
 /// Input mode for Status View
@@ -262,8 +262,8 @@ impl StatusView {
         }
     }
 
-    /// Render the view
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    /// Render the view with optional notification in title bar
+    pub fn render(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
         // Split area for input bar if in input mode
         let (status_area, input_area) = match self.input_mode {
             StatusInputMode::Normal => (area, None),
@@ -276,23 +276,32 @@ impl StatusView {
 
         let title = Line::from(" Tij - Status View ").bold().cyan().centered();
 
+        // Build notification line for title bar
+        let title_width = title.width();
+        let available_for_notif = area.width.saturating_sub(title_width as u16 + 4) as usize;
+        let notif_line = notification
+            .filter(|n| !n.is_expired())
+            .map(|n| components::build_notification_title(n, Some(available_for_notif)))
+            .filter(|line| !line.spans.is_empty());
+
+        let block = components::bordered_block_with_notification(title.clone(), notif_line);
+
         match &self.status {
             None => {
                 // Loading state
-                let content = components::empty_state("Loading...", None)
-                    .block(components::bordered_block(title));
+                let content = components::empty_state("Loading...", None).block(block);
                 frame.render_widget(content, status_area);
             }
             Some(status) if status.is_clean() => {
                 // Clean state
                 let content =
                     components::empty_state("Working copy is clean.", Some("No modified files."))
-                        .block(components::bordered_block(title));
+                        .block(block);
                 frame.render_widget(content, status_area);
             }
             Some(status) => {
                 // Has changes
-                self.render_file_list(frame, status_area, status, &title);
+                self.render_file_list(frame, status_area, status, &title, notification);
             }
         }
 
@@ -342,7 +351,14 @@ impl StatusView {
     }
 
     /// Render the file list
-    fn render_file_list(&self, frame: &mut Frame, area: Rect, status: &Status, title: &Line) {
+    fn render_file_list(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        status: &Status,
+        title: &Line,
+        notification: Option<&Notification>,
+    ) {
         // Calculate available height for files (minus borders and header)
         let inner_height = area.height.saturating_sub(5) as usize; // 2 borders + 3 header lines
 
@@ -378,7 +394,16 @@ impl StatusView {
             lines.push(line);
         }
 
-        let paragraph = Paragraph::new(lines).block(components::bordered_block(title.clone()));
+        // Build notification line for title bar
+        let title_width = title.width();
+        let available_for_notif = area.width.saturating_sub(title_width as u16 + 4) as usize;
+        let notif_line = notification
+            .filter(|n| !n.is_expired())
+            .map(|n| components::build_notification_title(n, Some(available_for_notif)))
+            .filter(|line| !line.spans.is_empty());
+
+        let block = components::bordered_block_with_notification(title.clone(), notif_line);
+        let paragraph = Paragraph::new(lines).block(block);
         frame.render_widget(paragraph, area);
     }
 

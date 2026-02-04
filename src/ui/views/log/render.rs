@@ -9,14 +9,14 @@ use ratatui::{
 };
 
 use crate::jj::constants;
-use crate::model::Change;
+use crate::model::{Change, Notification};
 use crate::ui::{components, symbols, theme};
 
 use super::{InputMode, LogView, empty_text};
 
 impl LogView {
-    /// Render the view
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    /// Render the view with optional notification in title bar
+    pub fn render(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
         // Split area for input bar if in input mode
         let (log_area, input_area) = match self.input_mode {
             InputMode::Normal => (area, None),
@@ -31,7 +31,7 @@ impl LogView {
         };
 
         // Render log list
-        self.render_log_list(frame, log_area);
+        self.render_log_list(frame, log_area, notification);
 
         // Render input bar if in input mode
         if let Some(input_area) = input_area {
@@ -39,11 +39,21 @@ impl LogView {
         }
     }
 
-    fn render_log_list(&self, frame: &mut Frame, area: Rect) {
+    fn render_log_list(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
         let title = self.build_title();
 
+        // Build notification line for title bar (with truncation if needed)
+        let title_width = title.width();
+        let available_for_notif = area.width.saturating_sub(title_width as u16 + 4) as usize; // +4 for borders/padding
+        let notif_line = notification
+            .filter(|n| !n.is_expired())
+            .map(|n| components::build_notification_title(n, Some(available_for_notif)))
+            .filter(|line| !line.spans.is_empty());
+
+        let block = components::bordered_block_with_notification(title, notif_line);
+
         if self.changes.is_empty() {
-            self.render_empty_state(frame, area, &title);
+            self.render_empty_state(frame, area, block);
             return;
         }
 
@@ -67,7 +77,7 @@ impl LogView {
             lines.push(line);
         }
 
-        let paragraph = Paragraph::new(lines).block(components::bordered_block(title));
+        let paragraph = Paragraph::new(lines).block(block);
 
         frame.render_widget(paragraph, area);
     }
@@ -88,9 +98,14 @@ impl LogView {
         Line::from(title_text).bold().cyan().centered()
     }
 
-    fn render_empty_state(&self, frame: &mut Frame, area: Rect, title: &Line) {
-        let paragraph = components::empty_state(empty_text::TITLE, Some(empty_text::HINT))
-            .block(components::bordered_block(title.clone()));
+    fn render_empty_state(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        block: ratatui::widgets::Block<'static>,
+    ) {
+        let paragraph =
+            components::empty_state(empty_text::TITLE, Some(empty_text::HINT)).block(block);
 
         frame.render_widget(paragraph, area);
     }
