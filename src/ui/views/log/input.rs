@@ -106,6 +106,7 @@ impl LogView {
                 self.start_rebase_select();
                 LogAction::None
             }
+            k if k == keys::ABSORB => LogAction::Absorb,
             k if k == keys::SEARCH_NEXT => {
                 self.search_next();
                 LogAction::None

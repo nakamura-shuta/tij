@@ -46,7 +46,7 @@ Press `?` for help, `q` to quit.
 | Area | Features |
 |------|----------|
 | Views | Log / Diff / Status / Help / Operation History |
-| History Editing | Describe / Edit / New / Commit / Squash / Abandon / Split / Rebase |
+| History Editing | Describe / Edit / New / Commit / Squash / Abandon / Split / Rebase / Absorb |
 | Recovery | Undo / Redo / Operation Restore |
 | Bookmarks | Create / Move / Delete (multi-select) |
 | Usability | Revset filtering / Text search / Adaptive status bar |
@@ -56,7 +56,6 @@ Press `?` for help, `q` to quit.
 | Area | Features |
 |------|----------|
 | Views | Blame View / Bookmark View |
-| History Editing | Absorb |
 | Safety | Confirmation dialogs for destructive actions |
 | Git Integration | Fetch / Push / Conflict resolution UI |
 | Customization | Keybindings config / Themes |

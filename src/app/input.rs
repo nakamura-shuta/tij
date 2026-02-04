@@ -200,6 +200,9 @@ impl App {
             } => {
                 self.execute_rebase(&source, &destination);
             }
+            LogAction::Absorb => {
+                self.execute_absorb();
+            }
         }
     }
 

@@ -388,6 +388,18 @@ impl JjExecutor {
         ])?;
         Ok(output.trim() == "true")
     }
+
+    /// Run `jj absorb` to move changes into ancestor commits
+    ///
+    /// Each hunk in the working copy (@) is moved to the closest mutable
+    /// ancestor where the corresponding lines were modified last.
+    /// If the destination cannot be determined unambiguously, the change
+    /// remains in the source.
+    ///
+    /// Returns the command output which describes what was absorbed.
+    pub fn absorb(&self) -> Result<String, JjError> {
+        self.run(&[commands::ABSORB])
+    }
 }
 
 #[cfg(test)]

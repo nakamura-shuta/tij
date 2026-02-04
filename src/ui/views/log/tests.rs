@@ -834,3 +834,27 @@ fn test_rebase_no_selection() {
     assert_eq!(view.input_mode, InputMode::Normal);
     assert_eq!(view.rebase_source, None);
 }
+
+// =============================================================================
+// Absorb tests
+// =============================================================================
+
+#[test]
+fn test_absorb_key_returns_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Press B to trigger absorb
+    let action = press_key(&mut view, keys::ABSORB);
+    assert!(matches!(action, LogAction::Absorb));
+}
+
+#[test]
+fn test_absorb_key_works_without_selection() {
+    let mut view = LogView::new();
+    // Empty changes - absorb should still return action
+    // (state.rs handles whether there's anything to absorb)
+
+    let action = press_key(&mut view, keys::ABSORB);
+    assert!(matches!(action, LogAction::Absorb));
+}

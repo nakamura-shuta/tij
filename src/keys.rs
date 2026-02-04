@@ -108,6 +108,9 @@ pub const BOOKMARK_DELETE: KeyCode = KeyCode::Char('D');
 /// Rebase change (Log View, uppercase)
 pub const REBASE: KeyCode = KeyCode::Char('R');
 
+/// Absorb changes into ancestors (Log View, uppercase)
+pub const ABSORB: KeyCode = KeyCode::Char('B');
+
 /// Open text search input (for n/N navigation)
 pub const SEARCH_INPUT: KeyCode = KeyCode::Char('/');
 
@@ -271,6 +274,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         key: "R",
         description: "Rebase change",
     },
+    KeyBindEntry {
+        key: "B",
+        description: "Absorb changes",
+    },
 ];
 
 /// Diff view key bindings for help display
@@ -360,6 +367,11 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         key: "R",
         label: "Rebase",
         color: Color::Yellow,
+    },
+    KeyHint {
+        key: "B",
+        label: "Absorb",
+        color: Color::Magenta,
     },
     KeyHint {
         key: "o",

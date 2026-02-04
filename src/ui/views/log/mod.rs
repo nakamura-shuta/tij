@@ -66,6 +66,8 @@ pub enum LogAction {
     StartBookmarkDelete,
     /// Rebase source change to destination
     Rebase { source: String, destination: String },
+    /// Absorb working copy changes into ancestor commits
+    Absorb,
 }
 
 /// Log View state

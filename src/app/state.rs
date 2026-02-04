@@ -602,6 +602,34 @@ impl App {
         }
     }
 
+    /// Execute absorb: move working copy changes into ancestor commits
+    ///
+    /// Each hunk is moved to the closest mutable ancestor where the
+    /// corresponding lines were modified last.
+    pub(crate) fn execute_absorb(&mut self) {
+        match self.jj.absorb() {
+            Ok(output) => {
+                // Refresh both log and status
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.refresh_status();
+
+                // Simple notification: check if output is empty or contains "nothing"
+                // Avoid detailed parsing due to jj version differences
+                let notification =
+                    if output.trim().is_empty() || output.to_lowercase().contains("nothing") {
+                        Notification::info("Nothing to absorb")
+                    } else {
+                        Notification::success("Absorb finished")
+                    };
+                self.notification = Some(notification);
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Absorb failed: {}", e));
+            }
+        }
+    }
+
     /// Execute rebase: move source change to be a child of destination
     ///
     /// Uses `jj rebase -r <source> -d <destination>` which moves only the
@@ -621,14 +649,14 @@ impl App {
                 self.refresh_status();
 
                 // Check for conflicts in the rebased change (not just working copy)
-                let has_conflict = self.jj.has_conflict(source).unwrap_or(false);
-                if has_conflict {
-                    self.notification = Some(Notification::warning(
-                        "Rebased with conflicts - resolve with jj resolve",
-                    ));
-                } else {
-                    self.notification = Some(Notification::success("Rebased successfully"));
-                }
+                let notification = match self.jj.has_conflict(source) {
+                    Ok(true) => {
+                        Notification::warning("Rebased with conflicts - resolve with jj resolve")
+                    }
+                    Ok(false) => Notification::success("Rebased successfully"),
+                    Err(_) => Notification::warning("Rebase finished, conflict status unknown"),
+                };
+                self.notification = Some(notification);
             }
             Err(e) => {
                 self.error_message = Some(format!("Rebase failed: {}", e));
