@@ -28,6 +28,7 @@ impl LogView {
             InputMode::RevsetInput => self.handle_revset_input_key(key),
             InputMode::DescribeInput => self.handle_describe_input_key(key),
             InputMode::BookmarkInput => self.handle_bookmark_input_key(key),
+            InputMode::RebaseSelect => self.handle_rebase_select_key(key),
         }
     }
 
@@ -100,6 +101,10 @@ impl LogView {
             k if k == keys::BOOKMARK_DELETE => {
                 // Let state.rs handle the dialog
                 LogAction::StartBookmarkDelete
+            }
+            k if k == keys::REBASE => {
+                self.start_rebase_select();
+                LogAction::None
             }
             k if k == keys::SEARCH_NEXT => {
                 self.search_next();
@@ -174,6 +179,54 @@ impl LogView {
                 LogAction::None
             }
         })
+    }
+
+    /// Handle key events in rebase destination selection mode
+    ///
+    /// In this mode, j/k navigates to select a destination, Enter confirms,
+    /// and Esc cancels. Other keys are ignored to prevent accidental actions.
+    fn handle_rebase_select_key(&mut self, key: KeyEvent) -> LogAction {
+        match key.code {
+            // Navigation
+            k if keys::is_move_down(k) => {
+                self.move_down();
+                LogAction::None
+            }
+            k if keys::is_move_up(k) => {
+                self.move_up();
+                LogAction::None
+            }
+            k if k == keys::GO_TOP => {
+                self.move_to_top();
+                LogAction::None
+            }
+            k if k == keys::GO_BOTTOM => {
+                self.move_to_bottom();
+                LogAction::None
+            }
+            // Confirm rebase
+            KeyCode::Enter => {
+                if let (Some(source), Some(dest_change)) =
+                    (self.rebase_source.take(), self.selected_change())
+                {
+                    let destination = dest_change.change_id.clone();
+                    self.input_mode = InputMode::Normal;
+                    LogAction::Rebase {
+                        source,
+                        destination,
+                    }
+                } else {
+                    LogAction::None
+                }
+            }
+            // Cancel
+            k if k == keys::ESC => {
+                self.cancel_rebase_select();
+                LogAction::None
+            }
+            // Ignore other keys in rebase select mode
+            _ => LogAction::None,
+        }
     }
 
     fn handle_text_input<F>(&mut self, key: KeyEvent, on_submit: F) -> LogAction

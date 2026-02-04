@@ -21,6 +21,8 @@ pub enum InputMode {
     DescribeInput,
     /// Bookmark input mode (creating bookmark)
     BookmarkInput,
+    /// Rebase destination selection mode
+    RebaseSelect,
 }
 
 impl InputMode {
@@ -30,7 +32,7 @@ impl InputMode {
             InputMode::RevsetInput => Some(("Revset: ", " r Revset ")),
             InputMode::DescribeInput => Some(("Description: ", " d Describe ")),
             InputMode::BookmarkInput => Some(("Bookmark: ", " b Bookmark ")),
-            InputMode::Normal => None,
+            InputMode::Normal | InputMode::RebaseSelect => None,
         }
     }
 }
@@ -62,6 +64,8 @@ pub enum LogAction {
     CreateBookmark { change_id: String, name: String },
     /// Start bookmark deletion (opens selection dialog)
     StartBookmarkDelete,
+    /// Rebase source change to destination
+    Rebase { source: String, destination: String },
 }
 
 /// Log View state
@@ -89,6 +93,8 @@ pub struct LogView {
     selectable_indices: Vec<usize>,
     /// Current position in selectable_indices
     selection_cursor: usize,
+    /// Source change ID for rebase (set when entering RebaseSelect mode)
+    pub(crate) rebase_source: Option<String>,
 }
 
 pub mod empty_text {
@@ -199,6 +205,28 @@ impl LogView {
             self.input_buffer.clear();
             self.input_mode = InputMode::BookmarkInput;
         }
+    }
+
+    /// Start rebase destination selection mode
+    ///
+    /// Returns true if mode was entered, false if no change is selected.
+    pub fn start_rebase_select(&mut self) -> bool {
+        // Clone change_id first to avoid borrow conflict
+        let change_id = self.selected_change().map(|c| c.change_id.clone());
+
+        if let Some(change_id) = change_id {
+            self.rebase_source = Some(change_id);
+            self.input_mode = InputMode::RebaseSelect;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Cancel rebase selection mode
+    pub fn cancel_rebase_select(&mut self) {
+        self.rebase_source = None;
+        self.input_mode = InputMode::Normal;
     }
 }
 

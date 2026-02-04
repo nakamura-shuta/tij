@@ -105,6 +105,9 @@ pub const BOOKMARK: KeyCode = KeyCode::Char('b');
 /// Delete bookmark (Log View)
 pub const BOOKMARK_DELETE: KeyCode = KeyCode::Char('D');
 
+/// Rebase change (Log View, uppercase)
+pub const REBASE: KeyCode = KeyCode::Char('R');
+
 /// Open text search input (for n/N navigation)
 pub const SEARCH_INPUT: KeyCode = KeyCode::Char('/');
 
@@ -264,6 +267,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         key: "D",
         description: "Delete bookmark",
     },
+    KeyBindEntry {
+        key: "R",
+        description: "Rebase change",
+    },
 ];
 
 /// Diff view key bindings for help display
@@ -348,6 +355,11 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         key: "D",
         label: "Del Bkm",
         color: Color::Red,
+    },
+    KeyHint {
+        key: "R",
+        label: "Rebase",
+        color: Color::Yellow,
     },
     KeyHint {
         key: "o",

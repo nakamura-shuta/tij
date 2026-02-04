@@ -3,7 +3,7 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Modifier, Style, Stylize},
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::Paragraph,
 };
@@ -19,7 +19,7 @@ impl LogView {
     pub fn render(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
         // Split area for input bar if in input mode
         let (log_area, input_area) = match self.input_mode {
-            InputMode::Normal => (area, None),
+            InputMode::Normal | InputMode::RebaseSelect => (area, None),
             InputMode::SearchInput
             | InputMode::RevsetInput
             | InputMode::DescribeInput
@@ -83,6 +83,14 @@ impl LogView {
     }
 
     fn build_title(&self) -> Line<'static> {
+        // Special title for RebaseSelect mode
+        if self.input_mode == InputMode::RebaseSelect {
+            return Line::from(" Tij - Log View [Rebase: Select destination] ")
+                .bold()
+                .yellow()
+                .centered();
+        }
+
         let title_text = match (&self.current_revset, &self.last_search_query) {
             (Some(revset), Some(query)) => {
                 format!(" Tij - Log View [{}] [Search: {}] ", revset, query)
@@ -178,8 +186,20 @@ impl LogView {
 
         let mut line = Line::from(spans);
 
-        // Highlight selected line
-        if is_selected {
+        // Check if this is the rebase source (in RebaseSelect mode)
+        let is_rebase_source = self.input_mode == InputMode::RebaseSelect
+            && self.rebase_source.as_ref() == Some(&change.change_id);
+
+        // Apply styling
+        if is_rebase_source {
+            // Highlight rebase source with distinct background
+            line = line.style(
+                Style::default()
+                    .bg(Color::DarkGray)
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            );
+        } else if is_selected {
             line = line.style(
                 Style::default()
                     .bg(theme::log_view::SELECTED_BG)

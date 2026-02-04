@@ -724,3 +724,113 @@ fn test_bookmark_delete_on_change_without_bookmarks() {
     let action = press_key(&mut view, keys::BOOKMARK_DELETE);
     assert_eq!(action, LogAction::StartBookmarkDelete);
 }
+
+// =============================================================================
+// Rebase tests
+// =============================================================================
+
+#[test]
+fn test_rebase_mode_enter() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Press R to enter rebase select mode
+    let action = press_key(&mut view, keys::REBASE);
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+    assert_eq!(view.rebase_source, Some("abc12345".to_string()));
+}
+
+#[test]
+fn test_rebase_mode_cancel() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode
+    press_key(&mut view, keys::REBASE);
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+
+    // Press Esc to cancel
+    let action = press_key(&mut view, keys::ESC);
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert_eq!(view.rebase_source, None);
+}
+
+#[test]
+fn test_rebase_mode_navigation() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode
+    press_key(&mut view, keys::REBASE);
+
+    // Should be on first change
+    assert_eq!(view.selected_index, 0);
+
+    // Move down
+    press_key(&mut view, keys::MOVE_DOWN);
+    assert_eq!(view.selected_index, 1);
+
+    // Move up
+    press_key(&mut view, keys::MOVE_UP);
+    assert_eq!(view.selected_index, 0);
+
+    // Still in RebaseSelect mode
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+}
+
+#[test]
+fn test_rebase_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode from first change
+    press_key(&mut view, keys::REBASE);
+    assert_eq!(view.rebase_source, Some("abc12345".to_string()));
+
+    // Move down to second change as destination
+    press_key(&mut view, keys::MOVE_DOWN);
+    assert_eq!(view.selected_change().unwrap().change_id, "xyz98765");
+
+    // Press Enter to confirm
+    let action = press_key(&mut view, KeyCode::Enter);
+    assert!(matches!(action, LogAction::Rebase { source, destination }
+        if source == "abc12345" && destination == "xyz98765"));
+    assert_eq!(view.input_mode, InputMode::Normal);
+}
+
+#[test]
+fn test_rebase_mode_ignores_other_keys() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode
+    press_key(&mut view, keys::REBASE);
+
+    // Try pressing other keys - should be ignored
+    let action = press_key(&mut view, KeyCode::Char('d')); // describe
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+
+    let action = press_key(&mut view, KeyCode::Char('e')); // edit
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+
+    let action = press_key(&mut view, KeyCode::Char('/')); // search
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+}
+
+#[test]
+fn test_rebase_no_selection() {
+    let mut view = LogView::new();
+    // Empty changes
+    view.set_changes(vec![]);
+
+    // Try to enter rebase mode - should fail silently
+    let action = press_key(&mut view, keys::REBASE);
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert_eq!(view.rebase_source, None);
+}

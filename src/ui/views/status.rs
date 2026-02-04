@@ -121,6 +121,14 @@ impl StatusView {
             .map(|s| s.working_copy_change_id.as_str())
     }
 
+    /// Check if there are any conflicts in the current status
+    ///
+    /// Note: Currently unused but will be needed for Phase 9 (conflict resolution).
+    #[allow(dead_code)]
+    pub fn has_conflicts(&self) -> bool {
+        self.status.as_ref().is_some_and(|s| s.has_conflicts)
+    }
+
     /// Move selection down
     fn move_down(&mut self, visible_count: usize) {
         if let Some(ref status) = self.status {
@@ -598,5 +606,33 @@ mod tests {
         view.set_status(empty_status);
 
         assert!(view.status.as_ref().unwrap().is_clean());
+    }
+
+    #[test]
+    fn test_has_conflicts() {
+        let mut view = StatusView::new();
+
+        // No status set - no conflicts
+        assert!(!view.has_conflicts());
+
+        // Status without conflicts
+        let no_conflict_status = Status {
+            files: vec![],
+            has_conflicts: false,
+            working_copy_change_id: "abc".to_string(),
+            parent_change_id: "xyz".to_string(),
+        };
+        view.set_status(no_conflict_status);
+        assert!(!view.has_conflicts());
+
+        // Status with conflicts
+        let conflict_status = Status {
+            files: vec![],
+            has_conflicts: true,
+            working_copy_change_id: "abc".to_string(),
+            parent_change_id: "xyz".to_string(),
+        };
+        view.set_status(conflict_status);
+        assert!(view.has_conflicts());
     }
 }

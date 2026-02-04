@@ -602,6 +602,40 @@ impl App {
         }
     }
 
+    /// Execute rebase: move source change to be a child of destination
+    ///
+    /// Uses `jj rebase -r <source> -d <destination>` which moves only the
+    /// single change. Descendants are rebased onto the original parent.
+    pub(crate) fn execute_rebase(&mut self, source: &str, destination: &str) {
+        // Prevent rebasing to self
+        if source == destination {
+            self.notification = Some(Notification::warning("Cannot rebase to itself"));
+            return;
+        }
+
+        match self.jj.rebase(source, destination) {
+            Ok(_) => {
+                // Refresh both log and status
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.refresh_status();
+
+                // Check for conflicts in the rebased change (not just working copy)
+                let has_conflict = self.jj.has_conflict(source).unwrap_or(false);
+                if has_conflict {
+                    self.notification = Some(Notification::warning(
+                        "Rebased with conflicts - resolve with jj resolve",
+                    ));
+                } else {
+                    self.notification = Some(Notification::success("Rebased successfully"));
+                }
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Rebase failed: {}", e));
+            }
+        }
+    }
+
     /// Handle dialog result
     ///
     /// Called when a dialog is closed.

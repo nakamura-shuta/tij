@@ -25,6 +25,7 @@ pub mod commands {
     pub const BOOKMARK_CREATE: &str = "create";
     pub const BOOKMARK_SET: &str = "set";
     pub const BOOKMARK_DELETE: &str = "delete";
+    pub const REBASE: &str = "rebase";
 }
 
 /// jj command flags

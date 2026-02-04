@@ -361,6 +361,33 @@ impl JjExecutor {
         args.extend(names);
         self.run(&args)
     }
+
+    /// Run `jj rebase -r <source> -d <destination>` to move a change
+    ///
+    /// Moves the specified change to be a child of the destination.
+    /// Unlike `-s` option, this only moves the single change; descendants
+    /// are rebased onto the original parent.
+    ///
+    /// Returns the command output which may contain conflict information.
+    pub fn rebase(&self, source: &str, destination: &str) -> Result<String, JjError> {
+        self.run(&[commands::REBASE, flags::REVISION, source, "-d", destination])
+    }
+
+    /// Check if a specific change has conflicts
+    ///
+    /// Uses `jj log -r <change_id> -T 'conflict'` to query the conflict status.
+    /// Returns true if the change has unresolved conflicts.
+    pub fn has_conflict(&self, change_id: &str) -> Result<bool, JjError> {
+        let output = self.run(&[
+            commands::LOG,
+            flags::NO_GRAPH,
+            flags::REVISION,
+            change_id,
+            flags::TEMPLATE,
+            "conflict",
+        ])?;
+        Ok(output.trim() == "true")
+    }
 }
 
 #[cfg(test)]
