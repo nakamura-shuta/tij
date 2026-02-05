@@ -103,9 +103,19 @@ impl App {
         }
     }
 
-    /// Execute squash operation (squash change into its parent)
+    /// Execute squash operation (requires terminal control transfer)
+    ///
+    /// jj squash may open an editor when both source and destination
+    /// have non-empty descriptions. Uses the same interactive pattern
+    /// as execute_split to avoid freezing.
     pub(crate) fn execute_squash(&mut self, change_id: &str) {
         use crate::jj::constants::ROOT_CHANGE_ID;
+        use crossterm::execute;
+        use crossterm::terminal::{
+            Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+            enable_raw_mode,
+        };
+        use std::io::stdout;
 
         // Guard: cannot squash root commit (has no parent)
         if change_id == ROOT_CHANGE_ID {
@@ -115,23 +125,40 @@ impl App {
             return;
         }
 
-        match self.jj.squash(change_id) {
-            Ok(_) => {
+        // 1. Exit TUI mode
+        let _ = disable_raw_mode();
+        let _ = execute!(stdout(), LeaveAlternateScreen, Clear(ClearType::All));
+
+        // 2. Scope guard to ensure terminal restoration on any exit path
+        let _guard = scopeguard::guard((), |_| {
+            let _ = enable_raw_mode();
+            let _ = execute!(stdout(), EnterAlternateScreen);
+        });
+
+        // 3. Run jj squash (blocking, interactive)
+        let result = self.jj.squash_interactive(change_id);
+
+        // 4. Handle result
+        match result {
+            Ok(status) if status.success() => {
                 let short_id = &change_id[..8.min(change_id.len())];
                 self.notification = Some(Notification::success(format!(
                     "Squashed {} into parent (undo: u)",
                     short_id
                 )));
-                // Refresh log to show updated state
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                // Also refresh status view (squash may affect working copy)
-                self.refresh_status();
+            }
+            Ok(_) => {
+                self.notification = Some(Notification::info("Squash cancelled or failed"));
             }
             Err(e) => {
                 self.error_message = Some(format!("Squash failed: {}", e));
             }
         }
+
+        // 5. Refresh views
+        let revset = self.log_view.current_revset.clone();
+        self.refresh_log(revset.as_deref());
+        self.refresh_status();
     }
 
     /// Execute abandon operation (abandon a change)
