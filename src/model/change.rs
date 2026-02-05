@@ -38,6 +38,9 @@ pub struct Change {
 
     /// True if this is a graph-only line (no change data, just branch lines)
     pub is_graph_only: bool,
+
+    /// True if this change has unresolved conflicts
+    pub has_conflict: bool,
 }
 
 impl Change {
@@ -79,6 +82,7 @@ mod tests {
             bookmarks: vec!["main".to_string()],
             graph_prefix: String::new(),
             is_graph_only: false,
+            has_conflict: false,
         }
     }
 

@@ -5,7 +5,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use super::state::{App, View};
 use crate::keys;
 use crate::ui::views::{
-    BlameAction, DiffAction, InputMode, LogAction, OperationAction, StatusAction, StatusInputMode,
+    BlameAction, DiffAction, InputMode, LogAction, OperationAction, ResolveAction, StatusAction,
+    StatusInputMode,
 };
 
 impl App {
@@ -159,6 +160,12 @@ impl App {
                     self.handle_blame_action(action);
                 }
             }
+            View::Resolve => {
+                if let Some(ref mut resolve_view) = self.resolve_view {
+                    let action = resolve_view.handle_key(key);
+                    self.handle_resolve_action(action);
+                }
+            }
             View::Help => {
                 // Help view only uses global keys
             }
@@ -213,6 +220,12 @@ impl App {
             LogAction::Absorb => {
                 self.execute_absorb();
             }
+            LogAction::OpenResolveList {
+                change_id,
+                is_working_copy,
+            } => {
+                self.open_resolve_view(&change_id, is_working_copy);
+            }
         }
     }
 
@@ -245,6 +258,9 @@ impl App {
             StatusAction::Commit { message } => {
                 self.execute_commit(&message);
             }
+            StatusAction::JumpToConflict => {
+                // Selection already moved by StatusView; no further action needed
+            }
         }
     }
 
@@ -256,6 +272,37 @@ impl App {
             }
             OperationAction::Restore(operation_id) => {
                 self.execute_op_restore(&operation_id);
+            }
+        }
+    }
+
+    fn handle_resolve_action(&mut self, action: ResolveAction) {
+        match action {
+            ResolveAction::None => {}
+            ResolveAction::Back => {
+                self.resolve_view = None;
+                self.go_back();
+                // Refresh log to update conflict indicators
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            ResolveAction::ResolveExternal(file_path) => {
+                self.execute_resolve_external(&file_path);
+            }
+            ResolveAction::ResolveOurs(file_path) => {
+                self.execute_resolve_ours(&file_path);
+            }
+            ResolveAction::ResolveTheirs(file_path) => {
+                self.execute_resolve_theirs(&file_path);
+            }
+            ResolveAction::ShowDiff(file_path) => {
+                // Open diff for the change, jumping to the file
+                let change_id = self
+                    .resolve_view
+                    .as_ref()
+                    .map(|v| v.change_id.clone())
+                    .unwrap_or_default();
+                self.open_diff_at_file(&change_id, &file_path);
             }
         }
     }

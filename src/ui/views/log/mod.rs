@@ -72,6 +72,11 @@ pub enum LogAction {
     Rebase { source: String, destination: String },
     /// Absorb working copy changes into ancestor commits
     Absorb,
+    /// Open resolve list view for a change
+    OpenResolveList {
+        change_id: String,
+        is_working_copy: bool,
+    },
 }
 
 /// Log View state

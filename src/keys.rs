@@ -114,6 +114,12 @@ pub const ABSORB: KeyCode = KeyCode::Char('B');
 /// Show file annotation/blame (Status/Diff View)
 pub const ANNOTATE: KeyCode = KeyCode::Char('a');
 
+/// Open resolve list view for conflicts (Log View, uppercase)
+pub const RESOLVE_LIST: KeyCode = KeyCode::Char('X');
+
+/// Jump to first conflict file (Status View)
+pub const JUMP_CONFLICT: KeyCode = KeyCode::Char('f');
+
 /// Open text search input (for n/N navigation)
 pub const SEARCH_INPUT: KeyCode = KeyCode::Char('/');
 
@@ -281,6 +287,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         key: "B",
         description: "Absorb changes",
     },
+    KeyBindEntry {
+        key: "X",
+        description: "Resolve conflicts",
+    },
 ];
 
 /// Diff view key bindings for help display
@@ -381,6 +391,11 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         color: Color::Magenta,
     },
     KeyHint {
+        key: "X",
+        label: "Resolve",
+        color: Color::Red,
+    },
+    KeyHint {
         key: "o",
         label: "Ops",
         color: Color::Blue,
@@ -459,6 +474,11 @@ pub const STATUS_VIEW_HINTS: &[KeyHint] = &[
         color: Color::Yellow,
     },
     KeyHint {
+        key: "f",
+        label: "Conflict",
+        color: Color::Red,
+    },
+    KeyHint {
         key: "^L",
         label: "Refresh",
         color: Color::Blue,
@@ -496,6 +516,10 @@ pub const STATUS_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "C",
         description: "Commit changes",
+    },
+    KeyBindEntry {
+        key: "f",
+        description: "Jump to conflict",
     },
     KeyBindEntry {
         key: "Tab",
@@ -544,6 +568,34 @@ pub const BLAME_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "q",
         description: "Back",
+    },
+];
+
+/// Resolve view key bindings for help display
+pub const RESOLVE_KEYS: &[KeyBindEntry] = &[
+    KeyBindEntry {
+        key: "j/k",
+        description: "Move down/up",
+    },
+    KeyBindEntry {
+        key: "Enter",
+        description: "Resolve (external tool, @ only)",
+    },
+    KeyBindEntry {
+        key: "o",
+        description: "Resolve with :ours",
+    },
+    KeyBindEntry {
+        key: "t",
+        description: "Resolve with :theirs",
+    },
+    KeyBindEntry {
+        key: "d",
+        description: "Show diff",
+    },
+    KeyBindEntry {
+        key: "q",
+        description: "Back to log",
     },
 ];
 

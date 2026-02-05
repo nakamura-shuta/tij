@@ -29,6 +29,13 @@ pub mod commands {
     pub const ABSORB: &str = "absorb";
     pub const FILE: &str = "file";
     pub const FILE_ANNOTATE: &str = "annotate";
+    pub const RESOLVE: &str = "resolve";
+}
+
+/// jj resolve flags
+pub mod resolve_flags {
+    pub const LIST: &str = "--list";
+    pub const TOOL: &str = "--tool";
 }
 
 /// jj command flags

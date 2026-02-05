@@ -8,8 +8,8 @@ use std::sync::LazyLock;
 use super::JjError;
 use super::template::FIELD_SEPARATOR;
 use crate::model::{
-    AnnotationContent, AnnotationLine, Change, DiffContent, DiffLine, DiffLineKind, FileState,
-    FileStatus, Operation, Status,
+    AnnotationContent, AnnotationLine, Change, ConflictFile, DiffContent, DiffLine, DiffLineKind,
+    FileState, FileStatus, Operation, Status,
 };
 
 /// Regex for parsing jj file annotate default output
@@ -25,6 +25,12 @@ use crate::model::{
 static ANNOTATE_LINE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(\S+)\s+(.+?)\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\d+):\s?(.*)$")
         .expect("Invalid annotate line regex")
+});
+
+/// Regex for parsing `jj resolve --list` output when using space delimiter
+/// Matches: `<path>  <N>-sided conflict` (2+ spaces between path and description)
+static RESOLVE_LIST_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(.+?)\s{2,}(\d+-sided\s+conflict)$").expect("Invalid resolve list regex")
 });
 
 /// File operation type from jj show output
@@ -139,6 +145,7 @@ impl Parser {
             },
             graph_prefix: String::new(), // Set by caller
             is_graph_only: false,
+            has_conflict: fields.get(7).map(|v| *v == "true").unwrap_or(false),
         })
     }
 
@@ -170,7 +177,44 @@ impl Parser {
             },
             graph_prefix: String::new(),
             is_graph_only: false,
+            has_conflict: fields.get(8).map(|v| *v == "true").unwrap_or(false),
         })
+    }
+
+    /// Parse `jj resolve --list` output into conflict file list
+    ///
+    /// The delimiter varies by jj version:
+    /// - Some versions use tab (`\t`)
+    /// - jj 0.37.x uses multiple spaces
+    ///
+    /// Strategy: try tab first, fall back to regex matching `\d+-sided conflict`.
+    pub fn parse_resolve_list(output: &str) -> Vec<ConflictFile> {
+        output
+            .lines()
+            .filter(|line| !line.is_empty())
+            .filter_map(|line| {
+                // Strategy 1: tab delimiter
+                if line.contains('\t') {
+                    let parts: Vec<&str> = line.splitn(2, '\t').collect();
+                    if parts.len() == 2 {
+                        return Some(ConflictFile {
+                            path: parts[0].trim().to_string(),
+                            description: parts[1].trim().to_string(),
+                        });
+                    }
+                }
+
+                // Strategy 2: regex for space-delimited output
+                if let Some(caps) = RESOLVE_LIST_REGEX.captures(line) {
+                    return Some(ConflictFile {
+                        path: caps[1].trim().to_string(),
+                        description: caps[2].trim().to_string(),
+                    });
+                }
+
+                None
+            })
+            .collect()
     }
 
     /// Parse `jj status` output
@@ -340,6 +384,8 @@ impl Parser {
     /// Examples:
     /// - "Modified regular file src/main.rs:" -> ("src/main.rs", Modified)
     /// - "Added regular file src/new.rs:" -> ("src/new.rs", Added)
+    /// - "Created conflict in test.txt:" -> ("test.txt", Modified)
+    /// - "Resolved conflict in test.txt:" -> ("test.txt", Modified)
     fn extract_file_info(line: &str) -> Option<(String, FileOperation)> {
         let patterns = [
             ("Added regular file ", FileOperation::Added),
@@ -348,6 +394,8 @@ impl Parser {
             ("Modified regular file ", FileOperation::Modified),
             ("Renamed regular file ", FileOperation::Modified),
             ("Copied regular file ", FileOperation::Added),
+            ("Created conflict in ", FileOperation::Modified),
+            ("Resolved conflict in ", FileOperation::Modified),
         ];
 
         for (pattern, op) in patterns {
@@ -871,6 +919,40 @@ Modified regular file src/lib.rs:
     }
 
     #[test]
+    fn test_parse_show_conflict_diff() {
+        let output = "Commit ID: c285b17e
+Change ID: lqxuvokn
+Author   : Test <test@example.com> (2026-02-05 10:33:31)
+Committer: Test <test@example.com> (2026-02-05 10:33:50)
+
+    branch B
+
+Created conflict in test.txt:
+   1     : branch A content
+        1: <<<<<<< conflict 1 of 1
+        2: %%%%%%% changes from initial
+        3: -line 1
+        4: +branch A content
+        5: +++++++ branch B
+        6: branch B content
+        7: >>>>>>> conflict 1 of 1 ends
+";
+        let content = Parser::parse_show(output).unwrap();
+
+        assert_eq!(content.commit_id, "c285b17e");
+        assert_eq!(content.description, "branch B");
+        assert!(content.has_changes());
+        assert_eq!(content.file_count(), 1);
+
+        // File header is "test.txt"
+        assert_eq!(content.lines[0].kind, DiffLineKind::FileHeader);
+        assert_eq!(content.lines[0].content, "test.txt");
+
+        // Diff lines were parsed (conflict markers appear as content)
+        assert!(content.lines.len() > 1);
+    }
+
+    #[test]
     fn test_extract_file_info() {
         use super::{FileOperation, Parser};
 
@@ -885,6 +967,14 @@ Modified regular file src/lib.rs:
         let (path, op) = Parser::extract_file_info("Removed regular file old.txt:").unwrap();
         assert_eq!(path, "old.txt");
         assert_eq!(op, FileOperation::Deleted);
+
+        let (path, op) = Parser::extract_file_info("Created conflict in test.txt:").unwrap();
+        assert_eq!(path, "test.txt");
+        assert_eq!(op, FileOperation::Modified);
+
+        let (path, op) = Parser::extract_file_info("Resolved conflict in test.txt:").unwrap();
+        assert_eq!(path, "test.txt");
+        assert_eq!(op, FileOperation::Modified);
 
         assert!(Parser::extract_file_info("Some other line").is_none());
     }
@@ -1229,5 +1319,81 @@ Modified regular file src/lib.rs:
         let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
         assert_eq!(content.len(), 1);
         assert_eq!(content.lines[0].author, "John Doe");
+    }
+
+    // =========================================================================
+    // parse_resolve_list tests (Phase 9)
+    // =========================================================================
+
+    #[test]
+    fn test_parse_resolve_list_tab_delimiter() {
+        let output = "test.txt\t2-sided conflict\n";
+        let files = Parser::parse_resolve_list(output);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "test.txt");
+        assert_eq!(files[0].description, "2-sided conflict");
+    }
+
+    #[test]
+    fn test_parse_resolve_list_space_delimiter() {
+        // jj 0.37.x uses spaces (verified with xxd)
+        let output = "test.txt    2-sided conflict\n";
+        let files = Parser::parse_resolve_list(output);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "test.txt");
+        assert_eq!(files[0].description, "2-sided conflict");
+    }
+
+    #[test]
+    fn test_parse_resolve_list_multiple_spaces() {
+        let output = "src/main.rs    2-sided conflict\nsrc/lib.rs     3-sided conflict\n";
+        let files = Parser::parse_resolve_list(output);
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].path, "src/main.rs");
+        assert_eq!(files[0].description, "2-sided conflict");
+        assert_eq!(files[1].path, "src/lib.rs");
+        assert_eq!(files[1].description, "3-sided conflict");
+    }
+
+    #[test]
+    fn test_parse_resolve_list_path_with_spaces() {
+        let output = "my file.txt    2-sided conflict\n";
+        let files = Parser::parse_resolve_list(output);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "my file.txt");
+        assert_eq!(files[0].description, "2-sided conflict");
+    }
+
+    #[test]
+    fn test_parse_resolve_list_empty() {
+        let output = "";
+        let files = Parser::parse_resolve_list(output);
+        assert!(files.is_empty());
+    }
+
+    // =========================================================================
+    // conflict field in log parser tests (Phase 9)
+    // =========================================================================
+
+    #[test]
+    fn test_parse_log_with_conflict() {
+        let record = "abc12345\tdef67890\tuser@example.com\t2026-01-01T00:00:00+0900\tdescription\ttrue\tfalse\tmain\ttrue";
+        let change = Parser::parse_log_record(record).unwrap();
+        assert!(change.has_conflict);
+    }
+
+    #[test]
+    fn test_parse_log_without_conflict() {
+        let record = "abc12345\tdef67890\tuser@example.com\t2026-01-01T00:00:00+0900\tdescription\ttrue\tfalse\tmain\tfalse";
+        let change = Parser::parse_log_record(record).unwrap();
+        assert!(!change.has_conflict);
+    }
+
+    #[test]
+    fn test_parse_log_missing_conflict_field() {
+        // Backward compat: old format without conflict field
+        let record = "abc12345\tdef67890\tuser@example.com\t2026-01-01T00:00:00+0900\tdescription\ttrue\tfalse\tmain";
+        let change = Parser::parse_log_record(record).unwrap();
+        assert!(!change.has_conflict); // defaults to false
     }
 }

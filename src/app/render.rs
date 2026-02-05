@@ -23,6 +23,7 @@ impl App {
             View::Status => self.render_status_view(frame, notification),
             View::Operation => self.render_operation_view(frame, notification),
             View::Blame => self.render_blame_view(frame),
+            View::Resolve => self.render_resolve_view(frame, notification),
             View::Help => self.render_help_view(frame),
         }
 
@@ -46,6 +47,7 @@ impl App {
             View::Status => status_view_status_bar_height(width),
             View::Operation => operation_view_status_bar_height(width),
             View::Blame => blame_view_status_bar_height(width),
+            View::Resolve => 1, // Simple status bar
             View::Help => 0,
         }
     }
@@ -150,6 +152,90 @@ impl App {
 
     fn render_help_view(&self, frame: &mut Frame) {
         render_help_panel(frame, frame.area());
+    }
+
+    fn render_resolve_view(
+        &self,
+        frame: &mut Frame,
+        notification: Option<&crate::model::Notification>,
+    ) {
+        if let Some(ref resolve_view) = self.resolve_view {
+            let area = frame.area();
+
+            // Reserve 1 line for status bar
+            let main_area = Rect {
+                x: area.x,
+                y: area.y,
+                width: area.width,
+                height: area.height.saturating_sub(1),
+            };
+
+            resolve_view.render(frame, main_area, notification);
+            self.render_resolve_status_bar(frame, resolve_view);
+        } else {
+            render_placeholder(
+                frame,
+                " Tij - Resolve View ",
+                Color::Red,
+                "No conflicts loaded - Press q to go back",
+            );
+        }
+    }
+
+    fn render_resolve_status_bar(
+        &self,
+        frame: &mut Frame,
+        resolve_view: &crate::ui::views::ResolveView,
+    ) {
+        use ratatui::style::{Style, Stylize};
+        use ratatui::text::{Line, Span};
+        use ratatui::widgets::Paragraph;
+
+        let area = frame.area();
+        let status_area = Rect {
+            x: area.x,
+            y: area.height.saturating_sub(1),
+            width: area.width,
+            height: 1,
+        };
+
+        let mut spans = Vec::new();
+
+        if resolve_view.is_working_copy {
+            spans.push(Span::styled(
+                " Enter ",
+                Style::default().fg(Color::Black).bg(Color::Green),
+            ));
+            spans.push(Span::raw(" Resolve "));
+        }
+
+        spans.push(Span::styled(
+            " o ",
+            Style::default().fg(Color::Black).bg(Color::Cyan),
+        ));
+        spans.push(Span::raw(" Ours "));
+
+        spans.push(Span::styled(
+            " t ",
+            Style::default().fg(Color::Black).bg(Color::Cyan),
+        ));
+        spans.push(Span::raw(" Theirs "));
+
+        spans.push(Span::styled(
+            " d ",
+            Style::default().fg(Color::Black).bg(Color::Magenta),
+        ));
+        spans.push(Span::raw(" Diff "));
+
+        spans.push(Span::styled(
+            " q ",
+            Style::default().fg(Color::Black).bg(Color::Red),
+        ));
+        spans.push(Span::raw(" Back "));
+
+        let status_line =
+            Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::DarkGray).bold());
+        frame.render_widget(status_line, status_area);
     }
 
     fn render_blame_view(&self, frame: &mut Frame) {

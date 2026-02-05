@@ -5,6 +5,7 @@
 
 mod annotation;
 mod change;
+mod conflict;
 mod diff;
 mod file_status;
 mod notification;
@@ -12,6 +13,7 @@ mod operation;
 
 pub use annotation::{AnnotationContent, AnnotationLine};
 pub use change::Change;
+pub use conflict::ConflictFile;
 pub use diff::{DiffContent, DiffLine, DiffLineKind};
 pub use file_status::{FileState, FileStatus, Status};
 pub use notification::{Notification, NotificationKind};

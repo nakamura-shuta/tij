@@ -47,6 +47,7 @@ Press `?` for help, `q` to quit.
 |------|----------|
 | Views | Log / Diff / Status / Help / Operation History / Blame |
 | History Editing | Describe (multi-line) / Edit / New / Commit / Squash / Abandon / Split / Rebase / Absorb |
+| Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
 | Recovery | Undo / Redo / Operation Restore |
 | Bookmarks | Create / Move / Delete (multi-select) |
 | Usability | Revset filtering / Text search / Adaptive status bar |
@@ -57,7 +58,7 @@ Press `?` for help, `q` to quit.
 |------|----------|
 | Views | Bookmark View |
 | Safety | Confirmation dialogs for destructive actions |
-| Git Integration | Fetch / Push / Conflict resolution UI |
+| Git Integration | Fetch / Push |
 | Customization | Keybindings config / Themes |
 
 ## Revset Examples

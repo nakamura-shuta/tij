@@ -184,6 +184,14 @@ impl LogView {
             ));
         }
 
+        // Conflict indicator
+        if change.has_conflict {
+            spans.push(Span::styled(
+                "[CONFLICT] ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ));
+        }
+
         // Description
         let description = change.display_description();
         if change.is_empty && description == symbols::empty::NO_DESCRIPTION {

@@ -6,10 +6,10 @@ use std::io;
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 
-use crate::model::{AnnotationContent, Change, DiffContent, Operation, Status};
+use crate::model::{AnnotationContent, Change, ConflictFile, DiffContent, Operation, Status};
 
 use super::JjError;
-use super::constants::{self, commands, errors, flags};
+use super::constants::{self, commands, errors, flags, resolve_flags};
 use super::parser::Parser;
 use super::template::Templates;
 
@@ -416,6 +416,72 @@ impl JjExecutor {
     /// Returns the command output which describes what was absorbed.
     pub fn absorb(&self) -> Result<String, JjError> {
         self.run(&[commands::ABSORB])
+    }
+
+    /// List conflicted files for a change
+    ///
+    /// Runs `jj resolve --list [-r <change_id>]` and parses the output.
+    /// Returns an empty list if there are no conflicts.
+    pub fn resolve_list(&self, change_id: Option<&str>) -> Result<Vec<ConflictFile>, JjError> {
+        let mut args = vec![commands::RESOLVE, resolve_flags::LIST];
+
+        if let Some(rev) = change_id {
+            args.push(flags::REVISION);
+            args.push(rev);
+        }
+
+        let output = self.run(&args)?;
+        Ok(Parser::parse_resolve_list(&output))
+    }
+
+    /// Resolve a conflict using a built-in tool (:ours or :theirs)
+    ///
+    /// Works for any change (not just @).
+    pub fn resolve_with_tool(
+        &self,
+        file_path: &str,
+        tool: &str,
+        change_id: Option<&str>,
+    ) -> Result<String, JjError> {
+        let mut args = vec![commands::RESOLVE, resolve_flags::TOOL, tool];
+
+        if let Some(rev) = change_id {
+            args.push(flags::REVISION);
+            args.push(rev);
+        }
+
+        args.push(file_path);
+        self.run(&args)
+    }
+
+    /// Resolve a conflict interactively using an external merge tool
+    ///
+    /// Spawns jj resolve as a child process with inherited stdio.
+    /// The caller must disable raw mode before calling this method.
+    /// Only works for @ (working copy).
+    pub fn resolve_interactive(
+        &self,
+        file_path: &str,
+        change_id: Option<&str>,
+    ) -> io::Result<ExitStatus> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+
+        if let Some(ref repo_path) = self.repo_path {
+            cmd.arg(flags::REPO_PATH).arg(repo_path);
+        }
+
+        let mut args = vec![commands::RESOLVE];
+        if let Some(rev) = change_id {
+            args.push(flags::REVISION);
+            args.push(rev);
+        }
+        args.push(file_path);
+
+        cmd.args(args)
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
     }
 
     /// Run `jj file annotate` to show blame information for a file

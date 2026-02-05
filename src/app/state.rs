@@ -5,7 +5,7 @@ use std::cell::Cell;
 use crate::jj::JjExecutor;
 use crate::model::Notification;
 use crate::ui::components::{Dialog, DialogCallback, DialogResult, SelectItem};
-use crate::ui::views::{BlameView, DiffView, LogView, OperationView, StatusView};
+use crate::ui::views::{BlameView, DiffView, LogView, OperationView, ResolveView, StatusView};
 
 /// Available views in the application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -16,6 +16,7 @@ pub enum View {
     Status,
     Operation,
     Blame,
+    Resolve,
     Help,
 }
 
@@ -34,6 +35,8 @@ pub struct App {
     pub diff_view: Option<DiffView>,
     /// Blame view state (created on demand)
     pub blame_view: Option<BlameView>,
+    /// Resolve view state (created on demand)
+    pub resolve_view: Option<ResolveView>,
     /// Status view state
     pub status_view: StatusView,
     /// Operation history view state
@@ -66,6 +69,7 @@ impl App {
             log_view: LogView::new(),
             diff_view: None,
             blame_view: None,
+            resolve_view: None,
             status_view: StatusView::new(),
             operation_view: OperationView::new(),
             jj: JjExecutor::new(),
@@ -103,6 +107,7 @@ impl App {
             View::Diff => View::Log,
             View::Operation => View::Log,
             View::Blame => View::Log,
+            View::Resolve => View::Log,
             View::Help => View::Log,
         };
         self.go_to_view(next);
@@ -431,6 +436,15 @@ impl App {
                 }
                 // If diff_view is None, do nothing (no notification)
             }
+            View::Resolve => {
+                // Refresh resolve list
+                if let Some(ref resolve_view) = self.resolve_view {
+                    let change_id = resolve_view.change_id.clone();
+                    let is_wc = resolve_view.is_working_copy;
+                    self.refresh_resolve_list(&change_id, is_wc);
+                    self.notification = Some(Notification::info("Refreshed"));
+                }
+            }
             View::Blame => {
                 // Only refresh if blame_view is loaded
                 if let Some(ref blame_view) = self.blame_view {
@@ -678,6 +692,169 @@ impl App {
                 self.error_message = Some(format!("Absorb failed: {}", e));
             }
         }
+    }
+
+    /// Open resolve view for a change
+    ///
+    /// Runs `jj resolve --list` and opens the Resolve List View if conflicts exist.
+    pub(crate) fn open_resolve_view(&mut self, change_id: &str, is_working_copy: bool) {
+        match self.jj.resolve_list(Some(change_id)) {
+            Ok(files) => {
+                if files.is_empty() {
+                    self.notification = Some(Notification::info("No conflicts in this change"));
+                } else {
+                    self.resolve_view = Some(ResolveView::new(
+                        change_id.to_string(),
+                        is_working_copy,
+                        files,
+                    ));
+                    self.go_to_view(View::Resolve);
+                }
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to list conflicts: {}", e));
+            }
+        }
+    }
+
+    /// Refresh the resolve list for the current resolve view
+    fn refresh_resolve_list(&mut self, change_id: &str, is_working_copy: bool) {
+        match self.jj.resolve_list(Some(change_id)) {
+            Ok(files) => {
+                if files.is_empty() {
+                    // All resolved - go back (simple message for Log View title bar)
+                    self.notification = Some(Notification::success("All conflicts resolved!"));
+                    self.resolve_view = None;
+                    self.go_back();
+                    // Refresh log to update conflict indicators
+                    let revset = self.log_view.current_revset.clone();
+                    self.refresh_log(revset.as_deref());
+                } else if let Some(ref mut view) = self.resolve_view {
+                    view.set_files(files);
+                } else {
+                    self.resolve_view = Some(ResolveView::new(
+                        change_id.to_string(),
+                        is_working_copy,
+                        files,
+                    ));
+                }
+            }
+            Err(e) => {
+                // "No conflicts found" means all conflicts were just resolved
+                let err_msg = e.to_string();
+                if err_msg.contains("No conflicts") {
+                    // All resolved - simple message for Log View title bar
+                    self.notification = Some(Notification::success("All conflicts resolved!"));
+                    self.resolve_view = None;
+                    self.go_back();
+                    let revset = self.log_view.current_revset.clone();
+                    self.refresh_log(revset.as_deref());
+                } else {
+                    self.error_message = Some(format!("Failed to refresh conflicts: {}", e));
+                }
+            }
+        }
+    }
+
+    /// Resolve a conflict using :ours tool
+    pub(crate) fn execute_resolve_ours(&mut self, file_path: &str) {
+        let (change_id, is_wc) = match self.resolve_view {
+            Some(ref v) => (v.change_id.clone(), v.is_working_copy),
+            None => return,
+        };
+
+        match self
+            .jj
+            .resolve_with_tool(file_path, ":ours", Some(&change_id))
+        {
+            Ok(_) => {
+                self.notification = Some(Notification::success(format!(
+                    "Resolved {} with :ours",
+                    file_path
+                )));
+                self.refresh_resolve_list(&change_id, is_wc);
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Resolve failed: {}", e));
+            }
+        }
+    }
+
+    /// Resolve a conflict using :theirs tool
+    pub(crate) fn execute_resolve_theirs(&mut self, file_path: &str) {
+        let (change_id, is_wc) = match self.resolve_view {
+            Some(ref v) => (v.change_id.clone(), v.is_working_copy),
+            None => return,
+        };
+
+        match self
+            .jj
+            .resolve_with_tool(file_path, ":theirs", Some(&change_id))
+        {
+            Ok(_) => {
+                self.notification = Some(Notification::success(format!(
+                    "Resolved {} with :theirs",
+                    file_path
+                )));
+                self.refresh_resolve_list(&change_id, is_wc);
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Resolve failed: {}", e));
+            }
+        }
+    }
+
+    /// Resolve a conflict using external merge tool (@ only)
+    ///
+    /// Similar to execute_split: temporarily exits TUI mode for interactive tool.
+    pub(crate) fn execute_resolve_external(&mut self, file_path: &str) {
+        use crossterm::execute;
+        use crossterm::terminal::{
+            Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+            enable_raw_mode,
+        };
+        use std::io::stdout;
+
+        let (change_id, is_wc) = match self.resolve_view {
+            Some(ref v) => (v.change_id.clone(), v.is_working_copy),
+            None => return,
+        };
+
+        if !is_wc {
+            self.notification = Some(Notification::warning(
+                "External merge tool only works for working copy (@)",
+            ));
+            return;
+        }
+
+        // 1. Exit TUI mode
+        let _ = disable_raw_mode();
+        let _ = execute!(stdout(), LeaveAlternateScreen, Clear(ClearType::All));
+
+        // 2. Scope guard to ensure terminal restoration
+        let _guard = scopeguard::guard((), |_| {
+            let _ = enable_raw_mode();
+            let _ = execute!(stdout(), EnterAlternateScreen);
+        });
+
+        // 3. Run jj resolve (blocking)
+        let result = self.jj.resolve_interactive(file_path, Some(&change_id));
+
+        // 4. Handle result
+        match result {
+            Ok(status) if status.success() => {
+                self.notification = Some(Notification::success(format!("Resolved {}", file_path)));
+            }
+            Ok(_) => {
+                self.notification = Some(Notification::info("Resolve cancelled or failed"));
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Resolve failed: {}", e));
+            }
+        }
+
+        // 5. Refresh resolve list
+        self.refresh_resolve_list(&change_id, is_wc);
     }
 
     /// Execute rebase: move source change to be a child of destination

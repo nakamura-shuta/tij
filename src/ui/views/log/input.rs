@@ -110,6 +110,16 @@ impl LogView {
                 LogAction::None
             }
             k if k == keys::ABSORB => LogAction::Absorb,
+            k if k == keys::RESOLVE_LIST => {
+                if let Some(change) = self.selected_change() {
+                    LogAction::OpenResolveList {
+                        change_id: change.change_id.clone(),
+                        is_working_copy: change.is_working_copy,
+                    }
+                } else {
+                    LogAction::None
+                }
+            }
             k if k == keys::SEARCH_NEXT => {
                 self.search_next();
                 LogAction::None

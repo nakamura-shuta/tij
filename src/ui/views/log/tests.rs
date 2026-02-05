@@ -22,6 +22,7 @@ fn create_test_changes() -> Vec<Change> {
             bookmarks: vec!["main".to_string()],
             graph_prefix: "@  ".to_string(),
             is_graph_only: false,
+            has_conflict: false,
         },
         Change {
             change_id: "xyz98765".to_string(),
@@ -34,6 +35,7 @@ fn create_test_changes() -> Vec<Change> {
             bookmarks: vec![],
             graph_prefix: "○  ".to_string(),
             is_graph_only: false,
+            has_conflict: false,
         },
         Change {
             change_id: constants::ROOT_CHANGE_ID.to_string(),
@@ -46,6 +48,7 @@ fn create_test_changes() -> Vec<Change> {
             bookmarks: vec![],
             graph_prefix: "◆  ".to_string(),
             is_graph_only: false,
+            has_conflict: false,
         },
     ]
 }

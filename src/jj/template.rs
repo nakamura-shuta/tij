@@ -21,12 +21,14 @@ impl Templates {
     /// 6. is_working_copy ("true" or "false")
     /// 7. is_empty ("true" or "false")
     /// 8. bookmarks (comma-separated)
+    /// 9. has_conflict ("true" or "false") - requires jj 0.12.0+
     ///
     /// Notes:
     /// - jj doesn't interpret `\x1f` escape sequences in templates,
     ///   so we use tab characters with explicit concatenation instead of `separate()`.
     /// - `current_working_copy` is available in jj 0.20.0+.
     ///   (Earlier versions used `self.working_copy()` which no longer exists)
+    /// - `conflict` keyword is available in jj 0.12.0+.
     pub fn log() -> &'static str {
         concat!(
             "change_id.short(8)",
@@ -44,6 +46,8 @@ impl Templates {
             "if(empty, 'true', 'false')",
             " ++ \"\\t\" ++ ",
             "bookmarks.map(|b| b.name()).join(',')",
+            " ++ \"\\t\" ++ ",
+            "if(conflict, 'true', 'false')",
             " ++ \"\\n\""
         )
     }

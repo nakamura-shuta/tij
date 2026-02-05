@@ -6,7 +6,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Modifier, Style, Stylize},
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::Paragraph,
 };
@@ -42,6 +42,8 @@ pub enum StatusAction {
     },
     /// Commit with message
     Commit { message: String },
+    /// Jump to first conflict file
+    JumpToConflict,
     /// No action
     None,
 }
@@ -127,11 +129,26 @@ impl StatusView {
     }
 
     /// Check if there are any conflicts in the current status
-    ///
-    /// Note: Currently unused but will be needed for Phase 9 (conflict resolution).
-    #[allow(dead_code)]
     pub fn has_conflicts(&self) -> bool {
         self.status.as_ref().is_some_and(|s| s.has_conflicts)
+    }
+
+    /// Jump to the first conflicted file in the list
+    ///
+    /// Returns true if a conflict file was found and selection moved.
+    fn jump_to_first_conflict(&mut self) -> bool {
+        if let Some(ref status) = self.status {
+            if let Some(idx) = status
+                .files
+                .iter()
+                .position(|f| matches!(f.state, FileState::Conflicted))
+            {
+                self.selected_index = idx;
+                self.adjust_scroll(Self::DEFAULT_VISIBLE_COUNT);
+                return true;
+            }
+        }
+        false
     }
 
     /// Move selection down
@@ -238,6 +255,13 @@ impl StatusView {
                     StatusAction::OpenBlame {
                         file_path: file_path.to_string(),
                     }
+                } else {
+                    StatusAction::None
+                }
+            }
+            code if code == keys::JUMP_CONFLICT => {
+                if self.jump_to_first_conflict() {
+                    StatusAction::JumpToConflict
                 } else {
                     StatusAction::None
                 }
@@ -372,8 +396,18 @@ impl StatusView {
         title: &Line,
         notification: Option<&Notification>,
     ) {
+        // Count conflict files for header
+        let conflict_count = status
+            .files
+            .iter()
+            .filter(|f| matches!(f.state, FileState::Conflicted))
+            .count();
+        let has_conflict_line = conflict_count > 0;
+
         // Calculate available height for files (minus borders and header)
-        let inner_height = area.height.saturating_sub(5) as usize; // 2 borders + 3 header lines
+        // 2 borders + 3 header lines (+ 1 if conflict line shown)
+        let header_lines = if has_conflict_line { 4 } else { 3 };
+        let inner_height = area.height.saturating_sub(2 + header_lines as u16) as usize;
 
         // Build lines
         let mut lines = Vec::new();
@@ -393,12 +427,26 @@ impl StatusView {
             ),
             Span::raw(&status.parent_change_id),
         ]));
+
+        // Conflict count header (only when conflicts exist)
+        if has_conflict_line {
+            let label = if conflict_count == 1 {
+                " Conflicts: 1 file".to_string()
+            } else {
+                format!(" Conflicts: {} files", conflict_count)
+            };
+            lines.push(Line::from(vec![Span::styled(
+                label,
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            )]));
+        }
+
         lines.push(Line::from("")); // Separator
 
         // File list
+        let header_count = header_lines + 1; // +1 for separator
         for (idx, file) in status.files.iter().enumerate().skip(self.scroll_offset) {
-            if lines.len() >= inner_height + 3 {
-                // +3 for header
+            if lines.len() >= inner_height + header_count {
                 break;
             }
 
@@ -649,5 +697,67 @@ mod tests {
         };
         view.set_status(conflict_status);
         assert!(view.has_conflicts());
+    }
+
+    fn status_with_conflicts() -> Status {
+        Status {
+            files: vec![
+                FileStatus {
+                    path: "src/main.rs".to_string(),
+                    state: FileState::Modified,
+                },
+                FileStatus {
+                    path: "src/conflict.rs".to_string(),
+                    state: FileState::Conflicted,
+                },
+                FileStatus {
+                    path: "src/other.rs".to_string(),
+                    state: FileState::Added,
+                },
+            ],
+            has_conflicts: true,
+            working_copy_change_id: "abc12345".to_string(),
+            parent_change_id: "xyz98765".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_jump_to_first_conflict() {
+        let mut view = StatusView::new();
+        view.set_status(status_with_conflicts());
+
+        assert_eq!(view.selected_index, 0);
+        assert!(view.jump_to_first_conflict());
+        assert_eq!(view.selected_index, 1); // conflict.rs is at index 1
+    }
+
+    #[test]
+    fn test_jump_to_first_conflict_no_conflicts() {
+        let mut view = StatusView::new();
+        view.set_status(sample_status()); // no conflicted files
+
+        assert_eq!(view.selected_index, 0);
+        assert!(!view.jump_to_first_conflict());
+        assert_eq!(view.selected_index, 0); // unchanged
+    }
+
+    #[test]
+    fn test_f_key_with_conflicts() {
+        let mut view = StatusView::new();
+        view.set_status(status_with_conflicts());
+
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('f')));
+        assert_eq!(action, StatusAction::JumpToConflict);
+        assert_eq!(view.selected_index, 1);
+    }
+
+    #[test]
+    fn test_f_key_without_conflicts() {
+        let mut view = StatusView::new();
+        view.set_status(sample_status());
+
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('f')));
+        assert_eq!(action, StatusAction::None);
+        assert_eq!(view.selected_index, 0);
     }
 }
