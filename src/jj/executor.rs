@@ -498,6 +498,42 @@ impl JjExecutor {
             .status()
     }
 
+    /// Run `jj git fetch` to fetch from all tracked remotes
+    ///
+    /// Returns the command output describing what was fetched.
+    /// Empty output typically means "already up to date".
+    pub fn git_fetch(&self) -> Result<String, JjError> {
+        self.run(&[commands::GIT, commands::GIT_FETCH])
+    }
+
+    /// Run `jj git push --bookmark <name>` to push a bookmark to remote
+    ///
+    /// Pushes the specified bookmark to the default remote (origin).
+    /// jj automatically performs force-with-lease equivalent safety checks.
+    pub fn git_push_bookmark(&self, bookmark_name: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::BOOKMARK_FLAG,
+            bookmark_name,
+        ])
+    }
+
+    /// Run `jj git push --bookmark <name> --allow-new` for new remote bookmarks
+    ///
+    /// Same as git_push_bookmark but allows creating new remote bookmarks.
+    /// Note: --allow-new is deprecated in jj 0.37+ but still functional.
+    /// Users should configure `remotes.origin.auto-track-bookmarks` for a permanent fix.
+    pub fn git_push_bookmark_allow_new(&self, bookmark_name: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::BOOKMARK_FLAG,
+            bookmark_name,
+            flags::ALLOW_NEW,
+        ])
+    }
+
     /// Run `jj file annotate` to show blame information for a file
     ///
     /// Shows the change responsible for each line of the specified file.

@@ -51,6 +51,8 @@ pub struct App {
     pub(crate) last_frame_height: Cell<u16>,
     /// Active dialog (blocks other input when Some)
     pub active_dialog: Option<Dialog>,
+    /// Bookmark names pending for push (Confirm dialog only; Select dialog uses DialogResult names)
+    pub(crate) pending_push_bookmarks: Vec<String>,
 }
 
 impl Default for App {
@@ -77,6 +79,7 @@ impl App {
             notification: None,
             last_frame_height: Cell::new(24), // Default terminal height
             active_dialog: None,
+            pending_push_bookmarks: Vec::new(),
         };
 
         // Load initial log

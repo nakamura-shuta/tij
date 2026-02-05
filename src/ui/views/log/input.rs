@@ -135,6 +135,8 @@ impl LogView {
                     LogAction::None
                 }
             }
+            k if k == keys::FETCH => LogAction::Fetch,
+            k if k == keys::PUSH => LogAction::StartPush,
             _ => LogAction::None,
         }
     }

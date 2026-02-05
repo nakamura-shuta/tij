@@ -30,6 +30,9 @@ pub mod commands {
     pub const FILE: &str = "file";
     pub const FILE_ANNOTATE: &str = "annotate";
     pub const RESOLVE: &str = "resolve";
+    pub const GIT: &str = "git";
+    pub const GIT_FETCH: &str = "fetch";
+    pub const GIT_PUSH: &str = "push";
 }
 
 /// jj resolve flags
@@ -50,6 +53,10 @@ pub mod flags {
     pub const REVISION: &str = "-r";
     /// Specify repository path
     pub const REPO_PATH: &str = "-R";
+    /// Specify bookmark for push
+    pub const BOOKMARK_FLAG: &str = "--bookmark";
+    /// Allow pushing new bookmarks (deprecated in jj 0.37+, but functional)
+    pub const ALLOW_NEW: &str = "--allow-new";
 }
 
 /// Special jj values

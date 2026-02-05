@@ -117,6 +117,12 @@ pub const ANNOTATE: KeyCode = KeyCode::Char('a');
 /// Open resolve list view for conflicts (Log View, uppercase)
 pub const RESOLVE_LIST: KeyCode = KeyCode::Char('X');
 
+/// Fetch from remote (Log View, uppercase for remote ops)
+pub const FETCH: KeyCode = KeyCode::Char('F');
+
+/// Push to remote (Log View, uppercase for remote ops)
+pub const PUSH: KeyCode = KeyCode::Char('P');
+
 /// Jump to first conflict file (Status View)
 pub const JUMP_CONFLICT: KeyCode = KeyCode::Char('f');
 
@@ -291,6 +297,14 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         key: "X",
         description: "Resolve conflicts",
     },
+    KeyBindEntry {
+        key: "F",
+        description: "Git fetch",
+    },
+    KeyBindEntry {
+        key: "P",
+        description: "Git push",
+    },
 ];
 
 /// Diff view key bindings for help display
@@ -394,6 +408,16 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         key: "X",
         label: "Resolve",
         color: Color::Red,
+    },
+    KeyHint {
+        key: "F",
+        label: "Fetch",
+        color: Color::Blue,
+    },
+    KeyHint {
+        key: "P",
+        label: "Push",
+        color: Color::Blue,
     },
     KeyHint {
         key: "o",

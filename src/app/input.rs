@@ -226,6 +226,12 @@ impl App {
             } => {
                 self.open_resolve_view(&change_id, is_working_copy);
             }
+            LogAction::Fetch => {
+                self.execute_fetch();
+            }
+            LogAction::StartPush => {
+                self.start_push();
+            }
         }
     }
 
