@@ -10,7 +10,7 @@ use ratatui::{
 
 use super::OperationView;
 use crate::model::{Notification, Operation};
-use crate::ui::{components, theme};
+use crate::ui::{components, navigation, theme};
 
 impl OperationView {
     /// Render the operation view with optional notification in title bar
@@ -57,22 +57,9 @@ impl OperationView {
         frame.render_widget(paragraph, area);
     }
 
-    /// Calculate scroll offset to keep selection visible
+    /// Calculate scroll offset to keep selection visible (render time)
     fn calculate_scroll_offset(&self, visible_height: usize) -> usize {
-        if visible_height == 0 {
-            return 0;
-        }
-
-        let mut offset = self.scroll_offset;
-
-        // Ensure selected item is visible
-        if self.selected < offset {
-            offset = self.selected;
-        } else if self.selected >= offset + visible_height {
-            offset = self.selected - visible_height + 1;
-        }
-
-        offset
+        navigation::adjust_scroll(self.selected, self.scroll_offset, visible_height)
     }
 
     /// Build a line for an operation

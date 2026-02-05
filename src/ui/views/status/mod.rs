@@ -6,6 +6,7 @@ mod input;
 mod render;
 
 use crate::model::{FileState, Status};
+use crate::ui::navigation;
 
 /// Input mode for Status View
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -140,7 +141,11 @@ impl StatusView {
                 .position(|f| matches!(f.state, FileState::Conflicted))
             {
                 self.selected_index = idx;
-                self.adjust_scroll(Self::DEFAULT_VISIBLE_COUNT);
+                self.scroll_offset = navigation::adjust_scroll(
+                    self.selected_index,
+                    self.scroll_offset,
+                    Self::DEFAULT_VISIBLE_COUNT,
+                );
                 return true;
             }
         }
@@ -150,19 +155,18 @@ impl StatusView {
     /// Move selection down
     fn move_down(&mut self, visible_count: usize) {
         if let Some(ref status) = self.status {
-            if !status.files.is_empty() && self.selected_index < status.files.len() - 1 {
-                self.selected_index += 1;
-                self.adjust_scroll(visible_count);
-            }
+            let max = status.files.len().saturating_sub(1);
+            self.selected_index = navigation::select_next(self.selected_index, max);
+            self.scroll_offset =
+                navigation::adjust_scroll(self.selected_index, self.scroll_offset, visible_count);
         }
     }
 
     /// Move selection up
     fn move_up(&mut self, visible_count: usize) {
-        if self.selected_index > 0 {
-            self.selected_index -= 1;
-            self.adjust_scroll(visible_count);
-        }
+        self.selected_index = navigation::select_prev(self.selected_index);
+        self.scroll_offset =
+            navigation::adjust_scroll(self.selected_index, self.scroll_offset, visible_count);
     }
 
     /// Jump to top
@@ -176,20 +180,12 @@ impl StatusView {
         if let Some(ref status) = self.status {
             if !status.files.is_empty() {
                 self.selected_index = status.files.len() - 1;
-                self.adjust_scroll(visible_count);
+                self.scroll_offset = navigation::adjust_scroll(
+                    self.selected_index,
+                    self.scroll_offset,
+                    visible_count,
+                );
             }
-        }
-    }
-
-    /// Adjust scroll offset to keep selection visible
-    fn adjust_scroll(&mut self, visible_count: usize) {
-        if visible_count == 0 {
-            return;
-        }
-        if self.selected_index < self.scroll_offset {
-            self.scroll_offset = self.selected_index;
-        } else if self.selected_index >= self.scroll_offset + visible_count {
-            self.scroll_offset = self.selected_index - visible_count + 1;
         }
     }
 }

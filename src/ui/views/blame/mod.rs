@@ -6,6 +6,7 @@ mod input;
 mod render;
 
 use crate::model::AnnotationContent;
+use crate::ui::navigation;
 
 /// Action returned by BlameView input handling
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,16 +88,13 @@ impl BlameView {
 
     /// Move selection down
     pub fn move_down(&mut self) {
-        if !self.content.is_empty() && self.selected_index < self.content.len() - 1 {
-            self.selected_index += 1;
-        }
+        let max = self.content.len().saturating_sub(1);
+        self.selected_index = navigation::select_next(self.selected_index, max);
     }
 
     /// Move selection up
     pub fn move_up(&mut self) {
-        if self.selected_index > 0 {
-            self.selected_index -= 1;
-        }
+        self.selected_index = navigation::select_prev(self.selected_index);
     }
 
     /// Move to top
@@ -111,22 +109,9 @@ impl BlameView {
         }
     }
 
-    /// Calculate scroll offset to keep selection visible
+    /// Calculate scroll offset to keep selection visible (used at render time)
     fn calculate_scroll_offset(&self, visible_height: usize) -> usize {
-        if visible_height == 0 {
-            return 0;
-        }
-
-        let mut offset = self.scroll_offset;
-
-        // Ensure selected item is visible
-        if self.selected_index < offset {
-            offset = self.selected_index;
-        } else if self.selected_index >= offset + visible_height {
-            offset = self.selected_index - visible_height + 1;
-        }
-
-        offset
+        navigation::adjust_scroll(self.selected_index, self.scroll_offset, visible_height)
     }
 }
 

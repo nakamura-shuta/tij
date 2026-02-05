@@ -4,6 +4,7 @@ mod input;
 mod render;
 
 use crate::model::Operation;
+use crate::ui::navigation;
 
 /// Action returned by the Operation View after handling input
 #[derive(Debug, Clone)]
@@ -57,16 +58,13 @@ impl OperationView {
 
     /// Move selection up
     pub fn select_prev(&mut self) {
-        if self.selected > 0 {
-            self.selected -= 1;
-        }
+        self.selected = navigation::select_prev(self.selected);
     }
 
     /// Move selection down
     pub fn select_next(&mut self) {
-        if self.selected < self.operations.len().saturating_sub(1) {
-            self.selected += 1;
-        }
+        let max = self.operations.len().saturating_sub(1);
+        self.selected = navigation::select_next(self.selected, max);
     }
 
     /// Go to first operation
