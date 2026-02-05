@@ -52,6 +52,7 @@ impl ResolveView {
     }
 
     /// Get the conflict files
+    #[allow(dead_code)] // public API accessor
     pub fn files(&self) -> &[ConflictFile] {
         &self.files
     }

@@ -552,6 +552,7 @@ pub const OPERATION_KEYS: &[KeyBindEntry] = &[
 ];
 
 /// Blame view key bindings for help display
+#[allow(dead_code)] // planned for Help View integration
 pub const BLAME_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "j/k",
@@ -572,6 +573,7 @@ pub const BLAME_KEYS: &[KeyBindEntry] = &[
 ];
 
 /// Resolve view key bindings for help display
+#[allow(dead_code)] // planned for Help View integration
 pub const RESOLVE_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "j/k",

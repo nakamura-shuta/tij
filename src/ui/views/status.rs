@@ -129,6 +129,7 @@ impl StatusView {
     }
 
     /// Check if there are any conflicts in the current status
+    #[allow(dead_code)] // Phase 9: conflict resolution
     pub fn has_conflicts(&self) -> bool {
         self.status.as_ref().is_some_and(|s| s.has_conflicts)
     }

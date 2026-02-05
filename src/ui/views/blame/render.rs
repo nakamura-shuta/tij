@@ -22,9 +22,6 @@ mod layout {
     pub const TIMESTAMP_WIDTH: usize = 5;
     /// Width for line number (dynamic, but max 6 digits)
     pub const LINE_NUMBER_WIDTH: usize = 6;
-    /// Total metadata width (excluding content)
-    pub const METADATA_WIDTH: usize =
-        CHANGE_ID_WIDTH + 1 + AUTHOR_WIDTH + 1 + TIMESTAMP_WIDTH + 1 + LINE_NUMBER_WIDTH + 2;
 }
 
 /// Colors for blame view

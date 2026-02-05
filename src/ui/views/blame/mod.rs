@@ -72,6 +72,7 @@ impl BlameView {
     }
 
     /// Get the number of lines
+    #[allow(dead_code)] // public API for future use
     pub fn line_count(&self) -> usize {
         self.content.len()
     }
