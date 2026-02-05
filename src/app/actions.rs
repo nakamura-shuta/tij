@@ -263,6 +263,15 @@ impl App {
         };
         use std::io::stdout;
 
+        // Guard: cannot split an empty commit (nothing to split)
+        let is_empty = self.log_view.selected_change().is_some_and(|c| c.is_empty);
+        if is_empty {
+            self.notification = Some(Notification::info(
+                "Cannot split: no changes in this revision",
+            ));
+            return;
+        }
+
         // 1. Exit TUI mode
         let _ = disable_raw_mode();
         let _ = execute!(stdout(), LeaveAlternateScreen, Clear(ClearType::All));

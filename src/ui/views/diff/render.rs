@@ -15,12 +15,16 @@ use super::DiffView;
 impl DiffView {
     /// Render the diff view (without status bar - rendered by App)
     pub fn render(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
-        // Layout: header (4) + context bar (1) + diff (rest)
-        // Header increased to 4 lines to include description
+        // Layout: header (dynamic) + context bar (1) + diff (rest)
+        // Header height = 1 (top border) + 2 (commit, author) + description lines
+        // Cap so context bar (1) + diff (1) always have space
+        let desc_lines = self.description_line_count();
+        let max_header = area.height.saturating_sub(2); // reserve context bar + min diff
+        let header_height = ((1 + 2 + desc_lines) as u16).min(max_header).max(1);
         let chunks = Layout::vertical([
-            Constraint::Length(4), // Header (commit, author, description)
-            Constraint::Length(1), // Context bar
-            Constraint::Min(1),    // Diff content
+            Constraint::Length(header_height), // Header (commit, author, description)
+            Constraint::Length(1),             // Context bar
+            Constraint::Min(1),                // Diff content
         ])
         .split(area);
 
@@ -50,19 +54,7 @@ impl DiffView {
             .map(|n| components::build_notification_title(n, Some(available_for_notif)))
             .filter(|line| !line.spans.is_empty());
 
-        // Truncate description to fit in one line
-        let description = if self.content.description.is_empty() {
-            "(no description)".to_string()
-        } else {
-            self.content
-                .description
-                .lines()
-                .next()
-                .unwrap_or("")
-                .to_string()
-        };
-
-        let header_text = vec![
+        let mut header_text = vec![
             Line::from(vec![
                 Span::raw("Commit: "),
                 Span::styled(
@@ -79,11 +71,22 @@ impl DiffView {
                     Style::default().fg(Color::DarkGray),
                 ),
             ]),
-            Line::from(vec![Span::styled(
-                description,
-                Style::default().fg(Color::White).bold(),
-            )]),
         ];
+
+        // Show full description (all lines)
+        if self.content.description.is_empty() {
+            header_text.push(Line::from(vec![Span::styled(
+                "(no description)",
+                Style::default().fg(Color::DarkGray).italic(),
+            )]));
+        } else {
+            for line in self.content.description.lines() {
+                header_text.push(Line::from(vec![Span::styled(
+                    line.to_string(),
+                    Style::default().fg(Color::White).bold(),
+                )]));
+            }
+        }
 
         // Use header_block with notification on right
         let block = if let Some(notif) = notif_line {

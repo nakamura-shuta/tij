@@ -115,6 +115,15 @@ impl DiffView {
         self.file_names.len()
     }
 
+    /// Count description lines for header height calculation
+    pub fn description_line_count(&self) -> usize {
+        if self.content.description.is_empty() {
+            1 // "(no description)" placeholder
+        } else {
+            self.content.description.lines().count().max(1)
+        }
+    }
+
     /// Check if there are any changes to display
     pub fn has_changes(&self) -> bool {
         self.content.has_changes()

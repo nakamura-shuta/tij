@@ -730,3 +730,69 @@ fn test_parse_log_missing_conflict_field() {
     let change = Parser::parse_log_record(record).unwrap();
     assert!(!change.has_conflict); // defaults to false
 }
+
+// =========================================================================
+// Multi-line description tests (parse_show)
+// =========================================================================
+
+#[test]
+fn test_parse_show_multiline_description() {
+    let output = "Commit ID: abc123
+Change ID: xyz789
+Author   : Test <test@example.com> (2024-01-30 12:00:00)
+Committer: Test <test@example.com> (2024-01-30 12:00:00)
+
+    test-2
+
+    test-3
+
+Modified regular file src/main.rs:
+   10   10:     fn main() {
+";
+    let content = Parser::parse_show(output).unwrap();
+
+    assert_eq!(content.description, "test-2\n\ntest-3");
+    assert_eq!(content.file_count(), 1);
+}
+
+#[test]
+fn test_parse_show_multiline_description_no_diff() {
+    // Empty commit with multi-line description (no file changes)
+    let output = "Commit ID: abc123
+Change ID: xyz789
+Author   : Test <test@example.com> (2024-01-30 12:00:00)
+Committer: Test <test@example.com> (2024-01-30 12:00:00)
+
+    test-2
+
+    test-3
+";
+    let content = Parser::parse_show(output).unwrap();
+
+    assert_eq!(content.description, "test-2\n\ntest-3");
+    assert_eq!(content.file_count(), 0);
+}
+
+#[test]
+fn test_parse_show_three_paragraph_description() {
+    let output = "Commit ID: abc123
+Change ID: xyz789
+Author   : Test <test@example.com> (2024-01-30 12:00:00)
+Committer: Test <test@example.com> (2024-01-30 12:00:00)
+
+    Summary line
+
+    Detailed paragraph one.
+
+    Detailed paragraph two.
+
+Modified regular file src/main.rs:
+   10   10:     fn main() {
+";
+    let content = Parser::parse_show(output).unwrap();
+
+    assert_eq!(
+        content.description,
+        "Summary line\n\nDetailed paragraph one.\n\nDetailed paragraph two."
+    );
+}

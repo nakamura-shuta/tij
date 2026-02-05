@@ -49,8 +49,13 @@ impl Parser {
                     continue;
                 }
 
-                // Empty line in header section - skip
-                if line.is_empty() && description_lines.is_empty() {
+                // Empty line in header section
+                if line.is_empty() {
+                    if !description_lines.is_empty() {
+                        // Could be paragraph break within multi-line description
+                        description_lines.push(String::new());
+                    }
+                    // If no description yet, skip (gap between header fields and description)
                     continue;
                 }
 
@@ -60,13 +65,18 @@ impl Parser {
                     continue;
                 }
 
-                // Empty line after description marks end of header
-                if line.is_empty() && !description_lines.is_empty() {
+                // Non-empty, non-indented, non-header line = end of header
+                // (e.g. "Modified regular file ...")
+                // Trim trailing empty lines and save description
+                while description_lines.last().is_some_and(|l| l.is_empty()) {
+                    description_lines.pop();
+                }
+                if !description_lines.is_empty() {
                     content.description = description_lines.join("\n");
                     description_lines.clear();
-                    header_done = true;
-                    continue;
                 }
+                header_done = true;
+                // Fall through to file header detection below
             }
 
             // File header detection - marks start of diff section
@@ -97,8 +107,11 @@ impl Parser {
             }
         }
 
-        // Handle description if no empty line after it
+        // Handle description if no file headers followed it
         if !description_lines.is_empty() {
+            while description_lines.last().is_some_and(|l| l.is_empty()) {
+                description_lines.pop();
+            }
             content.description = description_lines.join("\n");
         }
 
