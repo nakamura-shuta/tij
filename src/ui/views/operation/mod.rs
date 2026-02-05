@@ -1,17 +1,9 @@
 //! Operation History View for displaying jj operation log
 
-use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{
-    Frame,
-    layout::Rect,
-    style::{Color, Modifier, Style, Stylize},
-    text::{Line, Span},
-    widgets::Paragraph,
-};
+mod input;
+mod render;
 
-use crate::keys;
-use crate::model::{Notification, Operation};
-use crate::ui::{components, theme};
+use crate::model::Operation;
 
 /// Action returned by the Operation View after handling input
 #[derive(Debug, Clone)]
@@ -28,11 +20,11 @@ pub enum OperationAction {
 #[derive(Debug)]
 pub struct OperationView {
     /// List of operations from jj op log
-    operations: Vec<Operation>,
+    pub(super) operations: Vec<Operation>,
     /// Selected operation index
-    selected: usize,
+    pub(super) selected: usize,
     /// Scroll offset for long lists
-    scroll_offset: usize,
+    pub(super) scroll_offset: usize,
 }
 
 impl Default for OperationView {
@@ -90,146 +82,6 @@ impl OperationView {
         }
     }
 
-    /// Handle key input
-    pub fn handle_key(&mut self, key: KeyEvent) -> OperationAction {
-        match key.code {
-            // Navigation
-            k if keys::is_move_down(k) => {
-                self.select_next();
-                OperationAction::None
-            }
-            k if keys::is_move_up(k) => {
-                self.select_prev();
-                OperationAction::None
-            }
-            k if k == keys::GO_TOP => {
-                self.select_first();
-                OperationAction::None
-            }
-            k if k == keys::GO_BOTTOM => {
-                self.select_last();
-                OperationAction::None
-            }
-
-            // Actions
-            KeyCode::Enter => {
-                if let Some(op) = self.selected_operation() {
-                    OperationAction::Restore(op.id.clone())
-                } else {
-                    OperationAction::None
-                }
-            }
-
-            // Back/Quit
-            k if k == keys::QUIT => OperationAction::Back,
-            KeyCode::Esc => OperationAction::Back,
-
-            _ => OperationAction::None,
-        }
-    }
-
-    /// Render the operation view with optional notification in title bar
-    pub fn render(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
-        let title = Line::from(" Operation History ").bold().cyan().centered();
-
-        // Build notification line for title bar
-        let title_width = title.width();
-        let available_for_notif = area.width.saturating_sub(title_width as u16 + 4) as usize;
-        let notif_line = notification
-            .filter(|n| !n.is_expired())
-            .map(|n| components::build_notification_title(n, Some(available_for_notif)))
-            .filter(|line| !line.spans.is_empty());
-
-        let block = components::bordered_block_with_notification(title, notif_line);
-
-        if self.operations.is_empty() {
-            let paragraph = Paragraph::new("No operations found").block(block);
-            frame.render_widget(paragraph, area);
-            return;
-        }
-
-        let inner_height = area.height.saturating_sub(2) as usize; // borders
-        if inner_height == 0 {
-            return;
-        }
-
-        // Calculate scroll offset to keep selection visible
-        let scroll_offset = self.calculate_scroll_offset(inner_height);
-
-        // Build lines
-        let mut lines: Vec<Line> = Vec::new();
-        for (idx, op) in self.operations.iter().enumerate().skip(scroll_offset) {
-            if lines.len() >= inner_height {
-                break;
-            }
-
-            let is_selected = idx == self.selected;
-            let line = self.build_operation_line(op, is_selected);
-            lines.push(line);
-        }
-
-        let paragraph = Paragraph::new(lines).block(block);
-        frame.render_widget(paragraph, area);
-    }
-
-    /// Calculate scroll offset to keep selection visible
-    fn calculate_scroll_offset(&self, visible_height: usize) -> usize {
-        if visible_height == 0 {
-            return 0;
-        }
-
-        let mut offset = self.scroll_offset;
-
-        // Ensure selected item is visible
-        if self.selected < offset {
-            offset = self.selected;
-        } else if self.selected >= offset + visible_height {
-            offset = self.selected - visible_height + 1;
-        }
-
-        offset
-    }
-
-    /// Build a line for an operation
-    fn build_operation_line(&self, op: &Operation, is_selected: bool) -> Line<'static> {
-        let is_current = op.is_current;
-
-        // Build the line with styled spans
-        let marker = if is_current { "@" } else { " " };
-        let marker_style = if is_current {
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-        };
-
-        let id_style = Style::default().fg(Color::Magenta);
-        let time_style = Style::default().fg(Color::Yellow);
-        let desc_style = Style::default().fg(Color::White);
-
-        let mut line = Line::from(vec![
-            Span::styled(marker.to_string(), marker_style),
-            Span::raw("  "),
-            Span::styled(op.short_id().to_string(), id_style),
-            Span::raw("  "),
-            Span::styled(op.timestamp.clone(), time_style),
-            Span::raw("  "),
-            Span::styled(op.description.clone(), desc_style),
-        ]);
-
-        if is_selected {
-            line = line.style(
-                Style::default()
-                    .fg(theme::selection::FG)
-                    .bg(theme::selection::BG)
-                    .add_modifier(Modifier::BOLD),
-            );
-        }
-
-        line
-    }
-
     /// Get operation count for status display (test-only helper)
     #[cfg(test)]
     pub fn operation_count(&self) -> usize {
@@ -246,6 +98,7 @@ impl OperationView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::event::{KeyCode, KeyEvent};
 
     fn create_test_operations() -> Vec<Operation> {
         vec![
