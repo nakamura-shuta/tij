@@ -35,6 +35,8 @@ pub enum DialogCallback {
     /// Operation restore (future use)
     #[allow(dead_code)]
     OpRestore,
+    /// Git push confirmation
+    GitPush,
 }
 
 /// Selection item for Select dialog

@@ -447,6 +447,141 @@ impl App {
         }
     }
 
+    /// Execute git fetch
+    pub(crate) fn execute_fetch(&mut self) {
+        match self.jj.git_fetch() {
+            Ok(output) => {
+                // Refresh all views after fetch
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.refresh_status();
+
+                let notification = if output.trim().is_empty() {
+                    Notification::info("Already up to date")
+                } else {
+                    Notification::success("Fetched from remote")
+                };
+                self.notification = Some(notification);
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Fetch failed: {}", e));
+            }
+        }
+    }
+
+    /// Start push flow
+    ///
+    /// If the selected change has bookmarks, opens a confirmation or
+    /// selection dialog. If no bookmarks, shows an info notification.
+    pub(crate) fn start_push(&mut self) {
+        let (change_id, bookmarks) = match self.log_view.selected_change() {
+            Some(change) => (change.change_id.clone(), change.bookmarks.clone()),
+            None => return,
+        };
+
+        if bookmarks.is_empty() {
+            self.notification = Some(Notification::info("No bookmarks to push on this change"));
+            return;
+        }
+
+        if bookmarks.len() == 1 {
+            // Single bookmark: show confirm dialog directly
+            let name = &bookmarks[0];
+            self.active_dialog = Some(Dialog::confirm(
+                "Push to Remote",
+                format!("Push bookmark \"{}\"?", name),
+                Some("Remote changes cannot be undone with 'u'.".to_string()),
+                DialogCallback::GitPush,
+            ));
+            // Store bookmark name for callback (Confirm dialog only)
+            self.pending_push_bookmarks = vec![name.clone()];
+        } else {
+            // Multiple bookmarks: show selection dialog
+            let items: Vec<SelectItem> = bookmarks
+                .iter()
+                .map(|name| SelectItem {
+                    label: name.clone(),
+                    value: name.clone(),
+                    selected: false,
+                })
+                .collect();
+
+            self.active_dialog = Some(Dialog::select(
+                "Push to Remote",
+                format!("Select bookmarks to push from {}:", &change_id[..8]),
+                items,
+                Some("Remote changes cannot be undone with 'u'.".to_string()),
+                DialogCallback::GitPush,
+            ));
+        }
+    }
+
+    /// Execute git push for the specified bookmarks
+    ///
+    /// If `jj git push --bookmark` fails for an untracked/new bookmark,
+    /// retries with `--allow-new` (deprecated in jj 0.37+ but functional).
+    /// On success via --allow-new, adds a hint about configuring auto-track.
+    pub(crate) fn execute_push(&mut self, bookmark_names: &[String]) {
+        if bookmark_names.is_empty() {
+            return;
+        }
+
+        let mut successes = Vec::new();
+        let mut errors = Vec::new();
+        let mut used_allow_new = false;
+
+        for name in bookmark_names {
+            match self.jj.git_push_bookmark(name) {
+                Ok(_) => {
+                    successes.push(name.clone());
+                }
+                Err(e) => {
+                    let err_msg = format!("{}", e);
+                    // Auto-retry with --allow-new if the bookmark is new on remote.
+                    // --allow-new is deprecated in jj 0.37+ but still functional.
+                    if is_untracked_bookmark_error(&err_msg) {
+                        match self.jj.git_push_bookmark_allow_new(name) {
+                            Ok(_) => {
+                                successes.push(name.clone());
+                                used_allow_new = true;
+                                continue;
+                            }
+                            Err(e2) => {
+                                errors.push(format!("{}: {}", name, e2));
+                            }
+                        }
+                    } else {
+                        errors.push(format!("{}: {}", name, e));
+                    }
+                }
+            }
+        }
+
+        // Show result
+        if !successes.is_empty() {
+            let names = successes.join(", ");
+            let msg = if used_allow_new {
+                // Hint about auto-track config when --allow-new was needed
+                format!("Pushed bookmark: {} (used deprecated --allow-new)", names)
+            } else {
+                format!("Pushed bookmark: {}", names)
+            };
+            self.notification = Some(Notification::success(msg));
+        }
+        if !errors.is_empty() {
+            let msg = errors.join("; ");
+            self.error_message = Some(format!("Push failed: {}", msg));
+        }
+
+        // Always clear pending state after execution (prevent stale data)
+        self.pending_push_bookmarks.clear();
+
+        // Refresh after push (log + status)
+        let revset = self.log_view.current_revset.clone();
+        self.refresh_log(revset.as_deref());
+        self.refresh_status();
+    }
+
     /// Resolve a conflict using :ours tool
     pub(crate) fn execute_resolve_ours(&mut self, file_path: &str) {
         let (change_id, is_wc) = match self.resolve_view {
@@ -615,12 +750,42 @@ impl App {
             (Some(DialogCallback::OpRestore), DialogResult::Confirmed(_)) => {
                 // TODO: Implement op restore with dialog
             }
+            (Some(DialogCallback::GitPush), DialogResult::Confirmed(names)) => {
+                if names.is_empty() {
+                    // Confirm dialog (single bookmark): use pending_push_bookmarks
+                    // Note: pending_push_bookmarks is for Confirm dialog only.
+                    // Select dialog returns selected values in names.
+                    let bookmarks = std::mem::take(&mut self.pending_push_bookmarks);
+                    self.execute_push(&bookmarks);
+                } else {
+                    // Select dialog (multiple bookmarks): use selected names
+                    self.execute_push(&names);
+                }
+            }
+            (Some(DialogCallback::GitPush), DialogResult::Cancelled) => {
+                // Clear pending state on cancel to prevent stale data
+                self.pending_push_bookmarks.clear();
+            }
             (_, DialogResult::Cancelled) => {
                 // Cancelled - do nothing
             }
             _ => {}
         }
     }
+}
+
+/// Check if a push error indicates an untracked/new bookmark
+///
+/// In jj 0.37+, pushing an untracked bookmark fails with errors like:
+/// - "Refusing to create new remote bookmark" (older jj versions)
+/// - Bookmark not tracked on any remote (0.37+ tracking model)
+///
+/// When detected, the caller retries with `--allow-new` (deprecated but functional).
+fn is_untracked_bookmark_error(err_msg: &str) -> bool {
+    let lower = err_msg.to_lowercase();
+    lower.contains("refusing to create new remote bookmark")
+        || lower.contains("not tracked")
+        || lower.contains("untracked")
 }
 
 /// Check if a JjError indicates that a bookmark already exists

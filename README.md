@@ -50,6 +50,7 @@ Press `?` for help, `q` to quit.
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
 | Recovery | Undo / Redo / Operation Restore |
 | Bookmarks | Create / Move / Delete (multi-select) |
+| Git Integration | Fetch / Push (with confirmation dialog) |
 | Usability | Revset filtering / Text search / Adaptive status bar |
 
 ### Planned
@@ -57,8 +58,7 @@ Press `?` for help, `q` to quit.
 | Area | Features |
 |------|----------|
 | Views | Bookmark View |
-| Safety | Confirmation dialogs for destructive actions |
-| Git Integration | Fetch / Push |
+| Safety | Push preview (dry-run) / Force push warnings |
 | Customization | Keybindings config / Themes |
 
 ## Revset Examples

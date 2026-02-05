@@ -77,6 +77,10 @@ pub enum LogAction {
         change_id: String,
         is_working_copy: bool,
     },
+    /// Fetch from remote
+    Fetch,
+    /// Start push flow (opens dialog if bookmarks exist)
+    StartPush,
 }
 
 /// Log View state
