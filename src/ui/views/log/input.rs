@@ -29,6 +29,7 @@ impl LogView {
             InputMode::DescribeInput => self.handle_describe_input_key(key),
             InputMode::BookmarkInput => self.handle_bookmark_input_key(key),
             InputMode::RebaseSelect => self.handle_rebase_select_key(key),
+            InputMode::SquashSelect => self.handle_squash_select_key(key),
         }
     }
 
@@ -93,12 +94,9 @@ impl LogView {
                 }
             }
             k if k == keys::SQUASH => {
-                if let Some(change) = self.selected_change() {
-                    // Let state.rs handle validation and show appropriate notification
-                    LogAction::Squash(change.change_id.clone())
-                } else {
-                    LogAction::None
-                }
+                // Enter SquashSelect mode (validation happens in App layer)
+                self.start_squash_select();
+                LogAction::None
             }
             k if k == keys::ABANDON => {
                 if let Some(change) = self.selected_change() {
@@ -279,6 +277,62 @@ impl LogView {
                 LogAction::None
             }
             // Ignore other keys in rebase select mode
+            _ => LogAction::None,
+        }
+    }
+
+    /// Handle key events in squash destination selection mode
+    ///
+    /// In this mode, j/k navigates to select a destination, Enter confirms,
+    /// and Esc cancels. Other keys are ignored to prevent accidental actions.
+    fn handle_squash_select_key(&mut self, key: KeyEvent) -> LogAction {
+        match key.code {
+            // Navigation
+            k if keys::is_move_down(k) => {
+                self.move_down();
+                LogAction::None
+            }
+            k if keys::is_move_up(k) => {
+                self.move_up();
+                LogAction::None
+            }
+            k if k == keys::GO_TOP => {
+                self.move_to_top();
+                LogAction::None
+            }
+            k if k == keys::GO_BOTTOM => {
+                self.move_to_bottom();
+                LogAction::None
+            }
+            // Confirm squash
+            KeyCode::Enter => {
+                if let (Some(source), Some(dest_change)) =
+                    (self.squash_source.take(), self.selected_change())
+                {
+                    let destination = dest_change.change_id.clone();
+
+                    // Prevent squashing into self
+                    if source == destination {
+                        // Restore squash_source and stay in mode
+                        self.squash_source = Some(source);
+                        return LogAction::None;
+                    }
+
+                    self.input_mode = InputMode::Normal;
+                    LogAction::SquashInto {
+                        source,
+                        destination,
+                    }
+                } else {
+                    LogAction::None
+                }
+            }
+            // Cancel
+            k if k == keys::ESC => {
+                self.cancel_squash_select();
+                LogAction::None
+            }
+            // Ignore other keys in squash select mode
             _ => LogAction::None,
         }
     }

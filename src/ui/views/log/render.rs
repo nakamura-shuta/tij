@@ -32,7 +32,10 @@ impl LogView {
 
         // Split area for input bar if in other input modes
         let (log_area, input_area) = match self.input_mode {
-            InputMode::Normal | InputMode::RebaseSelect | InputMode::DescribeInput => (area, None),
+            InputMode::Normal
+            | InputMode::RebaseSelect
+            | InputMode::SquashSelect
+            | InputMode::DescribeInput => (area, None),
             InputMode::SearchInput | InputMode::RevsetInput | InputMode::BookmarkInput => {
                 let chunks =
                     Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).split(area);
@@ -96,6 +99,14 @@ impl LogView {
         // Special title for RebaseSelect mode
         if self.input_mode == InputMode::RebaseSelect {
             return Line::from(" Tij - Log View [Rebase: Select destination] ")
+                .bold()
+                .yellow()
+                .centered();
+        }
+
+        // Special title for SquashSelect mode
+        if self.input_mode == InputMode::SquashSelect {
+            return Line::from(" Tij - Log View [Squash: Select destination] ")
                 .bold()
                 .yellow()
                 .centered();
@@ -208,9 +219,13 @@ impl LogView {
         let is_rebase_source = self.input_mode == InputMode::RebaseSelect
             && self.rebase_source.as_ref() == Some(&change.change_id);
 
+        // Check if this is the squash source (in SquashSelect mode)
+        let is_squash_source = self.input_mode == InputMode::SquashSelect
+            && self.squash_source.as_ref() == Some(&change.change_id);
+
         // Apply styling
-        if is_rebase_source {
-            // Highlight rebase source with distinct background
+        if is_rebase_source || is_squash_source {
+            // Highlight rebase/squash source with distinct background
             line = line.style(
                 Style::default()
                     .bg(Color::DarkGray)

@@ -25,6 +25,8 @@ pub enum InputMode {
     BookmarkInput,
     /// Rebase destination selection mode
     RebaseSelect,
+    /// Squash destination selection mode
+    SquashSelect,
 }
 
 impl InputMode {
@@ -34,7 +36,11 @@ impl InputMode {
             InputMode::RevsetInput => Some(("Revset: ", " r Revset ")),
             InputMode::BookmarkInput => Some(("Bookmark: ", " b Bookmark ")),
             // DescribeInput uses TextArea, not input bar
-            InputMode::DescribeInput | InputMode::Normal | InputMode::RebaseSelect => None,
+            // RebaseSelect/SquashSelect use status bar hints, not input bar
+            InputMode::DescribeInput
+            | InputMode::Normal
+            | InputMode::RebaseSelect
+            | InputMode::SquashSelect => None,
         }
     }
 }
@@ -65,8 +71,8 @@ pub enum LogAction {
     },
     /// User pressed C on @ - show info notification suggesting 'c'
     NewChangeFromCurrent,
-    /// Squash a change into its parent (jj squash -r)
-    Squash(String),
+    /// Squash source change into destination (jj squash --from --into)
+    SquashInto { source: String, destination: String },
     /// Abandon a change (jj abandon)
     Abandon(String),
     /// Split a change (jj split, opens external editor)
@@ -121,6 +127,8 @@ pub struct LogView {
     selection_cursor: usize,
     /// Source change ID for rebase (set when entering RebaseSelect mode)
     pub(crate) rebase_source: Option<String>,
+    /// Source change ID for squash (set when entering SquashSelect mode)
+    pub(crate) squash_source: Option<String>,
     /// Text area for multi-line description input
     pub(crate) textarea: Option<TextArea<'static>>,
 }
@@ -281,6 +289,28 @@ impl LogView {
     /// Cancel rebase selection mode
     pub fn cancel_rebase_select(&mut self) {
         self.rebase_source = None;
+        self.input_mode = InputMode::Normal;
+    }
+
+    /// Start squash destination selection mode
+    ///
+    /// Returns true if mode was entered, false if no change is selected.
+    pub fn start_squash_select(&mut self) -> bool {
+        // Clone change_id first to avoid borrow conflict
+        let change_id = self.selected_change().map(|c| c.change_id.clone());
+
+        if let Some(change_id) = change_id {
+            self.squash_source = Some(change_id);
+            self.input_mode = InputMode::SquashSelect;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Cancel squash selection mode
+    pub fn cancel_squash_select(&mut self) {
+        self.squash_source = None;
         self.input_mode = InputMode::Normal;
     }
 

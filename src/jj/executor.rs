@@ -185,22 +185,26 @@ impl JjExecutor {
         self.run(&[commands::COMMIT, "-m", message])
     }
 
-    /// Run `jj squash -r <change-id>` interactively
+    /// Run `jj squash --from <source> --into <destination>` interactively
     ///
-    /// Moves changes from the specified revision into its parent.
+    /// Moves changes from the source revision into the destination.
     /// If the source becomes empty, it is automatically abandoned.
     ///
     /// Uses inherited stdio because jj may open an editor when both
     /// source and destination have non-empty descriptions.
     /// The caller must disable raw mode before calling this method.
-    pub fn squash_interactive(&self, change_id: &str) -> io::Result<ExitStatus> {
+    pub fn squash_into_interactive(
+        &self,
+        source: &str,
+        destination: &str,
+    ) -> io::Result<ExitStatus> {
         let mut cmd = Command::new(constants::JJ_COMMAND);
 
         if let Some(ref repo_path) = self.repo_path {
             cmd.arg(flags::REPO_PATH).arg(repo_path);
         }
 
-        cmd.args([commands::SQUASH, "-r", change_id])
+        cmd.args([commands::SQUASH, "--from", source, "--into", destination])
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())

@@ -494,49 +494,116 @@ fn test_revset_empty_enter_returns_clear_action() {
 }
 
 // =============================================================================
-// Squash tests
+// Squash tests (SquashSelect mode)
 // =============================================================================
 
 #[test]
-fn test_handle_key_squash() {
+fn test_squash_key_enters_select_mode() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    // Move to second change (not root)
-    view.move_down();
-    assert_eq!(view.selected_change().unwrap().change_id, "xyz98765");
-
     let action = press_key(&mut view, keys::SQUASH);
-    assert_eq!(action, LogAction::Squash("xyz98765".to_string()));
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::SquashSelect);
+    assert_eq!(view.squash_source, Some("abc12345".to_string()));
 }
 
 #[test]
-fn test_handle_key_squash_on_root() {
+fn test_squash_select_cancel() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
+    press_key(&mut view, keys::SQUASH);
 
-    // Move to root
-    view.move_to_bottom();
-    assert_eq!(
-        view.selected_change().unwrap().change_id,
-        constants::ROOT_CHANGE_ID
-    );
+    let action = press_key(&mut view, keys::ESC);
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert_eq!(view.squash_source, None);
+}
 
-    // Should still return action (state.rs will handle the guard)
-    let action = press_key(&mut view, keys::SQUASH);
-    assert_eq!(
+#[test]
+fn test_squash_select_confirm() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    press_key(&mut view, keys::SQUASH); // Select first change
+    press_key(&mut view, keys::MOVE_DOWN); // Move to second
+
+    let action = press_key(&mut view, KeyCode::Enter);
+    assert!(matches!(
         action,
-        LogAction::Squash(constants::ROOT_CHANGE_ID.to_string())
-    );
+        LogAction::SquashInto { source, destination }
+        if source == "abc12345" && destination == "xyz98765"
+    ));
+    assert_eq!(view.input_mode, InputMode::Normal);
 }
 
 #[test]
-fn test_handle_key_squash_no_selection() {
+fn test_squash_into_same_revision_blocked() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    press_key(&mut view, keys::SQUASH); // Select first change
+    // Don't move - try to squash into self
+
+    let action = press_key(&mut view, KeyCode::Enter);
+    assert_eq!(action, LogAction::None); // Blocked
+    assert_eq!(view.input_mode, InputMode::SquashSelect); // Still in mode
+    assert_eq!(view.squash_source, Some("abc12345".to_string())); // Source preserved
+}
+
+#[test]
+fn test_squash_no_selection() {
     let mut view = LogView::new();
     // Empty changes list
 
     let action = press_key(&mut view, keys::SQUASH);
     assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::Normal); // Didn't enter mode
+    assert_eq!(view.squash_source, None);
+}
+
+#[test]
+fn test_squash_select_navigation() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter squash mode
+    press_key(&mut view, keys::SQUASH);
+    assert_eq!(view.input_mode, InputMode::SquashSelect);
+
+    // Should be on first change
+    assert_eq!(view.selected_index, 0);
+
+    // Move down
+    press_key(&mut view, keys::MOVE_DOWN);
+    assert_eq!(view.selected_index, 1);
+
+    // Move up
+    press_key(&mut view, keys::MOVE_UP);
+    assert_eq!(view.selected_index, 0);
+
+    // Still in SquashSelect mode
+    assert_eq!(view.input_mode, InputMode::SquashSelect);
+}
+
+#[test]
+fn test_squash_select_ignores_other_keys() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter squash mode
+    press_key(&mut view, keys::SQUASH);
+
+    // Try pressing other keys - should be ignored
+    let action = press_key(&mut view, KeyCode::Char('d')); // describe
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::SquashSelect);
+
+    let action = press_key(&mut view, KeyCode::Char('e')); // edit
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::SquashSelect);
+
+    let action = press_key(&mut view, KeyCode::Char('/')); // search
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::SquashSelect);
 }
 
 // =============================================================================

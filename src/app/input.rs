@@ -36,6 +36,7 @@ impl App {
 
         // Handle Ctrl+R for redo (only in Log view, normal mode)
         // Skip in DescribeInput mode because tui-textarea uses Ctrl+R for its own redo
+        // Skip in SquashSelect mode because user is selecting destination
         if key.modifiers.contains(KeyModifiers::CONTROL)
             && matches!(key.code, KeyCode::Char('r') | KeyCode::Char('R'))
             && self.current_view == View::Log
@@ -207,8 +208,11 @@ impl App {
                 self.notification =
                     Some(Notification::info("Use 'c' to create from current change"));
             }
-            LogAction::Squash(change_id) => {
-                self.execute_squash(&change_id);
+            LogAction::SquashInto {
+                source,
+                destination,
+            } => {
+                self.execute_squash_into(&source, &destination);
             }
             LogAction::Abandon(change_id) => {
                 self.execute_abandon(&change_id);

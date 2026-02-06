@@ -123,12 +123,11 @@ impl App {
         }
     }
 
-    /// Execute squash operation (requires terminal control transfer)
+    /// Execute squash into target (requires terminal control transfer)
     ///
-    /// jj squash may open an editor when both source and destination
-    /// have non-empty descriptions. Uses the same interactive pattern
-    /// as execute_split to avoid freezing.
-    pub(crate) fn execute_squash(&mut self, change_id: &str) {
+    /// jj squash --from/--into may open an editor when both source and destination
+    /// have non-empty descriptions. Temporarily exits TUI mode to allow editor interaction.
+    pub(crate) fn execute_squash_into(&mut self, source: &str, destination: &str) {
         use crate::jj::constants::ROOT_CHANGE_ID;
         use crossterm::execute;
         use crossterm::terminal::{
@@ -137,8 +136,8 @@ impl App {
         };
         use std::io::stdout;
 
-        // Guard: cannot squash root commit (has no parent)
-        if change_id == ROOT_CHANGE_ID {
+        // Guard: cannot squash root commit (has no parent to receive changes from)
+        if source == ROOT_CHANGE_ID {
             self.notification = Some(Notification::info(
                 "Cannot squash: root commit has no parent",
             ));
@@ -155,22 +154,25 @@ impl App {
             let _ = execute!(stdout(), EnterAlternateScreen);
         });
 
-        // 3. Run jj squash (blocking, interactive)
-        let result = self.jj.squash_interactive(change_id);
+        // 3. Run jj squash --from --into (blocking, interactive)
+        let result = self.jj.squash_into_interactive(source, destination);
 
-        // 4. Handle result
+        // 4. Handle result (io::Result<ExitStatus>)
         match result {
             Ok(status) if status.success() => {
-                let short_id = &change_id[..8.min(change_id.len())];
+                let src_short = &source[..8.min(source.len())];
+                let dst_short = &destination[..8.min(destination.len())];
                 self.notification = Some(Notification::success(format!(
-                    "Squashed {} into parent (undo: u)",
-                    short_id
+                    "Squashed {} into {} (undo: u)",
+                    src_short, dst_short
                 )));
             }
             Ok(_) => {
+                // Non-zero exit (user cancelled editor, or jj error)
                 self.notification = Some(Notification::info("Squash cancelled or failed"));
             }
             Err(e) => {
+                // IO error (command not found, etc.)
                 self.error_message = Some(format!("Squash failed: {}", e));
             }
         }

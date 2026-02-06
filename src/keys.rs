@@ -90,7 +90,7 @@ pub const NEW_CHANGE: KeyCode = KeyCode::Char('c');
 /// Commit changes (Status View, uppercase)
 pub const COMMIT: KeyCode = KeyCode::Char('C');
 
-/// Squash change into parent (Log View, uppercase)
+/// Squash change (select destination, Log View, uppercase)
 pub const SQUASH: KeyCode = KeyCode::Char('S');
 
 /// Abandon change (Log View, uppercase)
@@ -281,7 +281,7 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     },
     KeyBindEntry {
         key: "S",
-        description: "Squash into parent",
+        description: "Squash (select target)",
     },
     KeyBindEntry {
         key: "A",
