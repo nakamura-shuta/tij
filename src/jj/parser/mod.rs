@@ -3,11 +3,14 @@
 //! Parses the output from jj commands into structured data.
 
 mod annotation;
+mod bookmark;
 mod diff;
 mod log;
 mod operation;
 mod resolve;
 mod status;
+
+pub use bookmark::parse_bookmark_list;
 
 #[cfg(test)]
 mod tests;

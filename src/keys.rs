@@ -111,6 +111,10 @@ pub const REBASE: KeyCode = KeyCode::Char('R');
 /// Absorb changes into ancestors (Log View, uppercase)
 pub const ABSORB: KeyCode = KeyCode::Char('B');
 
+/// Create new change from selected revision (Log View, uppercase)
+/// Note: This is different from COMMIT ('C' in Status View)
+pub const NEW_FROM: KeyCode = KeyCode::Char('C');
+
 /// Show file annotation/blame (Status/Diff View)
 pub const ANNOTATE: KeyCode = KeyCode::Char('a');
 
@@ -122,6 +126,9 @@ pub const FETCH: KeyCode = KeyCode::Char('F');
 
 /// Push to remote (Log View, uppercase for remote ops)
 pub const PUSH: KeyCode = KeyCode::Char('P');
+
+/// Track remote bookmarks (Log View, uppercase for remote ops)
+pub const TRACK: KeyCode = KeyCode::Char('T');
 
 /// Jump to first conflict file (Status View)
 pub const JUMP_CONFLICT: KeyCode = KeyCode::Char('f');
@@ -238,6 +245,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         description: "Create new change",
     },
     KeyBindEntry {
+        key: "C",
+        description: "New from selected (Log)",
+    },
+    KeyBindEntry {
         key: "/",
         description: "Search in list",
     },
@@ -305,6 +316,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         key: "P",
         description: "Git push",
     },
+    KeyBindEntry {
+        key: "T",
+        description: "Track remote bookmarks",
+    },
 ];
 
 /// Diff view key bindings for help display
@@ -370,6 +385,11 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         color: Color::Magenta,
     },
     KeyHint {
+        key: "C",
+        label: "New@",
+        color: Color::Magenta,
+    },
+    KeyHint {
         key: "S",
         label: "Squash",
         color: Color::Red,
@@ -418,6 +438,11 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         key: "P",
         label: "Push",
         color: Color::Blue,
+    },
+    KeyHint {
+        key: "T",
+        label: "Track",
+        color: Color::Cyan,
     },
     KeyHint {
         key: "o",

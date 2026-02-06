@@ -6,7 +6,9 @@ use std::io;
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 
-use crate::model::{AnnotationContent, Change, ConflictFile, DiffContent, Operation, Status};
+use crate::model::{
+    AnnotationContent, Bookmark, Change, ConflictFile, DiffContent, Operation, Status,
+};
 
 use super::JjError;
 use super::constants::{self, commands, errors, flags, resolve_flags};
@@ -165,6 +167,14 @@ impl JjExecutor {
     /// Run `jj new` to create a new empty change
     pub fn new_change(&self) -> Result<String, JjError> {
         self.run(&[commands::NEW])
+    }
+
+    /// Run `jj new <revision>` to create a new change with specified parent
+    ///
+    /// Creates a new empty change as a child of the specified revision.
+    /// The working copy (@) moves to the new change.
+    pub fn new_change_from(&self, revision: &str) -> Result<String, JjError> {
+        self.run(&[commands::NEW, revision])
     }
 
     /// Run `jj commit` to commit current changes with a message
@@ -389,6 +399,37 @@ impl JjExecutor {
     /// Deletes the specified bookmarks. Deletions propagate to remotes on push.
     pub fn bookmark_delete(&self, names: &[&str]) -> Result<String, JjError> {
         let mut args = vec![commands::BOOKMARK, commands::BOOKMARK_DELETE];
+        args.extend(names);
+        self.run(&args)
+    }
+
+    /// Run `jj bookmark list --all-remotes` to get all bookmarks
+    ///
+    /// Returns both local and remote bookmarks with their tracking status.
+    /// Uses a template to output: name, remote, tracked (tab-separated).
+    ///
+    /// Note: Requires jj 0.37+ which supports the `tracked` template field.
+    pub fn bookmark_list_all(&self) -> Result<Vec<Bookmark>, JjError> {
+        const BOOKMARK_LIST_TEMPLATE: &str = r#"separate("\t", name, remote, tracked) ++ "\n""#;
+
+        let output = self.run(&[
+            commands::BOOKMARK,
+            commands::BOOKMARK_LIST,
+            flags::ALL_REMOTES,
+            flags::TEMPLATE,
+            BOOKMARK_LIST_TEMPLATE,
+        ])?;
+        Ok(super::parser::parse_bookmark_list(&output))
+    }
+
+    /// Run `jj bookmark track <names>...` to start tracking remote bookmarks
+    ///
+    /// Starts tracking the specified remote bookmarks locally.
+    /// After tracking, `jj git fetch` will update the local copy.
+    ///
+    /// Format: `<name>@<remote>` (e.g., "feature-x@origin")
+    pub fn bookmark_track(&self, names: &[&str]) -> Result<String, JjError> {
+        let mut args = vec![commands::BOOKMARK, commands::BOOKMARK_TRACK];
         args.extend(names);
         self.run(&args)
     }

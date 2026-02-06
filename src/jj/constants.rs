@@ -25,6 +25,8 @@ pub mod commands {
     pub const BOOKMARK_CREATE: &str = "create";
     pub const BOOKMARK_SET: &str = "set";
     pub const BOOKMARK_DELETE: &str = "delete";
+    pub const BOOKMARK_LIST: &str = "list";
+    pub const BOOKMARK_TRACK: &str = "track";
     pub const REBASE: &str = "rebase";
     pub const ABSORB: &str = "absorb";
     pub const FILE: &str = "file";
@@ -57,6 +59,8 @@ pub mod flags {
     pub const BOOKMARK_FLAG: &str = "--bookmark";
     /// Allow pushing new bookmarks (deprecated in jj 0.37+, but functional)
     pub const ALLOW_NEW: &str = "--allow-new";
+    /// List all remotes for bookmark list (jj 0.37+)
+    pub const ALL_REMOTES: &str = "--all-remotes";
 }
 
 /// Special jj values

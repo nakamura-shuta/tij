@@ -37,6 +37,8 @@ pub enum DialogCallback {
     OpRestore,
     /// Git push confirmation
     GitPush,
+    /// Track remote bookmarks (Select dialog)
+    Track,
 }
 
 /// Selection item for Select dialog

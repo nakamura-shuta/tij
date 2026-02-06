@@ -4,6 +4,7 @@
 //! jj concepts like changes, diffs, and file status.
 
 mod annotation;
+mod bookmark;
 mod change;
 mod conflict;
 mod diff;
@@ -12,6 +13,7 @@ mod notification;
 mod operation;
 
 pub use annotation::{AnnotationContent, AnnotationLine};
+pub use bookmark::Bookmark;
 pub use change::Change;
 pub use conflict::ConflictFile;
 pub use diff::{DiffContent, DiffLine, DiffLineKind};

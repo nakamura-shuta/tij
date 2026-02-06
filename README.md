@@ -46,10 +46,10 @@ Press `?` for help, `q` to quit.
 | Area | Features |
 |------|----------|
 | Views | Log / Diff / Status / Help / Operation History / Blame |
-| History Editing | Describe (multi-line) / Edit / New / Commit / Squash / Abandon / Split / Rebase / Absorb |
+| History Editing | Describe (multi-line) / Edit / New / New from selected / Commit / Squash / Abandon / Split / Rebase / Absorb |
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
 | Recovery | Undo / Redo / Operation Restore |
-| Bookmarks | Create / Move / Delete (multi-select) |
+| Bookmarks | Create / Move / Delete (multi-select) / Track remote |
 | Git Integration | Fetch / Push (with confirmation dialog) |
 | Usability | Revset filtering / Text search / Adaptive status bar |
 

@@ -58,6 +58,13 @@ pub enum LogAction {
     Edit(String),
     /// Create a new empty change (jj new)
     NewChange,
+    /// Create a new change with selected revision as parent (jj new <revision>)
+    NewChangeFrom {
+        change_id: String,
+        display_name: String,
+    },
+    /// User pressed C on @ - show info notification suggesting 'c'
+    NewChangeFromCurrent,
     /// Squash a change into its parent (jj squash -r)
     Squash(String),
     /// Abandon a change (jj abandon)
@@ -81,6 +88,8 @@ pub enum LogAction {
     Fetch,
     /// Start push flow (opens dialog if bookmarks exist)
     StartPush,
+    /// Start track flow (opens dialog if untracked remotes exist)
+    StartTrack,
 }
 
 /// Log View state

@@ -4,6 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::state::{App, View};
 use crate::keys;
+use crate::model::Notification;
 use crate::ui::views::{
     BlameAction, DiffAction, InputMode, LogAction, OperationAction, ResolveAction, StatusAction,
     StatusInputMode,
@@ -196,6 +197,16 @@ impl App {
             LogAction::NewChange => {
                 self.execute_new_change();
             }
+            LogAction::NewChangeFrom {
+                change_id,
+                display_name,
+            } => {
+                self.execute_new_change_from(&change_id, &display_name);
+            }
+            LogAction::NewChangeFromCurrent => {
+                self.notification =
+                    Some(Notification::info("Use 'c' to create from current change"));
+            }
             LogAction::Squash(change_id) => {
                 self.execute_squash(&change_id);
             }
@@ -231,6 +242,9 @@ impl App {
             }
             LogAction::StartPush => {
                 self.start_push();
+            }
+            LogAction::StartTrack => {
+                self.start_track();
             }
         }
     }

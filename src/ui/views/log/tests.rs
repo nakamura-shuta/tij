@@ -1000,3 +1000,72 @@ fn test_describe_input_enter_adds_newline() {
     // Should still have textarea
     assert!(view.textarea.is_some());
 }
+
+// =============================================================================
+// New from selected (C key) tests
+// =============================================================================
+
+#[test]
+fn test_new_from_key_returns_action() {
+    // create_test_changes() は [working_copy, non_wc, root] を返す
+    let mut view = LogView::default();
+    view.set_changes(create_test_changes());
+    view.selected_index = 1; // non working copy (xyz98765)
+
+    let result = view.handle_key(KeyEvent::from(KeyCode::Char('C')));
+    match result {
+        LogAction::NewChangeFrom {
+            change_id,
+            display_name,
+        } => {
+            assert_eq!(change_id, "xyz98765");
+            assert_eq!(display_name, "xyz98765"); // bookmark なし → short_id
+        }
+        _ => panic!("Expected NewChangeFrom action"),
+    }
+}
+
+#[test]
+fn test_new_from_key_on_working_copy() {
+    let mut view = LogView::default();
+    view.set_changes(create_test_changes());
+    view.selected_index = 0; // working copy
+
+    let result = view.handle_key(KeyEvent::from(KeyCode::Char('C')));
+    assert!(matches!(result, LogAction::NewChangeFromCurrent));
+}
+
+#[test]
+fn test_new_from_key_with_bookmark() {
+    let mut view = LogView::default();
+    let mut changes = create_test_changes();
+    changes[1].bookmarks = vec!["feature".to_string()];
+    view.set_changes(changes);
+    view.selected_index = 1;
+
+    let result = view.handle_key(KeyEvent::from(KeyCode::Char('C')));
+    match result {
+        LogAction::NewChangeFrom { display_name, .. } => {
+            assert_eq!(display_name, "feature"); // 先頭 bookmark を表示
+        }
+        _ => panic!("Expected NewChangeFrom action"),
+    }
+}
+
+#[test]
+fn test_new_from_no_selection() {
+    let mut view = LogView::default();
+    view.set_changes(vec![]);
+
+    let result = view.handle_key(KeyEvent::from(KeyCode::Char('C')));
+    assert!(matches!(result, LogAction::None));
+}
+
+#[test]
+fn test_track_key_returns_start_track() {
+    let mut view = LogView::default();
+    view.set_changes(create_test_changes());
+
+    let result = view.handle_key(KeyEvent::from(KeyCode::Char('T')));
+    assert!(matches!(result, LogAction::StartTrack));
+}

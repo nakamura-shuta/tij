@@ -79,6 +79,26 @@ impl App {
                 // Refresh log to show new change
                 let revset = self.log_view.current_revset.clone();
                 self.refresh_log(revset.as_deref());
+                self.refresh_status();
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to create change: {}", e));
+            }
+        }
+    }
+
+    /// Execute new change from specified parent
+    pub(crate) fn execute_new_change_from(&mut self, parent_id: &str, display_name: &str) {
+        match self.jj.new_change_from(parent_id) {
+            Ok(_) => {
+                self.notification = Some(Notification::success(format!(
+                    "Created new change from {}",
+                    display_name
+                )));
+                // Refresh log to show new change
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.refresh_status();
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to create change: {}", e));
@@ -766,10 +786,81 @@ impl App {
                 // Clear pending state on cancel to prevent stale data
                 self.pending_push_bookmarks.clear();
             }
+            (Some(DialogCallback::Track), DialogResult::Confirmed(names)) => {
+                // Select dialog - names contains selected bookmark full names (e.g., "feature@origin")
+                self.execute_track(&names);
+            }
             (_, DialogResult::Cancelled) => {
                 // Cancelled - do nothing
             }
             _ => {}
+        }
+    }
+
+    /// Start track flow - show dialog with untracked remote bookmarks
+    pub(crate) fn start_track(&mut self) {
+        match self.jj.bookmark_list_all() {
+            Ok(bookmarks) => {
+                let untracked: Vec<_> = bookmarks
+                    .iter()
+                    .filter(|b| b.is_untracked_remote())
+                    .collect();
+
+                if untracked.is_empty() {
+                    self.notification = Some(Notification::info("No untracked remote bookmarks"));
+                    return;
+                }
+
+                // SelectDialog を表示
+                let items: Vec<SelectItem> = untracked
+                    .iter()
+                    .map(|b| SelectItem {
+                        label: b.full_name(),
+                        value: b.full_name(),
+                        selected: false,
+                    })
+                    .collect();
+
+                self.active_dialog = Some(Dialog::select(
+                    "Track Remote Bookmarks",
+                    "Select bookmarks to track:",
+                    items,
+                    None,
+                    DialogCallback::Track,
+                ));
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to list bookmarks: {}", e));
+            }
+        }
+    }
+
+    /// Execute track for selected bookmarks
+    pub(crate) fn execute_track(&mut self, names: &[String]) {
+        if names.is_empty() {
+            return;
+        }
+
+        let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+        match self.jj.bookmark_track(&name_refs) {
+            Ok(_) => {
+                let display = if names.len() == 1 {
+                    // "feature-x@origin" から "feature-x" を抽出
+                    names[0].split('@').next().unwrap_or(&names[0]).to_string()
+                } else {
+                    format!("{} bookmarks", names.len())
+                };
+                self.notification = Some(Notification::success(format!(
+                    "Started tracking: {}",
+                    display
+                )));
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.refresh_status();
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to track: {}", e));
+            }
         }
     }
 }

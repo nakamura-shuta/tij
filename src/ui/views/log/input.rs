@@ -73,6 +73,25 @@ impl LogView {
                 }
             }
             k if k == keys::NEW_CHANGE => LogAction::NewChange,
+            k if k == keys::NEW_FROM => {
+                if let Some(change) = self.selected_change() {
+                    if change.is_working_copy {
+                        // @ で C を押した場合は c の使用を案内
+                        LogAction::NewChangeFromCurrent
+                    } else {
+                        // 表示名: 先頭 bookmark があれば優先、なければ short_id
+                        let display_name = change.bookmarks.first().cloned().unwrap_or_else(|| {
+                            change.change_id[..8.min(change.change_id.len())].to_string()
+                        });
+                        LogAction::NewChangeFrom {
+                            change_id: change.change_id.clone(),
+                            display_name,
+                        }
+                    }
+                } else {
+                    LogAction::None
+                }
+            }
             k if k == keys::SQUASH => {
                 if let Some(change) = self.selected_change() {
                     // Let state.rs handle validation and show appropriate notification
@@ -137,6 +156,7 @@ impl LogView {
             }
             k if k == keys::FETCH => LogAction::Fetch,
             k if k == keys::PUSH => LogAction::StartPush,
+            k if k == keys::TRACK => LogAction::StartTrack,
             _ => LogAction::None,
         }
     }
