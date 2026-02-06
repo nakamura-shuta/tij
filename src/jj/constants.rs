@@ -61,6 +61,8 @@ pub mod flags {
     pub const ALLOW_NEW: &str = "--allow-new";
     /// List all remotes for bookmark list (jj 0.37+)
     pub const ALL_REMOTES: &str = "--all-remotes";
+    /// Named push for new bookmarks (jj 0.37+): --named <bookmark>=<revision>
+    pub const NAMED: &str = "--named";
 }
 
 /// Special jj values

@@ -1,6 +1,6 @@
 [package]
 name = "tij"
-version = "0.3.11"
+version = "0.3.12"
 description = "Text-mode interface for Jujutsu - a TUI for jj version control"
 authors = ["nakamura.shuta <nakamura.shuta@classmethod.jp>"]
 license = "MIT"
@@ -14,6 +14,14 @@ categories = ["command-line-utilities", "development-tools"]
 rust-version = "1.85"
 exclude = [".work/", ".github/", "CLAUDE.md"]
 
+[lib]
+name = "tij"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tij"
+path = "src/main.rs"
+
 [dependencies]
 crossterm = "0.28.1"
 ratatui = "0.29.0"
@@ -22,6 +30,11 @@ thiserror = "2.0"
 scopeguard = "1"
 tui-textarea = { version = "0.7", features = ["crossterm"] }
 regex = "1"
+
+[dev-dependencies]
+insta = { version = "1.46.3", features = ["redactions"] }
+proptest = "1.10.0"
+tempfile = "3"
 
 # Read the optimization guideline for more details: https://ratatui.rs/recipes/apps/release-your-app/#optimizations
 [profile.release]

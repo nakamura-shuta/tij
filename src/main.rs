@@ -1,17 +1,11 @@
 //! Tij - Text-mode Interface for Jujutsu
 //!
-//! A TUI application for the Jujutsu version control system.
-
-mod app;
-mod jj;
-mod keys;
-mod model;
-mod ui;
+//! Binary entry point for the TUI application.
 
 use crossterm::event::{self, Event, KeyEventKind};
 use ratatui::DefaultTerminal;
 
-use crate::app::App;
+use tij::app::App;
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;

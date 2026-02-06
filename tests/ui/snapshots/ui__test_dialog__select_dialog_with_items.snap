@@ -1,0 +1,20 @@
+---
+source: tests/ui/test_dialog.rs
+expression: terminal.backend()
+---
+"                                                            "
+"                                                            "
+"     ┌ Delete Bookmarks ──────────────────────────────┐     "
+"     │                                                │     "
+"     │Select bookmarks to delete:                     │     "
+"     │                                                │     "
+"     │> [ ] main                                      │     "
+"     │  [x] feature/auth                              │     "
+"     │  [ ] bugfix/login                              │     "
+"     │                                                │     "
+"     │Warning: This cannot be undone.                 │     "
+"     │                                                │     "
+"     └────────────────────────────────────────────────┘     "
+"                                                            "
+"                                                            "
+"                                                            "

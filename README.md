@@ -85,6 +85,17 @@ Tij uses jj's default revset (recent/relevant commits). To see all:
    log = "all()"
    ```
 
+## Development
+
+```bash
+cargo test                    # All tests (unit + integration)
+cargo test --lib              # Unit tests only
+cargo test --tests            # Integration tests only
+cargo insta test              # Snapshot tests
+```
+
+**Test categories**: Unit (293), Integration (50+), Snapshot (7), Property-based (15)
+
 ## Acknowledgments
 
 - [Jujutsu](https://github.com/jj-vcs/jj) - The modern VCS

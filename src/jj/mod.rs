@@ -4,7 +4,8 @@
 
 pub mod constants;
 mod executor;
-mod parser;
+/// Parser module (public for integration testing)
+pub mod parser;
 mod template;
 
 pub use executor::JjExecutor;

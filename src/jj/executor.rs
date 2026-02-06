@@ -211,6 +211,15 @@ impl JjExecutor {
             .status()
     }
 
+    /// Run `jj squash` to squash @ into @- (non-interactive)
+    ///
+    /// Moves changes from the current working copy into its parent.
+    /// If the current change becomes empty, it is automatically abandoned.
+    /// This uses `--use-destination-message` to avoid opening an editor.
+    pub fn squash(&self) -> Result<String, JjError> {
+        self.run(&[commands::SQUASH, "--use-destination-message"])
+    }
+
     /// Run `jj abandon <change-id>` to abandon a revision
     ///
     /// Descendants are automatically rebased onto the parent.
@@ -653,6 +662,16 @@ impl JjExecutor {
             bookmark_name,
             flags::ALLOW_NEW,
         ])
+    }
+
+    /// Run `jj git push --named <bookmark>=<revision>` for new remote bookmarks (jj 0.37+)
+    ///
+    /// This is the recommended way to push new bookmarks in jj 0.37+.
+    /// The --named flag creates the bookmark if it doesn't exist, auto-tracks it,
+    /// and pushes it in a single operation.
+    pub fn git_push_named(&self, bookmark_name: &str, revision: &str) -> Result<String, JjError> {
+        let named_arg = format!("{}={}", bookmark_name, revision);
+        self.run(&[commands::GIT, commands::GIT_PUSH, flags::NAMED, &named_arg])
     }
 
     /// Run `jj file annotate` to show blame information for a file

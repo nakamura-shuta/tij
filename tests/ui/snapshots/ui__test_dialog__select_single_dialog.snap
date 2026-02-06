@@ -1,0 +1,18 @@
+---
+source: tests/ui/test_dialog.rs
+expression: terminal.backend()
+---
+"                                                  "
+"                                                  "
+"  ┌ Jump to Bookmark ──────────────────────────┐  "
+"  │                                            │  "
+"  │Select bookmark:                            │  "
+"  │                                            │  "
+"  │> feature/auth                              │  "
+"  │  main                                      │  "
+"  │  develop                                   │  "
+"  │                                            │  "
+"  └────────────────────────────────────────────┘  "
+"                                                  "
+"                                                  "
+"                                                  "

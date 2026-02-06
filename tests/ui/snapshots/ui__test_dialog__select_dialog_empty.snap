@@ -1,0 +1,16 @@
+---
+source: tests/ui/test_dialog.rs
+expression: terminal.backend()
+---
+"                                                            "
+"                                                            "
+"                                                            "
+"     ┌ Select Bookmarks ──────────────────────────────┐     "
+"     │                                                │     "
+"     │Choose bookmarks to delete:                     │     "
+"     │                                                │     "
+"     │                                                │     "
+"     └────────────────────────────────────────────────┘     "
+"                                                            "
+"                                                            "
+"                                                            "
