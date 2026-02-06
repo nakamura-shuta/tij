@@ -130,6 +130,9 @@ pub const PUSH: KeyCode = KeyCode::Char('P');
 /// Track remote bookmarks (Log View, uppercase for remote ops)
 pub const TRACK: KeyCode = KeyCode::Char('T');
 
+/// Jump to bookmark (Log View)
+pub const BOOKMARK_JUMP: KeyCode = KeyCode::Char('\'');
+
 /// Jump to first conflict file (Status View)
 pub const JUMP_CONFLICT: KeyCode = KeyCode::Char('f');
 
@@ -320,6 +323,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         key: "T",
         description: "Track remote bookmarks",
     },
+    KeyBindEntry {
+        key: "'",
+        description: "Jump to bookmark",
+    },
 ];
 
 /// Diff view key bindings for help display
@@ -443,6 +450,11 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         key: "T",
         label: "Track",
         color: Color::Cyan,
+    },
+    KeyHint {
+        key: "'",
+        label: "Jump",
+        color: Color::Green,
     },
     KeyHint {
         key: "o",

@@ -49,7 +49,7 @@ Press `?` for help, `q` to quit.
 | History Editing | Describe (multi-line) / Edit / New / New from selected / Commit / Squash / Abandon / Split / Rebase / Absorb |
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
 | Recovery | Undo / Redo / Operation Restore |
-| Bookmarks | Create / Move / Delete (multi-select) / Track remote |
+| Bookmarks | Create / Move / Delete (multi-select) / Track remote / Jump |
 | Git Integration | Fetch / Push (with confirmation dialog) |
 | Usability | Revset filtering / Text search / Adaptive status bar |
 

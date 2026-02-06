@@ -157,6 +157,7 @@ impl LogView {
             k if k == keys::FETCH => LogAction::Fetch,
             k if k == keys::PUSH => LogAction::StartPush,
             k if k == keys::TRACK => LogAction::StartTrack,
+            k if k == keys::BOOKMARK_JUMP => LogAction::StartBookmarkJump,
             _ => LogAction::None,
         }
     }

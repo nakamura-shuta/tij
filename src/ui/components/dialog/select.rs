@@ -16,9 +16,13 @@ impl Dialog {
         &mut self,
         key: crossterm::event::KeyEvent,
     ) -> Option<DialogResult> {
-        // Get items mutably from kind
-        let items = match &mut self.kind {
-            DialogKind::Select { items, .. } => items,
+        // Get items and single_select flag from kind
+        let (items, single_select) = match &mut self.kind {
+            DialogKind::Select {
+                items,
+                single_select,
+                ..
+            } => (items, *single_select),
             _ => return None,
         };
 
@@ -36,26 +40,38 @@ impl Dialog {
                 }
                 None
             }
-            // Toggle selection
+            // Toggle selection (multi-select only)
             KeyCode::Char(' ') => {
-                if let Some(item) = items.get_mut(self.cursor) {
-                    item.selected = !item.selected;
+                if !single_select {
+                    if let Some(item) = items.get_mut(self.cursor) {
+                        item.selected = !item.selected;
+                    }
                 }
                 None
             }
             // Confirm
             KeyCode::Enter => {
-                let selected: Vec<String> = items
-                    .iter()
-                    .filter(|item| item.selected)
-                    .map(|item| item.value.clone())
-                    .collect();
-
-                // If nothing selected, treat as cancel
-                if selected.is_empty() {
-                    Some(DialogResult::Cancelled)
+                if single_select {
+                    // Single select: return current cursor item
+                    if let Some(item) = items.get(self.cursor) {
+                        Some(DialogResult::Confirmed(vec![item.value.clone()]))
+                    } else {
+                        Some(DialogResult::Cancelled)
+                    }
                 } else {
-                    Some(DialogResult::Confirmed(selected))
+                    // Multi select: return all checked items
+                    let selected: Vec<String> = items
+                        .iter()
+                        .filter(|item| item.selected)
+                        .map(|item| item.value.clone())
+                        .collect();
+
+                    // If nothing selected, treat as cancel
+                    if selected.is_empty() {
+                        Some(DialogResult::Cancelled)
+                    } else {
+                        Some(DialogResult::Confirmed(selected))
+                    }
                 }
             }
             // Cancel
@@ -64,6 +80,7 @@ impl Dialog {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn render_select(
         &self,
         frame: &mut Frame,
@@ -72,6 +89,7 @@ impl Dialog {
         message: &str,
         items: &[SelectItem],
         detail: Option<&str>,
+        single_select: bool,
     ) {
         // Calculate dialog size (add 2 lines if detail is present)
         let width = 50.min(area.width.saturating_sub(4));
@@ -90,9 +108,8 @@ impl Dialog {
             Line::from(""),
         ];
 
-        // Add items with checkboxes
+        // Add items (with or without checkboxes)
         for (i, item) in items.iter().enumerate() {
-            let checkbox = if item.selected { "[x]" } else { "[ ]" };
             let cursor = if i == self.cursor { "> " } else { "  " };
 
             let style = if i == self.cursor {
@@ -103,10 +120,16 @@ impl Dialog {
                 Style::default()
             };
 
-            lines.push(Line::from(Span::styled(
-                format!("{}{} {}", cursor, checkbox, item.label),
-                style,
-            )));
+            let item_text = if single_select {
+                // Single select: no checkbox
+                format!("{}{}", cursor, item.label)
+            } else {
+                // Multi select: with checkbox
+                let checkbox = if item.selected { "[x]" } else { "[ ]" };
+                format!("{}{} {}", cursor, checkbox, item.label)
+            };
+
+            lines.push(Line::from(Span::styled(item_text, style)));
         }
 
         lines.push(Line::from(""));
@@ -120,16 +143,30 @@ impl Dialog {
             lines.push(Line::from(""));
         }
 
-        lines.push(Line::from(vec![
-            Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
-            Span::raw(" Move "),
-            Span::styled("[Space]", Style::default().fg(Color::Green)),
-            Span::raw(" Toggle "),
-            Span::styled("[Enter]", Style::default().fg(Color::Green)),
-            Span::raw(" OK "),
-            Span::styled("[Esc]", Style::default().fg(Color::Red)),
-            Span::raw(" Cancel"),
-        ]));
+        // Hint line: different for single_select vs multi_select
+        let hints = if single_select {
+            vec![
+                Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
+                Span::raw(" Move "),
+                Span::styled("[Enter]", Style::default().fg(Color::Green)),
+                Span::raw(" Select "),
+                Span::styled("[Esc]", Style::default().fg(Color::Red)),
+                Span::raw(" Cancel"),
+            ]
+        } else {
+            vec![
+                Span::styled("[j/k]", Style::default().fg(Color::Cyan)),
+                Span::raw(" Move "),
+                Span::styled("[Space]", Style::default().fg(Color::Green)),
+                Span::raw(" Toggle "),
+                Span::styled("[Enter]", Style::default().fg(Color::Green)),
+                Span::raw(" OK "),
+                Span::styled("[Esc]", Style::default().fg(Color::Red)),
+                Span::raw(" Cancel"),
+            ]
+        };
+
+        lines.push(Line::from(hints));
 
         let paragraph = Paragraph::new(lines).block(
             Block::default()

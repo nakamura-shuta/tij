@@ -790,6 +790,12 @@ impl App {
                 // Select dialog - names contains selected bookmark full names (e.g., "feature@origin")
                 self.execute_track(&names);
             }
+            (Some(DialogCallback::BookmarkJump), DialogResult::Confirmed(change_ids)) => {
+                // Single-select dialog - change_ids contains exactly one change_id
+                if let Some(change_id) = change_ids.first() {
+                    self.execute_bookmark_jump(change_id);
+                }
+            }
             (_, DialogResult::Cancelled) => {
                 // Cancelled - do nothing
             }
@@ -832,6 +838,62 @@ impl App {
             Err(e) => {
                 self.error_message = Some(format!("Failed to list bookmarks: {}", e));
             }
+        }
+    }
+
+    /// Start bookmark jump flow - show dialog with jumpable bookmarks
+    ///
+    /// Shows a single-select dialog with all bookmarks that have change_id.
+    /// Remote-only bookmarks (without change_id) are excluded.
+    pub(crate) fn start_bookmark_jump(&mut self) {
+        match self.jj.bookmark_list_with_info() {
+            Ok(bookmarks) => {
+                // Filter to only jumpable bookmarks (those with change_id)
+                let jumpable: Vec<_> = bookmarks.iter().filter(|b| b.is_jumpable()).collect();
+
+                if jumpable.is_empty() {
+                    self.notification = Some(Notification::info("No bookmarks available"));
+                    return;
+                }
+
+                // Create single-select dialog
+                let items: Vec<SelectItem> = jumpable
+                    .iter()
+                    .map(|b| {
+                        let label = b.display_label(40);
+                        let value = b.change_id.clone().unwrap_or_default();
+                        SelectItem {
+                            label,
+                            value,
+                            selected: false,
+                        }
+                    })
+                    .collect();
+
+                self.active_dialog = Some(Dialog::select_single(
+                    "Jump to Bookmark",
+                    "Select bookmark:",
+                    items,
+                    None,
+                    DialogCallback::BookmarkJump,
+                ));
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to list bookmarks: {}", e));
+            }
+        }
+    }
+
+    /// Execute bookmark jump - select the change in log view
+    pub(crate) fn execute_bookmark_jump(&mut self, change_id: &str) {
+        if self.log_view.select_change_by_id(change_id) {
+            let short_id = &change_id[..8.min(change_id.len())];
+            self.notification = Some(Notification::success(format!("Jumped to {}", short_id)));
+        } else {
+            // The change might not be visible in current revset
+            self.notification = Some(Notification::warning(
+                "Bookmark target not visible in current revset",
+            ));
         }
     }
 

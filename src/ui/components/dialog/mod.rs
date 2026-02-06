@@ -39,6 +39,8 @@ pub enum DialogCallback {
     GitPush,
     /// Track remote bookmarks (Select dialog)
     Track,
+    /// Jump to bookmark (Select dialog, single_select)
+    BookmarkJump,
 }
 
 /// Selection item for Select dialog
@@ -69,6 +71,8 @@ pub enum DialogKind {
         items: Vec<SelectItem>,
         /// Optional detail text (warning, etc.)
         detail: Option<String>,
+        /// Single select mode: Enter immediately confirms current item
+        single_select: bool,
     },
 }
 
@@ -111,7 +115,7 @@ impl Dialog {
         }
     }
 
-    /// Create a new Select dialog
+    /// Create a new Select dialog (multi-select with checkboxes)
     pub fn select(
         title: impl Into<String>,
         message: impl Into<String>,
@@ -125,6 +129,28 @@ impl Dialog {
                 message: message.into(),
                 items,
                 detail,
+                single_select: false,
+            },
+            cursor: 0,
+            callback_id,
+        }
+    }
+
+    /// Create a new single-select dialog (Enter immediately confirms current item)
+    pub fn select_single(
+        title: impl Into<String>,
+        message: impl Into<String>,
+        items: Vec<SelectItem>,
+        detail: Option<String>,
+        callback_id: DialogCallback,
+    ) -> Self {
+        Self {
+            kind: DialogKind::Select {
+                title: title.into(),
+                message: message.into(),
+                items,
+                detail,
+                single_select: true,
             },
             cursor: 0,
             callback_id,
@@ -152,7 +178,16 @@ impl Dialog {
                 message,
                 items,
                 detail,
-            } => self.render_select(frame, area, title, message, items, detail.as_deref()),
+                single_select,
+            } => self.render_select(
+                frame,
+                area,
+                title,
+                message,
+                items,
+                detail.as_deref(),
+                *single_select,
+            ),
         }
     }
 }

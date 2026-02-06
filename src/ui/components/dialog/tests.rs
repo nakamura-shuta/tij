@@ -287,3 +287,95 @@ fn test_confirm_dialog_ignores_other_keys() {
     assert!(dialog.handle_key(key(KeyCode::Char(' '))).is_none());
     assert!(dialog.handle_key(key(KeyCode::Tab)).is_none());
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Single-select dialog tests (Phase 7.4.1)
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_single_select_dialog_enter_confirms_current() {
+    let items = vec![
+        SelectItem {
+            label: "Item 1".to_string(),
+            value: "value1".to_string(),
+            selected: false,
+        },
+        SelectItem {
+            label: "Item 2".to_string(),
+            value: "value2".to_string(),
+            selected: false,
+        },
+    ];
+
+    let mut dialog = Dialog::select_single(
+        "Test",
+        "Select one",
+        items,
+        None,
+        DialogCallback::BookmarkJump,
+    );
+
+    // Move to second item
+    dialog.handle_key(key(KeyCode::Char('j')));
+    assert_eq!(dialog.cursor, 1);
+
+    // Press Enter - should confirm with current cursor item
+    let result = dialog.handle_key(key(KeyCode::Enter));
+    assert_eq!(
+        result,
+        Some(DialogResult::Confirmed(vec!["value2".to_string()]))
+    );
+}
+
+#[test]
+fn test_single_select_dialog_space_does_not_toggle() {
+    let items = vec![
+        SelectItem {
+            label: "Item 1".to_string(),
+            value: "1".to_string(),
+            selected: false,
+        },
+        SelectItem {
+            label: "Item 2".to_string(),
+            value: "2".to_string(),
+            selected: false,
+        },
+    ];
+
+    let mut dialog = Dialog::select_single(
+        "Test",
+        "Select one",
+        items,
+        None,
+        DialogCallback::BookmarkJump,
+    );
+
+    // Space should not toggle selection in single_select mode
+    assert!(dialog.handle_key(key(KeyCode::Char(' '))).is_none());
+    if let DialogKind::Select { items, .. } = &dialog.kind {
+        assert!(!items[0].selected);
+        assert!(!items[1].selected);
+    }
+}
+
+#[test]
+fn test_single_select_dialog_cancel() {
+    let items = vec![SelectItem {
+        label: "Item 1".to_string(),
+        value: "1".to_string(),
+        selected: false,
+    }];
+
+    let mut dialog = Dialog::select_single(
+        "Test",
+        "Select one",
+        items,
+        None,
+        DialogCallback::BookmarkJump,
+    );
+
+    assert_eq!(
+        dialog.handle_key(key(KeyCode::Esc)),
+        Some(DialogResult::Cancelled)
+    );
+}

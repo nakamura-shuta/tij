@@ -1069,3 +1069,47 @@ fn test_track_key_returns_start_track() {
     let result = view.handle_key(KeyEvent::from(KeyCode::Char('T')));
     assert!(matches!(result, LogAction::StartTrack));
 }
+
+// =============================================================================
+// Bookmark Jump tests
+// =============================================================================
+
+#[test]
+fn test_bookmark_jump_key_returns_start_bookmark_jump() {
+    let mut view = LogView::default();
+    view.set_changes(create_test_changes());
+
+    let result = view.handle_key(KeyEvent::from(KeyCode::Char('\'')));
+    assert!(matches!(result, LogAction::StartBookmarkJump));
+}
+
+#[test]
+fn test_select_change_by_id_found() {
+    let mut view = LogView::default();
+    view.set_changes(create_test_changes());
+
+    // Initially at first change
+    assert_eq!(view.selected_index, 0);
+
+    // Jump to second change
+    let found = view.select_change_by_id("xyz98765");
+    assert!(found);
+    assert_eq!(view.selected_index, 1);
+    assert_eq!(view.selected_change().unwrap().change_id, "xyz98765");
+}
+
+#[test]
+fn test_select_change_by_id_not_found() {
+    let mut view = LogView::default();
+    view.set_changes(create_test_changes());
+
+    // Initially at first change
+    assert_eq!(view.selected_index, 0);
+
+    // Try to jump to non-existent change
+    let found = view.select_change_by_id("nonexistent");
+    assert!(!found);
+
+    // Selection should remain unchanged
+    assert_eq!(view.selected_index, 0);
+}

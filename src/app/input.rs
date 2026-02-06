@@ -246,6 +246,9 @@ impl App {
             LogAction::StartTrack => {
                 self.start_track();
             }
+            LogAction::StartBookmarkJump => {
+                self.start_bookmark_jump();
+            }
         }
     }
 

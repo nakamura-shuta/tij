@@ -13,7 +13,7 @@ mod notification;
 mod operation;
 
 pub use annotation::{AnnotationContent, AnnotationLine};
-pub use bookmark::Bookmark;
+pub use bookmark::{Bookmark, BookmarkInfo};
 pub use change::Change;
 pub use conflict::ConflictFile;
 pub use diff::{DiffContent, DiffLine, DiffLineKind};

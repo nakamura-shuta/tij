@@ -90,6 +90,8 @@ pub enum LogAction {
     StartPush,
     /// Start track flow (opens dialog if untracked remotes exist)
     StartTrack,
+    /// Start bookmark jump flow (opens selection dialog)
+    StartBookmarkJump,
 }
 
 /// Log View state
@@ -280,6 +282,24 @@ impl LogView {
     pub fn cancel_rebase_select(&mut self) {
         self.rebase_source = None;
         self.input_mode = InputMode::Normal;
+    }
+
+    /// Select a change by its change_id
+    ///
+    /// Returns true if the change was found and selected, false otherwise.
+    /// The scroll_offset will be updated during next render via calculate_scroll_offset().
+    pub fn select_change_by_id(&mut self, change_id: &str) -> bool {
+        // Find the change in the selectable indices
+        for (cursor, &idx) in self.selectable_indices.iter().enumerate() {
+            if let Some(change) = self.changes.get(idx) {
+                if change.change_id == change_id {
+                    self.selection_cursor = cursor;
+                    self.selected_index = idx;
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 

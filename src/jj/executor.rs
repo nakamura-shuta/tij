@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 
 use crate::model::{
-    AnnotationContent, Bookmark, Change, ConflictFile, DiffContent, Operation, Status,
+    AnnotationContent, Bookmark, BookmarkInfo, Change, ConflictFile, DiffContent, Operation, Status,
 };
 
 use super::JjError;
@@ -420,6 +420,82 @@ impl JjExecutor {
             BOOKMARK_LIST_TEMPLATE,
         ])?;
         Ok(super::parser::parse_bookmark_list(&output))
+    }
+
+    /// Get extended bookmark information for Bookmark Jump/View
+    ///
+    /// Two-stage approach:
+    /// 1. `jj bookmark list --all-remotes` - get all bookmarks with tracking status
+    /// 2. `jj log -r 'bookmarks()'` - get change_id and description for local bookmarks
+    ///
+    /// Remote-only bookmarks will have `change_id = None` and cannot be jumped to.
+    /// Remote tracked bookmarks (e.g., main@origin) also have `change_id = None`
+    /// to ensure only local bookmarks appear in Jump dialog.
+    pub fn bookmark_list_with_info(&self) -> Result<Vec<BookmarkInfo>, JjError> {
+        use std::collections::HashMap;
+
+        // Step 1: Get all bookmarks
+        let bookmarks = self.bookmark_list_all()?;
+
+        // Step 2: Get revision info for local bookmarks
+        // Template: explicitly format bookmarks as space-separated names
+        // Using bookmarks.map(|x| x.name()).join(" ") for stable parsing
+        // Use short(8) to match LogView's change_id length for exact matching
+        const BOOKMARK_INFO_TEMPLATE: &str = r#"bookmarks.map(|x| x.name()).join(" ") ++ "\t" ++ change_id.short(8) ++ "\t" ++ commit_id.short(8) ++ "\t" ++ description.first_line() ++ "\n""#;
+
+        let log_output = self.run(&[
+            commands::LOG,
+            flags::NO_GRAPH,
+            flags::REVISION,
+            "bookmarks()",
+            flags::TEMPLATE,
+            BOOKMARK_INFO_TEMPLATE,
+        ])?;
+
+        // Parse log output into a map: bookmark_name -> (change_id, commit_id, description)
+        // Note: This only includes LOCAL bookmarks (from `jj log -r 'bookmarks()'`)
+        let mut info_map: HashMap<String, (String, String, String)> = HashMap::new();
+        for line in log_output.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 4 {
+                let bookmark_names = parts[0]; // Space-separated bookmark names
+                let change_id = parts[1].to_string();
+                let commit_id = parts[2].to_string();
+                let description = parts[3].to_string();
+
+                // Multiple bookmarks may point to the same commit
+                for name in bookmark_names.split_whitespace() {
+                    info_map.insert(
+                        name.to_string(),
+                        (change_id.clone(), commit_id.clone(), description.clone()),
+                    );
+                }
+            }
+        }
+
+        // Step 3: Merge bookmark list with revision info
+        // Only local bookmarks (remote.is_none()) get change_id from info_map
+        // Remote bookmarks (including tracked ones like main@origin) get change_id = None
+        // This ensures only local bookmarks appear in Jump dialog
+        let result: Vec<BookmarkInfo> = bookmarks
+            .into_iter()
+            .map(|bookmark| {
+                // Only apply info_map to local bookmarks
+                let info = if bookmark.remote.is_none() {
+                    info_map.get(&bookmark.name)
+                } else {
+                    None
+                };
+                BookmarkInfo {
+                    change_id: info.map(|(c, _, _)| c.clone()),
+                    commit_id: info.map(|(_, c, _)| c.clone()),
+                    description: info.map(|(_, _, d)| d.clone()),
+                    bookmark,
+                }
+            })
+            .collect();
+
+        Ok(result)
     }
 
     /// Run `jj bookmark track <names>...` to start tracking remote bookmarks
