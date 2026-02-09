@@ -82,7 +82,7 @@ jobs:
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@main
       - name: Install jj
-        run: cargo binstall --no-confirm jj-cli
+        run: cargo binstall --no-confirm --force jj-cli
       - name: Verify jj
         run: jj version
       - name: Configure jj
