@@ -991,7 +991,7 @@ dependencies = [
 
 [[package]]
 name = "tij"
-version = "0.3.11"
+version = "0.3.12"
 dependencies = [
  "color-eyre",
  "crossterm",
