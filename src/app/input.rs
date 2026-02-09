@@ -229,8 +229,9 @@ impl App {
             LogAction::Rebase {
                 source,
                 destination,
+                mode,
             } => {
-                self.execute_rebase(&source, &destination);
+                self.execute_rebase(&source, &destination, mode);
             }
             LogAction::Absorb => {
                 self.execute_absorb();

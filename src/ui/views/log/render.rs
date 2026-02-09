@@ -12,7 +12,7 @@ use crate::jj::constants;
 use crate::model::{Change, Notification};
 use crate::ui::{components, symbols, theme};
 
-use super::{InputMode, LogView, empty_text};
+use super::{InputMode, LogView, RebaseMode, empty_text};
 
 impl LogView {
     /// Render the view with optional notification in title bar
@@ -33,6 +33,7 @@ impl LogView {
         // Split area for input bar if in other input modes
         let (log_area, input_area) = match self.input_mode {
             InputMode::Normal
+            | InputMode::RebaseModeSelect
             | InputMode::RebaseSelect
             | InputMode::SquashSelect
             | InputMode::CompareSelect
@@ -97,12 +98,30 @@ impl LogView {
     }
 
     fn build_title(&self) -> Line<'static> {
-        // Special title for RebaseSelect mode
-        if self.input_mode == InputMode::RebaseSelect {
-            return Line::from(" Tij - Log View [Rebase: Select destination] ")
+        // Special title for RebaseModeSelect mode
+        if self.input_mode == InputMode::RebaseModeSelect {
+            return Line::from(" Tij - Log View [Rebase: Select mode (r/s/A/B)] ")
                 .bold()
                 .yellow()
                 .centered();
+        }
+
+        // Special title for RebaseSelect mode (varies by rebase_mode)
+        if self.input_mode == InputMode::RebaseSelect {
+            let title = match self.rebase_mode {
+                RebaseMode::Revision => " Tij - Log View [Rebase: Select destination] ".to_string(),
+                RebaseMode::Source => {
+                    " Tij - Log View [Rebase -s: Select destination (with descendants)] "
+                        .to_string()
+                }
+                RebaseMode::InsertAfter => {
+                    " Tij - Log View [Rebase: Select insert-after target] ".to_string()
+                }
+                RebaseMode::InsertBefore => {
+                    " Tij - Log View [Rebase: Select insert-before target] ".to_string()
+                }
+            };
+            return Line::from(title).bold().yellow().centered();
         }
 
         // Special title for SquashSelect mode
@@ -228,9 +247,11 @@ impl LogView {
 
         let mut line = Line::from(spans);
 
-        // Check if this is the rebase source (in RebaseSelect mode)
-        let is_rebase_source = self.input_mode == InputMode::RebaseSelect
-            && self.rebase_source.as_ref() == Some(&change.change_id);
+        // Check if this is the rebase source (in RebaseModeSelect or RebaseSelect mode)
+        let is_rebase_source = matches!(
+            self.input_mode,
+            InputMode::RebaseModeSelect | InputMode::RebaseSelect
+        ) && self.rebase_source.as_ref() == Some(&change.change_id);
 
         // Check if this is the squash source (in SquashSelect mode)
         let is_squash_source = self.input_mode == InputMode::SquashSelect

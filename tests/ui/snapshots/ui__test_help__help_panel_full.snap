@@ -34,7 +34,7 @@ expression: terminal.backend()
 "│  x         Split change                                                      │"
 "│  b         Create bookmark                                                   │"
 "│  D         Delete bookmark                                                   │"
-"│  R         Rebase change                                                     │"
+"│  R         Rebase (r/s/A/B)                                                  │"
 "│  B         Absorb changes                                                    │"
 "│  X         Resolve conflicts                                                 │"
 "│  F         Git fetch                                                         │"

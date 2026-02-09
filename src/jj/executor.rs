@@ -534,6 +534,48 @@ impl JjExecutor {
         self.run(&[commands::REBASE, flags::REVISION, source, "-d", destination])
     }
 
+    /// Run `jj rebase -s <source> -d <destination>` to move a change and its descendants
+    ///
+    /// Moves the specified change and all its descendants to be children of the destination.
+    /// Unlike `-r`, this moves the entire subtree.
+    ///
+    /// Returns the command output which may contain conflict information.
+    pub fn rebase_source(&self, source: &str, destination: &str) -> Result<String, JjError> {
+        self.run(&[commands::REBASE, flags::SOURCE, source, "-d", destination])
+    }
+
+    /// Run `jj rebase -r <source> -A <target>` to insert a change after target
+    ///
+    /// Inserts the source change into the history after the target revision.
+    /// The target's children become children of the source instead.
+    ///
+    /// Returns the command output which may contain conflict information.
+    pub fn rebase_insert_after(&self, source: &str, target: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::REBASE,
+            flags::REVISION,
+            source,
+            flags::INSERT_AFTER,
+            target,
+        ])
+    }
+
+    /// Run `jj rebase -r <source> -B <target>` to insert a change before target
+    ///
+    /// Inserts the source change into the history before the target revision.
+    /// The source becomes a new parent of the target.
+    ///
+    /// Returns the command output which may contain conflict information.
+    pub fn rebase_insert_before(&self, source: &str, target: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::REBASE,
+            flags::REVISION,
+            source,
+            flags::INSERT_BEFORE,
+            target,
+        ])
+    }
+
     /// Check if a specific change has conflicts
     ///
     /// Uses `jj log -r <change_id> -T 'conflict'` to query the conflict status.

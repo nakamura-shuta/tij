@@ -2,6 +2,7 @@
 
 use crate::model::Notification;
 use crate::ui::components::{Dialog, DialogCallback, DialogResult, SelectItem};
+use crate::ui::views::RebaseMode;
 
 use super::state::{App, View};
 
@@ -705,31 +706,54 @@ impl App {
         self.refresh_resolve_list(&change_id, is_wc);
     }
 
-    /// Execute rebase: move source change to be a child of destination
+    /// Execute rebase with specified mode
     ///
-    /// Uses `jj rebase -r <source> -d <destination>` which moves only the
-    /// single change. Descendants are rebased onto the original parent.
-    pub(crate) fn execute_rebase(&mut self, source: &str, destination: &str) {
+    /// Supports four modes:
+    /// - `Revision` (`-r`): Move single change, descendants rebased onto parent
+    /// - `Source` (`-s`): Move change and all descendants together
+    /// - `InsertAfter` (`-A`): Insert change after target in history
+    /// - `InsertBefore` (`-B`): Insert change before target in history
+    pub(crate) fn execute_rebase(&mut self, source: &str, destination: &str, mode: RebaseMode) {
         // Prevent rebasing to self
         if source == destination {
             self.notification = Some(Notification::warning("Cannot rebase to itself"));
             return;
         }
 
-        match self.jj.rebase(source, destination) {
-            Ok(_) => {
+        let result = match mode {
+            RebaseMode::Revision => self.jj.rebase(source, destination),
+            RebaseMode::Source => self.jj.rebase_source(source, destination),
+            RebaseMode::InsertAfter => self.jj.rebase_insert_after(source, destination),
+            RebaseMode::InsertBefore => self.jj.rebase_insert_before(source, destination),
+        };
+
+        match result {
+            Ok(output) => {
                 // Refresh both log and status
                 let revset = self.log_view.current_revset.clone();
                 self.refresh_log(revset.as_deref());
                 self.refresh_status();
 
-                // Check for conflicts in the rebased change (not just working copy)
-                let notification = match self.jj.has_conflict(source) {
-                    Ok(true) => {
-                        Notification::warning("Rebased with conflicts - resolve with jj resolve")
-                    }
-                    Ok(false) => Notification::success("Rebased successfully"),
-                    Err(_) => Notification::warning("Rebase finished, conflict status unknown"),
+                // Unified conflict detection from jj output
+                let has_conflict = output.to_lowercase().contains("conflict");
+                let notification = if has_conflict {
+                    Notification::warning("Rebased with conflicts - resolve with jj resolve")
+                } else {
+                    let msg = match mode {
+                        RebaseMode::Revision => "Rebased successfully".to_string(),
+                        RebaseMode::Source => {
+                            "Rebased source and descendants successfully".to_string()
+                        }
+                        RebaseMode::InsertAfter => {
+                            let short = &destination[..8.min(destination.len())];
+                            format!("Inserted after {} successfully", short)
+                        }
+                        RebaseMode::InsertBefore => {
+                            let short = &destination[..8.min(destination.len())];
+                            format!("Inserted before {} successfully", short)
+                        }
+                    };
+                    Notification::success(msg)
                 };
                 self.notification = Some(notification);
             }

@@ -64,6 +64,12 @@ pub mod flags {
     pub const ALL_REMOTES: &str = "--all-remotes";
     /// Named push for new bookmarks (jj 0.37+): --named <bookmark>=<revision>
     pub const NAMED: &str = "--named";
+    /// Rebase source (with descendants)
+    pub const SOURCE: &str = "-s";
+    /// Insert after target revision
+    pub const INSERT_AFTER: &str = "-A";
+    /// Insert before target revision
+    pub const INSERT_BEFORE: &str = "-B";
     /// Diff from revision
     pub const FROM: &str = "--from";
     /// Diff to revision

@@ -9,6 +9,20 @@ use tui_textarea::TextArea;
 
 use crate::model::Change;
 
+/// Rebase operation mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RebaseMode {
+    /// `-r`: Move single revision (descendants rebased onto parent)
+    #[default]
+    Revision,
+    /// `-s`: Move revision and all descendants together
+    Source,
+    /// `-A`: Insert revision after target in history
+    InsertAfter,
+    /// `-B`: Insert revision before target in history
+    InsertBefore,
+}
+
 /// Input mode for Log View
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InputMode {
@@ -23,6 +37,8 @@ pub enum InputMode {
     DescribeInput,
     /// Bookmark input mode (creating bookmark)
     BookmarkInput,
+    /// Rebase mode selection (r/s/A/B single key)
+    RebaseModeSelect,
     /// Rebase destination selection mode
     RebaseSelect,
     /// Squash destination selection mode
@@ -38,9 +54,10 @@ impl InputMode {
             InputMode::RevsetInput => Some(("Revset: ", " r Revset ")),
             InputMode::BookmarkInput => Some(("Bookmark: ", " b Bookmark ")),
             // DescribeInput uses TextArea, not input bar
-            // RebaseSelect/SquashSelect/CompareSelect use status bar hints, not input bar
+            // RebaseModeSelect/RebaseSelect/SquashSelect/CompareSelect use status bar hints, not input bar
             InputMode::DescribeInput
             | InputMode::Normal
+            | InputMode::RebaseModeSelect
             | InputMode::RebaseSelect
             | InputMode::SquashSelect
             | InputMode::CompareSelect => None,
@@ -84,8 +101,12 @@ pub enum LogAction {
     CreateBookmark { change_id: String, name: String },
     /// Start bookmark deletion (opens selection dialog)
     StartBookmarkDelete,
-    /// Rebase source change to destination
-    Rebase { source: String, destination: String },
+    /// Rebase source change to destination with specified mode
+    Rebase {
+        source: String,
+        destination: String,
+        mode: RebaseMode,
+    },
     /// Absorb working copy changes into ancestor commits
     Absorb,
     /// Open resolve list view for a change
@@ -136,6 +157,8 @@ pub struct LogView {
     selection_cursor: usize,
     /// Source change ID for rebase (set when entering RebaseSelect mode)
     pub(crate) rebase_source: Option<String>,
+    /// Current rebase mode (set during RebaseModeSelect)
+    pub(crate) rebase_mode: RebaseMode,
     /// Source change ID for squash (set when entering SquashSelect mode)
     pub(crate) squash_source: Option<String>,
     /// "From" change ID for compare (set when entering CompareSelect mode)
@@ -281,6 +304,29 @@ impl LogView {
         }
     }
 
+    /// Start rebase mode selection (r/s/A/B single key)
+    ///
+    /// Saves the source change and enters RebaseModeSelect mode.
+    /// Returns true if mode was entered, false if no change is selected.
+    pub fn start_rebase_mode_select(&mut self) -> bool {
+        let change_id = self.selected_change().map(|c| c.change_id.clone());
+
+        if let Some(change_id) = change_id {
+            self.rebase_source = Some(change_id);
+            self.input_mode = InputMode::RebaseModeSelect;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Cancel rebase mode selection
+    pub fn cancel_rebase_mode_select(&mut self) {
+        self.rebase_source = None;
+        self.rebase_mode = RebaseMode::default();
+        self.input_mode = InputMode::Normal;
+    }
+
     /// Start rebase destination selection mode
     ///
     /// Returns true if mode was entered, false if no change is selected.
@@ -300,6 +346,7 @@ impl LogView {
     /// Cancel rebase selection mode
     pub fn cancel_rebase_select(&mut self) {
         self.rebase_source = None;
+        self.rebase_mode = RebaseMode::default();
         self.input_mode = InputMode::Normal;
     }
 

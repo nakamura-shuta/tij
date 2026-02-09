@@ -304,7 +304,7 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     },
     KeyBindEntry {
         key: "R",
-        description: "Rebase change",
+        description: "Rebase (r/s/A/B)",
     },
     KeyBindEntry {
         key: "B",
@@ -505,6 +505,54 @@ pub const COMPARE_SELECT_HINTS: &[KeyHint] = &[
     KeyHint {
         key: "Enter",
         label: "Compare",
+        color: Color::Green,
+    },
+    KeyHint {
+        key: "Esc",
+        label: "Cancel",
+        color: Color::Red,
+    },
+];
+
+/// RebaseModeSelect mode status bar hints
+pub const REBASE_MODE_SELECT_HINTS: &[KeyHint] = &[
+    KeyHint {
+        key: "r",
+        label: "Revision",
+        color: Color::Yellow,
+    },
+    KeyHint {
+        key: "s",
+        label: "Source",
+        color: Color::Magenta,
+    },
+    KeyHint {
+        key: "A",
+        label: "After",
+        color: Color::Cyan,
+    },
+    KeyHint {
+        key: "B",
+        label: "Before",
+        color: Color::Green,
+    },
+    KeyHint {
+        key: "Esc",
+        label: "Cancel",
+        color: Color::Red,
+    },
+];
+
+/// RebaseSelect mode status bar hints
+pub const REBASE_SELECT_HINTS: &[KeyHint] = &[
+    KeyHint {
+        key: "j/k",
+        label: "Navigate",
+        color: Color::Blue,
+    },
+    KeyHint {
+        key: "Enter",
+        label: "Rebase",
         color: Color::Green,
     },
     KeyHint {

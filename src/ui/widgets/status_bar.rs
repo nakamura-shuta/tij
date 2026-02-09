@@ -116,6 +116,8 @@ fn calc_height(hints: &[KeyHint], width: u16) -> u16 {
 /// Get the hints to use for the current log view mode
 fn log_view_hints(input_mode: InputMode) -> &'static [KeyHint] {
     match input_mode {
+        InputMode::RebaseModeSelect => keys::REBASE_MODE_SELECT_HINTS,
+        InputMode::RebaseSelect => keys::REBASE_SELECT_HINTS,
         InputMode::CompareSelect => keys::COMPARE_SELECT_HINTS,
         _ => keys::LOG_VIEW_HINTS,
     }

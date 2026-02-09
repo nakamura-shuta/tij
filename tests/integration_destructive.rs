@@ -146,3 +146,172 @@ fn test_abandon_current_change() {
         "New current change should have no description"
     );
 }
+
+// =============================================================================
+// Rebase -s (source: move with descendants)
+// =============================================================================
+
+#[test]
+fn test_rebase_source_moves_descendants() {
+    skip_if_no_jj!();
+    let repo = TestRepo::new();
+
+    // Create chain: root → A → B → C
+    repo.write_file("a.txt", "a");
+    repo.jj(&["describe", "-m", "A"]);
+    repo.jj(&["new", "-m", "B"]);
+    repo.write_file("b.txt", "b");
+    let b_id = repo.current_change_id();
+    repo.jj(&["new", "-m", "C"]);
+    repo.write_file("c.txt", "c");
+    let c_id = repo.current_change_id();
+
+    // Create a separate branch: root → D
+    repo.jj(&["new", "root()", "-m", "D"]);
+    repo.write_file("d.txt", "d");
+    let d_id = repo.current_change_id();
+
+    // Move B (with descendants B, C) under D
+    let executor = JjExecutor::with_repo_path(repo.path());
+    executor
+        .rebase_source(&b_id, &d_id)
+        .expect("rebase_source should succeed");
+
+    // Verify B's parent is now D
+    let b_parent = repo
+        .jj(&[
+            "log",
+            "-r",
+            &format!("{}-", b_id),
+            "--no-graph",
+            "-T",
+            "description.first_line()",
+        ])
+        .trim()
+        .to_string();
+    assert_eq!(b_parent, "D", "B's parent should now be D");
+
+    // Verify C's parent is still B (descendants moved together)
+    let c_parent = repo
+        .jj(&[
+            "log",
+            "-r",
+            &format!("{}-", c_id),
+            "--no-graph",
+            "-T",
+            "description.first_line()",
+        ])
+        .trim()
+        .to_string();
+    assert_eq!(c_parent, "B", "C's parent should still be B");
+}
+
+// =============================================================================
+// Rebase -A (insert-after)
+// =============================================================================
+
+#[test]
+fn test_rebase_insert_after() {
+    skip_if_no_jj!();
+    let repo = TestRepo::new();
+
+    // Create: root → J → K (current)
+    //                J → L → M
+    repo.write_file("j.txt", "j");
+    repo.jj(&["describe", "-m", "J"]);
+    let j_id = repo.current_change_id();
+
+    repo.jj(&["new", "-m", "K"]);
+    repo.write_file("k.txt", "k");
+    let k_id = repo.current_change_id();
+
+    // Create L as child of J
+    repo.jj(&["new", &j_id, "-m", "L"]);
+    repo.write_file("l.txt", "l");
+    let l_id = repo.current_change_id();
+
+    repo.jj(&["new", "-m", "M"]);
+    repo.write_file("m.txt", "m");
+
+    // Insert K after L (K becomes child of L, M becomes child of K)
+    let executor = JjExecutor::with_repo_path(repo.path());
+    executor
+        .rebase_insert_after(&k_id, &l_id)
+        .expect("rebase_insert_after should succeed");
+
+    // Verify K's parent is now L
+    let k_parent_desc = repo
+        .jj(&[
+            "log",
+            "-r",
+            &format!("{}-", k_id),
+            "--no-graph",
+            "-T",
+            "description.first_line()",
+        ])
+        .trim()
+        .to_string();
+    assert_eq!(k_parent_desc, "L", "K's parent should now be L");
+}
+
+// =============================================================================
+// Rebase -B (insert-before)
+// =============================================================================
+
+#[test]
+fn test_rebase_insert_before() {
+    skip_if_no_jj!();
+    let repo = TestRepo::new();
+
+    // Create: root → J → L → M (current)
+    //                J → K
+    repo.write_file("j.txt", "j");
+    repo.jj(&["describe", "-m", "J"]);
+    let j_id = repo.current_change_id();
+
+    repo.jj(&["new", "-m", "L"]);
+    repo.write_file("l.txt", "l");
+    let l_id = repo.current_change_id();
+
+    repo.jj(&["new", "-m", "M"]);
+    repo.write_file("m.txt", "m");
+
+    // Create K as child of J
+    repo.jj(&["new", &j_id, "-m", "K"]);
+    repo.write_file("k.txt", "k");
+    let k_id = repo.current_change_id();
+
+    // Insert K before L (K becomes parent of L, K's parent is J)
+    let executor = JjExecutor::with_repo_path(repo.path());
+    executor
+        .rebase_insert_before(&k_id, &l_id)
+        .expect("rebase_insert_before should succeed");
+
+    // Verify K's parent is J
+    let k_parent_desc = repo
+        .jj(&[
+            "log",
+            "-r",
+            &format!("{}-", k_id),
+            "--no-graph",
+            "-T",
+            "description.first_line()",
+        ])
+        .trim()
+        .to_string();
+    assert_eq!(k_parent_desc, "J", "K's parent should be J");
+
+    // Verify L's parent is now K
+    let l_parent_desc = repo
+        .jj(&[
+            "log",
+            "-r",
+            &format!("{}-", l_id),
+            "--no-graph",
+            "-T",
+            "description.first_line()",
+        ])
+        .trim()
+        .to_string();
+    assert_eq!(l_parent_desc, "K", "L's parent should now be K");
+}

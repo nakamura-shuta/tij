@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::keys;
 use crate::model::Change;
 
-use super::{InputMode, LogAction, LogView};
+use super::{InputMode, LogAction, LogView, RebaseMode};
 
 /// Search direction/mode
 #[derive(Clone, Copy)]
@@ -28,6 +28,7 @@ impl LogView {
             InputMode::RevsetInput => self.handle_revset_input_key(key),
             InputMode::DescribeInput => self.handle_describe_input_key(key),
             InputMode::BookmarkInput => self.handle_bookmark_input_key(key),
+            InputMode::RebaseModeSelect => self.handle_rebase_mode_select_key(key),
             InputMode::RebaseSelect => self.handle_rebase_select_key(key),
             InputMode::SquashSelect => self.handle_squash_select_key(key),
             InputMode::CompareSelect => self.handle_compare_select_key(key),
@@ -124,7 +125,7 @@ impl LogView {
                 LogAction::StartBookmarkDelete
             }
             k if k == keys::REBASE => {
-                self.start_rebase_select();
+                self.start_rebase_mode_select();
                 LogAction::None
             }
             k if k == keys::ABSORB => LogAction::Absorb,
@@ -242,6 +243,40 @@ impl LogView {
         })
     }
 
+    /// Handle key events in rebase mode selection (r/s/A/B)
+    ///
+    /// Single key press selects the rebase mode, then transitions to RebaseSelect.
+    fn handle_rebase_mode_select_key(&mut self, key: KeyEvent) -> LogAction {
+        match key.code {
+            KeyCode::Char('r') => {
+                self.rebase_mode = RebaseMode::Revision;
+                self.input_mode = InputMode::RebaseSelect;
+                LogAction::None
+            }
+            KeyCode::Char('s') => {
+                self.rebase_mode = RebaseMode::Source;
+                self.input_mode = InputMode::RebaseSelect;
+                LogAction::None
+            }
+            KeyCode::Char('A') => {
+                self.rebase_mode = RebaseMode::InsertAfter;
+                self.input_mode = InputMode::RebaseSelect;
+                LogAction::None
+            }
+            KeyCode::Char('B') => {
+                self.rebase_mode = RebaseMode::InsertBefore;
+                self.input_mode = InputMode::RebaseSelect;
+                LogAction::None
+            }
+            k if k == keys::ESC => {
+                self.cancel_rebase_mode_select();
+                LogAction::None
+            }
+            // Ignore other keys in mode selection
+            _ => LogAction::None,
+        }
+    }
+
     /// Handle key events in rebase destination selection mode
     ///
     /// In this mode, j/k navigates to select a destination, Enter confirms,
@@ -268,13 +303,23 @@ impl LogView {
             // Confirm rebase
             KeyCode::Enter => {
                 if let (Some(source), Some(dest_change)) =
-                    (self.rebase_source.take(), self.selected_change())
+                    (self.rebase_source.clone(), self.selected_change())
                 {
                     let destination = dest_change.change_id.clone();
+
+                    // Prevent rebasing to self (all modes)
+                    if source == destination {
+                        return LogAction::None;
+                    }
+
+                    let mode = self.rebase_mode;
+                    self.rebase_source = None;
+                    self.rebase_mode = RebaseMode::default();
                     self.input_mode = InputMode::Normal;
                     LogAction::Rebase {
                         source,
                         destination,
+                        mode,
                     }
                 } else {
                     LogAction::None
