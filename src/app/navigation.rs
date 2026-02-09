@@ -1,6 +1,7 @@
 //! View navigation (opening views with data loading)
 
-use crate::model::Notification;
+use crate::jj::parser::Parser;
+use crate::model::{CompareInfo, CompareRevisionInfo, Notification};
 use crate::ui::views::{BlameView, DiffView, ResolveView};
 
 use super::state::{App, View};
@@ -53,6 +54,60 @@ impl App {
                 self.error_message = Some(format!("Failed to load blame: {}", e));
             }
         }
+    }
+
+    /// Open compare diff view between two revisions
+    pub(crate) fn open_compare_diff(&mut self, from: &str, to: &str) {
+        // Get diff output
+        let diff_output = match self.jj.diff_range(from, to) {
+            Ok(output) => output,
+            Err(e) => {
+                self.error_message = Some(format!("Failed to load diff: {}", e));
+                return;
+            }
+        };
+
+        // Get metadata for both revisions
+        let from_info = match self.jj.get_change_info(from) {
+            Ok((change_id, bookmarks, author, timestamp, description)) => CompareRevisionInfo {
+                change_id,
+                bookmarks,
+                author,
+                timestamp,
+                description,
+            },
+            Err(e) => {
+                self.error_message = Some(format!("Failed to load from revision: {}", e));
+                return;
+            }
+        };
+
+        let to_info = match self.jj.get_change_info(to) {
+            Ok((change_id, bookmarks, author, timestamp, description)) => CompareRevisionInfo {
+                change_id,
+                bookmarks,
+                author,
+                timestamp,
+                description,
+            },
+            Err(e) => {
+                self.error_message = Some(format!("Failed to load to revision: {}", e));
+                return;
+            }
+        };
+
+        // Parse diff body
+        let content = Parser::parse_diff_body(&diff_output);
+
+        let compare_info = CompareInfo {
+            from: from_info,
+            to: to_info,
+        };
+
+        let diff_view = DiffView::new_compare(content, compare_info);
+        self.diff_view = Some(diff_view);
+        self.go_to_view(View::Diff);
+        self.error_message = None;
     }
 
     /// Open operation history view

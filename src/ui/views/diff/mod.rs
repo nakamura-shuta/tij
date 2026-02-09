@@ -5,7 +5,7 @@
 mod input;
 mod render;
 
-use crate::model::DiffContent;
+use crate::model::{CompareInfo, DiffContent};
 
 /// Action returned by DiffView key handling
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +19,8 @@ pub enum DiffAction {
         /// File path to annotate
         file_path: String,
     },
+    /// Show an info notification (e.g., feature unavailable in current mode)
+    ShowNotification(String),
 }
 
 /// Diff view state
@@ -38,6 +40,8 @@ pub struct DiffView {
     pub current_file_index: usize,
     /// Last known visible height (updated during render)
     visible_height: usize,
+    /// Compare info (set when in compare mode, None for normal single-revision diff)
+    pub compare_info: Option<CompareInfo>,
 }
 
 impl Default for DiffView {
@@ -60,6 +64,7 @@ impl DiffView {
             file_names: Vec::new(),
             current_file_index: 0,
             visible_height: Self::DEFAULT_VISIBLE_HEIGHT,
+            compare_info: None,
         }
     }
 
@@ -67,6 +72,16 @@ impl DiffView {
     pub fn new(change_id: String, content: DiffContent) -> Self {
         let mut view = Self::empty();
         view.set_content(change_id, content);
+        view
+    }
+
+    /// Create a new DiffView in compare mode (two-revision diff)
+    pub fn new_compare(content: DiffContent, compare_info: CompareInfo) -> Self {
+        let mut view = Self::empty();
+        // Use the "from" change_id as the primary ID
+        let change_id = compare_info.from.change_id.clone();
+        view.set_content(change_id, content);
+        view.compare_info = Some(compare_info);
         view
     }
 
@@ -585,6 +600,36 @@ mod tests {
 
         // Not a rename pattern
         assert_eq!(DiffView::extract_new_path_from_rename("src/main.rs"), None);
+    }
+
+    #[test]
+    fn test_compare_mode_blame_returns_notification() {
+        use crate::model::{CompareInfo, CompareRevisionInfo};
+
+        let compare_info = CompareInfo {
+            from: CompareRevisionInfo {
+                change_id: "aaaa1111".to_string(),
+                bookmarks: vec![],
+                author: "user@test.com".to_string(),
+                timestamp: "2024-01-01".to_string(),
+                description: "from revision".to_string(),
+            },
+            to: CompareRevisionInfo {
+                change_id: "bbbb2222".to_string(),
+                bookmarks: vec![],
+                author: "user@test.com".to_string(),
+                timestamp: "2024-01-02".to_string(),
+                description: "to revision".to_string(),
+            },
+        };
+        let mut view = DiffView::new_compare(create_test_content(), compare_info);
+
+        // Press 'a' (annotate/blame) in compare mode — should return notification
+        let action = view.handle_key(KeyEvent::from(crossterm::event::KeyCode::Char('a')));
+        assert_eq!(
+            action,
+            DiffAction::ShowNotification("Blame is not available in compare mode".to_string())
+        );
     }
 
     #[test]

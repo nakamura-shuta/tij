@@ -35,6 +35,7 @@ pub mod commands {
     pub const GIT: &str = "git";
     pub const GIT_FETCH: &str = "fetch";
     pub const GIT_PUSH: &str = "push";
+    pub const DIFF: &str = "diff";
 }
 
 /// jj resolve flags
@@ -63,6 +64,10 @@ pub mod flags {
     pub const ALL_REMOTES: &str = "--all-remotes";
     /// Named push for new bookmarks (jj 0.37+): --named <bookmark>=<revision>
     pub const NAMED: &str = "--named";
+    /// Diff from revision
+    pub const FROM: &str = "--from";
+    /// Diff to revision
+    pub const TO: &str = "--to";
 }
 
 /// Special jj values

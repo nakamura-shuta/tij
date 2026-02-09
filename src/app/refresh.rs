@@ -113,8 +113,16 @@ impl App {
             View::Diff => {
                 // Only refresh if diff_view is loaded
                 if let Some(ref diff_view) = self.diff_view {
-                    let change_id = diff_view.change_id.clone();
-                    self.open_diff(&change_id);
+                    if let Some(ref compare_info) = diff_view.compare_info {
+                        // Compare mode: re-run diff --from --to
+                        let from = compare_info.from.change_id.clone();
+                        let to = compare_info.to.change_id.clone();
+                        self.open_compare_diff(&from, &to);
+                    } else {
+                        // Normal mode: re-run jj show
+                        let change_id = diff_view.change_id.clone();
+                        self.open_diff(&change_id);
+                    }
                     self.notification = Some(Notification::info("Refreshed"));
                 }
                 // If diff_view is None, do nothing (no notification)

@@ -16,7 +16,7 @@ pub use annotation::{AnnotationContent, AnnotationLine};
 pub use bookmark::{Bookmark, BookmarkInfo};
 pub use change::Change;
 pub use conflict::ConflictFile;
-pub use diff::{DiffContent, DiffLine, DiffLineKind};
+pub use diff::{CompareInfo, CompareRevisionInfo, DiffContent, DiffLine, DiffLineKind};
 pub use file_status::{FileState, FileStatus, Status};
 pub use notification::{Notification, NotificationKind};
 pub use operation::Operation;

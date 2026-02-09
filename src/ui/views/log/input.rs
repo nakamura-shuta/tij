@@ -30,6 +30,7 @@ impl LogView {
             InputMode::BookmarkInput => self.handle_bookmark_input_key(key),
             InputMode::RebaseSelect => self.handle_rebase_select_key(key),
             InputMode::SquashSelect => self.handle_squash_select_key(key),
+            InputMode::CompareSelect => self.handle_compare_select_key(key),
         }
     }
 
@@ -156,6 +157,14 @@ impl LogView {
             k if k == keys::PUSH => LogAction::StartPush,
             k if k == keys::TRACK => LogAction::StartTrack,
             k if k == keys::BOOKMARK_JUMP => LogAction::StartBookmarkJump,
+            k if k == keys::COMPARE => {
+                if self.start_compare_select() {
+                    let from_id = self.compare_from.as_ref().unwrap().clone();
+                    LogAction::StartCompare(from_id)
+                } else {
+                    LogAction::None
+                }
+            }
             _ => LogAction::None,
         }
     }
@@ -333,6 +342,59 @@ impl LogView {
                 LogAction::None
             }
             // Ignore other keys in squash select mode
+            _ => LogAction::None,
+        }
+    }
+
+    /// Handle key events in compare revision selection mode
+    ///
+    /// In this mode, j/k navigates to select the "to" revision, Enter confirms,
+    /// and Esc cancels. Selecting the same revision as "from" is guarded.
+    fn handle_compare_select_key(&mut self, key: KeyEvent) -> LogAction {
+        match key.code {
+            // Navigation
+            k if keys::is_move_down(k) => {
+                self.move_down();
+                LogAction::None
+            }
+            k if keys::is_move_up(k) => {
+                self.move_up();
+                LogAction::None
+            }
+            k if k == keys::GO_TOP => {
+                self.move_to_top();
+                LogAction::None
+            }
+            k if k == keys::GO_BOTTOM => {
+                self.move_to_bottom();
+                LogAction::None
+            }
+            // Confirm compare
+            KeyCode::Enter => {
+                if let (Some(from), Some(to_change)) =
+                    (self.compare_from.take(), self.selected_change())
+                {
+                    let to = to_change.change_id.clone();
+
+                    // Prevent comparing a revision with itself
+                    if from == to {
+                        // Restore compare_from and stay in mode
+                        self.compare_from = Some(from);
+                        return LogAction::CompareSameRevision;
+                    }
+
+                    self.input_mode = InputMode::Normal;
+                    LogAction::Compare { from, to }
+                } else {
+                    LogAction::None
+                }
+            }
+            // Cancel
+            k if k == keys::ESC => {
+                self.cancel_compare_select();
+                LogAction::None
+            }
+            // Ignore other keys in compare select mode
             _ => LogAction::None,
         }
     }

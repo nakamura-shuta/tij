@@ -115,6 +115,30 @@ pub enum DiffLineKind {
     Separator,
 }
 
+/// Info for a revision in a compare diff
+#[derive(Debug, Clone)]
+pub struct CompareRevisionInfo {
+    /// Change ID (short)
+    pub change_id: String,
+    /// Bookmarks on this revision
+    pub bookmarks: Vec<String>,
+    /// Author
+    pub author: String,
+    /// Timestamp
+    pub timestamp: String,
+    /// Description (first line)
+    pub description: String,
+}
+
+/// Context for a compare (two-revision) diff
+#[derive(Debug, Clone)]
+pub struct CompareInfo {
+    /// "From" revision info
+    pub from: CompareRevisionInfo,
+    /// "To" revision info
+    pub to: CompareRevisionInfo,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

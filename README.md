@@ -51,6 +51,7 @@ Press `?` for help, `q` to quit.
 | Recovery | Undo / Redo / Operation Restore |
 | Bookmarks | Create / Move / Delete (multi-select) / Track remote / Jump |
 | Git Integration | Fetch / Push (with confirmation dialog) |
+| Diff | Compare two revisions (`jj diff --from --to`) |
 | Usability | Revset filtering / Text search / Adaptive status bar |
 
 ### Planned
@@ -94,7 +95,7 @@ cargo test --tests            # Integration tests only
 cargo insta test              # Snapshot tests
 ```
 
-**Test categories**: Unit (293), Integration (50+), Snapshot (7), Property-based (15)
+**Test categories**: Unit (298), Integration (50+), Snapshot (7), Property-based (15)
 
 ## Acknowledgments
 

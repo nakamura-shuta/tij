@@ -253,6 +253,23 @@ impl App {
             LogAction::StartBookmarkJump => {
                 self.start_bookmark_jump();
             }
+            LogAction::StartCompare(from_id) => {
+                self.notification = Some(Notification::info(format!(
+                    "From: {}. Select 'To' and press Enter",
+                    from_id
+                )));
+            }
+            LogAction::Compare { ref from, ref to } => {
+                let msg = format!("Comparing {} -> {}", from, to);
+                self.open_compare_diff(from, to);
+                // Show notification only if diff opened successfully (no error_message)
+                if self.error_message.is_none() {
+                    self.notification = Some(Notification::info(&msg));
+                }
+            }
+            LogAction::CompareSameRevision => {
+                self.notification = Some(Notification::info("Cannot compare revision with itself"));
+            }
         }
     }
 
@@ -266,6 +283,9 @@ impl App {
                 // Get the current change_id from diff_view for proper revision
                 let revision = self.diff_view.as_ref().map(|v| v.change_id.clone());
                 self.open_blame(&file_path, revision.as_deref());
+            }
+            DiffAction::ShowNotification(message) => {
+                self.notification = Some(Notification::info(&message));
             }
         }
     }

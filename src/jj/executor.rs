@@ -674,6 +674,53 @@ impl JjExecutor {
         self.run(&[commands::GIT, commands::GIT_PUSH, flags::NAMED, &named_arg])
     }
 
+    /// Run `jj diff --from <from> --to <to>` to compare two revisions
+    ///
+    /// Returns the raw diff output between the two revisions.
+    pub fn diff_range(&self, from: &str, to: &str) -> Result<String, JjError> {
+        self.run(&[commands::DIFF, flags::FROM, from, flags::TO, to])
+    }
+
+    /// Get metadata for a specific change (for compare info)
+    ///
+    /// Returns (change_id, bookmarks, author, timestamp, description).
+    pub fn get_change_info(
+        &self,
+        change_id: &str,
+    ) -> Result<(String, Vec<String>, String, String, String), JjError> {
+        let template = Templates::change_info();
+        let output = self.run(&[
+            commands::LOG,
+            flags::NO_GRAPH,
+            flags::REVISION,
+            change_id,
+            flags::TEMPLATE,
+            template,
+        ])?;
+
+        let line = output.lines().next().unwrap_or("");
+        let parts: Vec<&str> = line.splitn(5, '\t').collect();
+        if parts.len() == 5 {
+            let bookmarks: Vec<String> = if parts[1].is_empty() {
+                Vec::new()
+            } else {
+                parts[1].split(',').map(|s| s.to_string()).collect()
+            };
+            Ok((
+                parts[0].to_string(),
+                bookmarks,
+                parts[2].to_string(),
+                parts[3].to_string(),
+                parts[4].to_string(),
+            ))
+        } else {
+            Err(JjError::ParseError(format!(
+                "Failed to parse change info: {}",
+                line
+            )))
+        }
+    }
+
     /// Run `jj file annotate` to show blame information for a file
     ///
     /// Shows the change responsible for each line of the specified file.

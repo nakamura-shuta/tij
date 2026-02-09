@@ -1166,6 +1166,19 @@ fn test_select_change_by_id_found() {
 }
 
 #[test]
+fn test_compare_same_revision_returns_notification() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+    press_key(&mut view, keys::COMPARE); // Enter CompareSelect mode
+    // Don't move — try to compare with self
+
+    let action = press_key(&mut view, KeyCode::Enter);
+    assert_eq!(action, LogAction::CompareSameRevision); // Notification action
+    assert_eq!(view.input_mode, InputMode::CompareSelect); // Still in mode
+    assert_eq!(view.compare_from, Some("abc12345".to_string())); // Source preserved
+}
+
+#[test]
 fn test_select_change_by_id_not_found() {
     let mut view = LogView::default();
     view.set_changes(create_test_changes());

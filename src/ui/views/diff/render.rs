@@ -7,7 +7,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::model::{DiffLine, DiffLineKind, Notification};
+use crate::model::{CompareInfo, DiffLine, DiffLineKind, Notification};
 use crate::ui::{components, theme};
 
 use super::DiffView;
@@ -15,6 +15,15 @@ use super::DiffView;
 impl DiffView {
     /// Render the diff view (without status bar - rendered by App)
     pub fn render(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
+        if self.compare_info.is_some() {
+            self.render_compare(frame, area, notification);
+        } else {
+            self.render_normal(frame, area, notification);
+        }
+    }
+
+    /// Render normal single-revision diff
+    fn render_normal(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
         // Layout: header (dynamic) + context bar (1) + diff (rest)
         // Header height = 1 (top border) + 2 (commit, author) + description lines
         // Cap so context bar (1) + diff (1) always have space
@@ -29,6 +38,24 @@ impl DiffView {
         .split(area);
 
         self.render_header(frame, chunks[0], notification);
+        self.render_context_bar(frame, chunks[1]);
+        self.render_diff_content(frame, chunks[2]);
+    }
+
+    /// Render compare (two-revision) diff
+    fn render_compare(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
+        let compare_info = self.compare_info.as_ref().unwrap();
+
+        // Layout: compare header (5 lines: border + from + to + summary + border) + context bar (1) + diff (rest)
+        let header_height = 5_u16.min(area.height.saturating_sub(2));
+        let chunks = Layout::vertical([
+            Constraint::Length(header_height),
+            Constraint::Length(1),
+            Constraint::Min(1),
+        ])
+        .split(area);
+
+        self.render_compare_header(frame, chunks[0], compare_info, notification);
         self.render_context_bar(frame, chunks[1]);
         self.render_diff_content(frame, chunks[2]);
     }
@@ -97,6 +124,87 @@ impl DiffView {
 
         let header = Paragraph::new(header_text).block(block);
 
+        frame.render_widget(header, area);
+    }
+
+    /// Render compare header with From/To revision info
+    fn render_compare_header(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        compare_info: &CompareInfo,
+        notification: Option<&Notification>,
+    ) {
+        let title = Line::from(" Tij - Compare Diff ").bold().cyan().centered();
+
+        // Build notification for title bar
+        let title_width = title.width();
+        let available_for_notif = area.width.saturating_sub(title_width as u16 + 4) as usize;
+        let notif_line = notification
+            .filter(|n| !n.is_expired())
+            .map(|n| components::build_notification_title(n, Some(available_for_notif)))
+            .filter(|line| !line.spans.is_empty());
+
+        // Build from/to lines
+        let from = &compare_info.from;
+        let to = &compare_info.to;
+
+        let from_bookmarks = if from.bookmarks.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", from.bookmarks.join(", "))
+        };
+        let to_bookmarks = if to.bookmarks.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", to.bookmarks.join(", "))
+        };
+
+        let from_desc = if from.description.is_empty() {
+            "(no description)".to_string()
+        } else {
+            from.description.clone()
+        };
+        let to_desc = if to.description.is_empty() {
+            "(no description)".to_string()
+        } else {
+            to.description.clone()
+        };
+
+        let header_text = vec![
+            Line::from(vec![
+                Span::styled("From: ", Style::default().fg(Color::Red).bold()),
+                Span::styled(
+                    from.change_id.clone(),
+                    Style::default().fg(theme::log_view::CHANGE_ID),
+                ),
+                Span::styled(from_bookmarks, Style::default().fg(Color::Magenta)),
+                Span::raw(format!(" {} ", from.author)),
+                Span::raw(from_desc),
+            ]),
+            Line::from(vec![
+                Span::styled("To:   ", Style::default().fg(Color::Green).bold()),
+                Span::styled(
+                    to.change_id.clone(),
+                    Style::default().fg(theme::log_view::CHANGE_ID),
+                ),
+                Span::styled(to_bookmarks, Style::default().fg(Color::Magenta)),
+                Span::raw(format!(" {} ", to.author)),
+                Span::raw(to_desc),
+            ]),
+            Line::from(vec![Span::styled(
+                format!("{} file(s) changed", self.file_count()),
+                Style::default().fg(Color::DarkGray),
+            )]),
+        ];
+
+        let block = if let Some(notif) = notif_line {
+            components::header_block(title).title(notif.right_aligned())
+        } else {
+            components::header_block(title)
+        };
+
+        let header = Paragraph::new(header_text).block(block);
         frame.render_widget(header, area);
     }
 

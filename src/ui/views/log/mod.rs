@@ -27,6 +27,8 @@ pub enum InputMode {
     RebaseSelect,
     /// Squash destination selection mode
     SquashSelect,
+    /// Compare revision selection mode (select second revision)
+    CompareSelect,
 }
 
 impl InputMode {
@@ -36,11 +38,12 @@ impl InputMode {
             InputMode::RevsetInput => Some(("Revset: ", " r Revset ")),
             InputMode::BookmarkInput => Some(("Bookmark: ", " b Bookmark ")),
             // DescribeInput uses TextArea, not input bar
-            // RebaseSelect/SquashSelect use status bar hints, not input bar
+            // RebaseSelect/SquashSelect/CompareSelect use status bar hints, not input bar
             InputMode::DescribeInput
             | InputMode::Normal
             | InputMode::RebaseSelect
-            | InputMode::SquashSelect => None,
+            | InputMode::SquashSelect
+            | InputMode::CompareSelect => None,
         }
     }
 }
@@ -98,6 +101,12 @@ pub enum LogAction {
     StartTrack,
     /// Start bookmark jump flow (opens selection dialog)
     StartBookmarkJump,
+    /// Compare two revisions (open diff --from --to)
+    Compare { from: String, to: String },
+    /// Entered compare mode (notification with from_id)
+    StartCompare(String),
+    /// Compare blocked: same revision selected
+    CompareSameRevision,
 }
 
 /// Log View state
@@ -129,6 +138,8 @@ pub struct LogView {
     pub(crate) rebase_source: Option<String>,
     /// Source change ID for squash (set when entering SquashSelect mode)
     pub(crate) squash_source: Option<String>,
+    /// "From" change ID for compare (set when entering CompareSelect mode)
+    pub(crate) compare_from: Option<String>,
     /// Text area for multi-line description input
     pub(crate) textarea: Option<TextArea<'static>>,
 }
@@ -311,6 +322,29 @@ impl LogView {
     /// Cancel squash selection mode
     pub fn cancel_squash_select(&mut self) {
         self.squash_source = None;
+        self.input_mode = InputMode::Normal;
+    }
+
+    /// Start compare revision selection mode
+    ///
+    /// The currently selected change becomes the "from" revision.
+    /// The user then selects the "to" revision.
+    /// Returns true if mode was entered, false if no change is selected.
+    pub fn start_compare_select(&mut self) -> bool {
+        let change_id = self.selected_change().map(|c| c.change_id.clone());
+
+        if let Some(change_id) = change_id {
+            self.compare_from = Some(change_id);
+            self.input_mode = InputMode::CompareSelect;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Cancel compare selection mode
+    pub fn cancel_compare_select(&mut self) {
+        self.compare_from = None;
         self.input_mode = InputMode::Normal;
     }
 

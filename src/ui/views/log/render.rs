@@ -35,6 +35,7 @@ impl LogView {
             InputMode::Normal
             | InputMode::RebaseSelect
             | InputMode::SquashSelect
+            | InputMode::CompareSelect
             | InputMode::DescribeInput => (area, None),
             InputMode::SearchInput | InputMode::RevsetInput | InputMode::BookmarkInput => {
                 let chunks =
@@ -110,6 +111,18 @@ impl LogView {
                 .bold()
                 .yellow()
                 .centered();
+        }
+
+        // Special title for CompareSelect mode
+        if self.input_mode == InputMode::CompareSelect {
+            let from_id = self.compare_from.as_deref().unwrap_or("?");
+            return Line::from(format!(
+                " Tij - Log View [Compare: From={}, Select To] ",
+                from_id
+            ))
+            .bold()
+            .yellow()
+            .centered();
         }
 
         let title_text = match (&self.current_revset, &self.last_search_query) {
@@ -223,8 +236,12 @@ impl LogView {
         let is_squash_source = self.input_mode == InputMode::SquashSelect
             && self.squash_source.as_ref() == Some(&change.change_id);
 
+        // Check if this is the compare "from" (in CompareSelect mode)
+        let is_compare_from = self.input_mode == InputMode::CompareSelect
+            && self.compare_from.as_ref() == Some(&change.change_id);
+
         // Apply styling
-        if is_rebase_source || is_squash_source {
+        if is_rebase_source || is_squash_source || is_compare_from {
             // Highlight rebase/squash source with distinct background
             line = line.style(
                 Style::default()

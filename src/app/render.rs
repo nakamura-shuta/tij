@@ -42,7 +42,7 @@ impl App {
     /// Get the status bar height for the current view
     fn get_current_status_bar_height(&self, width: u16) -> u16 {
         match self.current_view {
-            View::Log => log_view_status_bar_height(width),
+            View::Log => log_view_status_bar_height(width, self.log_view.input_mode),
             View::Diff => 1,
             View::Status => status_view_status_bar_height(width),
             View::Operation => operation_view_status_bar_height(width),
@@ -58,7 +58,8 @@ impl App {
         notification: Option<&crate::model::Notification>,
     ) {
         let area = frame.area();
-        let status_bar_height = log_view_status_bar_height(area.width);
+        let input_mode = self.log_view.input_mode;
+        let status_bar_height = log_view_status_bar_height(area.width, input_mode);
 
         // Reserve space for status bar at bottom
         let main_area = Rect {
@@ -69,7 +70,7 @@ impl App {
         };
 
         self.log_view.render(frame, main_area, notification);
-        render_status_bar(frame);
+        render_status_bar(frame, input_mode);
     }
 
     fn render_diff_view(

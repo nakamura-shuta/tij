@@ -118,6 +118,40 @@ impl Parser {
         Ok(content)
     }
 
+    /// Parse `jj diff --from --to` output into DiffContent
+    ///
+    /// Unlike `parse_show()`, this output has no header (no Commit ID, Author, etc.)
+    /// It starts directly with file headers like "Modified regular file src/main.rs:"
+    pub fn parse_diff_body(output: &str) -> DiffContent {
+        let mut content = DiffContent::default();
+        let mut file_count = 0;
+        let mut current_file_op = FileOperation::Modified;
+
+        for line in output.lines() {
+            // File header detection
+            if let Some((path, file_op)) = Self::extract_file_info(line) {
+                current_file_op = file_op;
+
+                // Add separator before file (except first file)
+                if file_count > 0 {
+                    content.lines.push(DiffLine::separator());
+                }
+                content.lines.push(DiffLine::file_header(path));
+                file_count += 1;
+                continue;
+            }
+
+            // Diff line parsing (only after we've seen at least one file header)
+            if file_count > 0 {
+                if let Some(diff_line) = Self::parse_diff_line(line, current_file_op) {
+                    content.lines.push(diff_line);
+                }
+            }
+        }
+
+        content
+    }
+
     /// Parse author line "Name <email> (timestamp)" into (author, timestamp)
     pub(super) fn parse_author_line(line: &str) -> Option<(String, String)> {
         // Find the timestamp in parentheses at the end

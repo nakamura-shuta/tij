@@ -52,7 +52,12 @@ impl DiffView {
                 DiffAction::None
             }
             keys::ANNOTATE => {
-                if let Some(file_name) = self.current_file_name() {
+                // Blame is not available in compare mode (no single revision context)
+                if self.compare_info.is_some() {
+                    DiffAction::ShowNotification(
+                        "Blame is not available in compare mode".to_string(),
+                    )
+                } else if let Some(file_name) = self.current_file_name() {
                     DiffAction::OpenBlame {
                         file_path: file_name.to_string(),
                     }

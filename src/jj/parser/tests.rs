@@ -796,3 +796,49 @@ Modified regular file src/main.rs:
         "Summary line\n\nDetailed paragraph one.\n\nDetailed paragraph two."
     );
 }
+
+#[test]
+fn test_parse_diff_body_single_file() {
+    let output = "Modified regular file src/main.rs:
+   10   10:     fn main() {
+   11     : -       println!(\"old\");
+        11: +       println!(\"new\");
+   12   12:     }
+";
+    let content = Parser::parse_diff_body(output);
+
+    // Should have no header info (it's a diff body, not jj show)
+    assert!(content.commit_id.is_empty());
+    assert!(content.author.is_empty());
+    assert!(content.description.is_empty());
+
+    // Should have file header + diff lines
+    assert!(content.has_changes());
+    assert_eq!(content.file_count(), 1);
+    assert_eq!(content.lines[0].kind, DiffLineKind::FileHeader);
+    assert_eq!(content.lines[0].content, "src/main.rs");
+}
+
+#[test]
+fn test_parse_diff_body_multiple_files() {
+    let output = "Modified regular file src/main.rs:
+   10   10:     fn main() {
+   11     : -       println!(\"old\");
+        11: +       println!(\"new\");
+Added regular file src/new.rs:
+        1: pub fn hello() {}
+";
+    let content = Parser::parse_diff_body(output);
+
+    assert_eq!(content.file_count(), 2);
+    // First file header
+    assert_eq!(content.lines[0].kind, DiffLineKind::FileHeader);
+    assert_eq!(content.lines[0].content, "src/main.rs");
+}
+
+#[test]
+fn test_parse_diff_body_empty() {
+    let content = Parser::parse_diff_body("");
+    assert!(!content.has_changes());
+    assert_eq!(content.file_count(), 0);
+}

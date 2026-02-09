@@ -72,6 +72,29 @@ impl Templates {
         )
     }
 
+    /// Template for getting change metadata (for compare info)
+    ///
+    /// Fields (separated by tab):
+    /// 1. change_id (short, 8 chars)
+    /// 2. bookmarks (comma-separated)
+    /// 3. author email
+    /// 4. timestamp
+    /// 5. description (first line)
+    pub fn change_info() -> &'static str {
+        concat!(
+            "change_id.short(8)",
+            " ++ \"\\t\" ++ ",
+            "bookmarks.map(|b| b.name()).join(',')",
+            " ++ \"\\t\" ++ ",
+            "author.email()",
+            " ++ \"\\t\" ++ ",
+            "author.timestamp().format('%Y-%m-%dT%H:%M:%S%z')",
+            " ++ \"\\t\" ++ ",
+            "description.first_line()",
+            " ++ \"\\n\""
+        )
+    }
+
     // Note: `jj file annotate` does NOT use a custom template.
     // The AnnotationLine template methods (line_number(), content(), first_line_in_hunk())
     // are only available in jj 0.38+. For compatibility with jj 0.37.x, we parse

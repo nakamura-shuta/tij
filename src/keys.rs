@@ -133,6 +133,9 @@ pub const TRACK: KeyCode = KeyCode::Char('T');
 /// Jump to bookmark (Log View)
 pub const BOOKMARK_JUMP: KeyCode = KeyCode::Char('\'');
 
+/// Compare two revisions (Log View)
+pub const COMPARE: KeyCode = KeyCode::Char('=');
+
 /// Jump to first conflict file (Status View)
 pub const JUMP_CONFLICT: KeyCode = KeyCode::Char('f');
 
@@ -327,6 +330,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         key: "'",
         description: "Jump to bookmark",
     },
+    KeyBindEntry {
+        key: "=",
+        description: "Compare revisions",
+    },
 ];
 
 /// Diff view key bindings for help display
@@ -457,6 +464,11 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
         color: Color::Green,
     },
     KeyHint {
+        key: "=",
+        label: "Compare",
+        color: Color::Yellow,
+    },
+    KeyHint {
         key: "o",
         label: "Ops",
         color: Color::Blue,
@@ -479,6 +491,25 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
     KeyHint {
         key: "q",
         label: "Quit",
+        color: Color::Red,
+    },
+];
+
+/// CompareSelect mode status bar hints
+pub const COMPARE_SELECT_HINTS: &[KeyHint] = &[
+    KeyHint {
+        key: "j/k",
+        label: "Navigate",
+        color: Color::Blue,
+    },
+    KeyHint {
+        key: "Enter",
+        label: "Compare",
+        color: Color::Green,
+    },
+    KeyHint {
+        key: "Esc",
+        label: "Cancel",
         color: Color::Red,
     },
 ];

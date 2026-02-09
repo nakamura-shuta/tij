@@ -6,7 +6,7 @@
 use ratatui::{Frame, prelude::*, text::Line, widgets::Paragraph};
 
 use crate::keys::{self, KeyHint};
-use crate::ui::views::{BlameView, DiffView};
+use crate::ui::views::{BlameView, DiffView, InputMode};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hint formatting
@@ -113,9 +113,17 @@ fn calc_height(hints: &[KeyHint], width: u16) -> u16 {
     }
 }
 
+/// Get the hints to use for the current log view mode
+fn log_view_hints(input_mode: InputMode) -> &'static [KeyHint] {
+    match input_mode {
+        InputMode::CompareSelect => keys::COMPARE_SELECT_HINTS,
+        _ => keys::LOG_VIEW_HINTS,
+    }
+}
+
 /// Get the status bar height for log view
-pub fn log_view_status_bar_height(width: u16) -> u16 {
-    calc_height(keys::LOG_VIEW_HINTS, width)
+pub fn log_view_status_bar_height(width: u16, input_mode: InputMode) -> u16 {
+    calc_height(log_view_hints(input_mode), width)
 }
 
 /// Get the status bar height for status view
@@ -173,8 +181,8 @@ fn render_hints(frame: &mut Frame, hints: &[KeyHint]) {
 }
 
 /// Render the status bar for log view
-pub fn render_status_bar(frame: &mut Frame) {
-    render_hints(frame, keys::LOG_VIEW_HINTS);
+pub fn render_status_bar(frame: &mut Frame, input_mode: InputMode) {
+    render_hints(frame, log_view_hints(input_mode));
 }
 
 /// Render the status bar for status view
