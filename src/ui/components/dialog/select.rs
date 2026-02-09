@@ -42,10 +42,8 @@ impl Dialog {
             }
             // Toggle selection (multi-select only)
             KeyCode::Char(' ') => {
-                if !single_select {
-                    if let Some(item) = items.get_mut(self.cursor) {
-                        item.selected = !item.selected;
-                    }
+                if !single_select && let Some(item) = items.get_mut(self.cursor) {
+                    item.selected = !item.selected;
                 }
                 None
             }

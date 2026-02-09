@@ -28,7 +28,7 @@ git clone https://github.com/nakamura-shuta/tij.git
 cd tij && cargo install --path .
 ```
 
-**Requirements**: Rust 1.85+, [Jujutsu](https://github.com/jj-vcs/jj) in PATH
+**Requirements**: Rust 1.88+, [Jujutsu](https://github.com/jj-vcs/jj) in PATH
 
 ## Quick Start
 

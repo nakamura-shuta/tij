@@ -26,23 +26,23 @@ impl Parser {
 
             // Parse working copy info
             // Format: "Working copy  (@) : <change_id> <commit_id> <description>"
-            if line.starts_with("Working copy") {
-                if let Some(colon_pos) = line.find(": ") {
-                    let info = &line[colon_pos + 2..];
-                    if let Some(change_id) = info.split_whitespace().next() {
-                        working_copy_change_id = change_id.to_string();
-                    }
+            if line.starts_with("Working copy")
+                && let Some(colon_pos) = line.find(": ")
+            {
+                let info = &line[colon_pos + 2..];
+                if let Some(change_id) = info.split_whitespace().next() {
+                    working_copy_change_id = change_id.to_string();
                 }
             }
 
             // Parse parent commit info
             // Format: "Parent commit (@-): <change_id> <commit_id> <description>"
-            if line.starts_with("Parent commit") {
-                if let Some(colon_pos) = line.find(": ") {
-                    let info = &line[colon_pos + 2..];
-                    if let Some(change_id) = info.split_whitespace().next() {
-                        parent_change_id = change_id.to_string();
-                    }
+            if line.starts_with("Parent commit")
+                && let Some(colon_pos) = line.find(": ")
+            {
+                let info = &line[colon_pos + 2..];
+                if let Some(change_id) = info.split_whitespace().next() {
+                    parent_change_id = change_id.to_string();
                 }
             }
         }
@@ -81,18 +81,18 @@ impl Parser {
             'D' => FileState::Deleted,
             'R' => {
                 // Renamed: "R prefix{old => new}" (jj format)
-                if let Some(brace_start) = rest.find('{') {
-                    if let Some(brace_end) = rest.find('}') {
-                        let prefix = &rest[..brace_start];
-                        let inner = &rest[brace_start + 1..brace_end];
-                        if let Some((old_part, new_part)) = inner.split_once(" => ") {
-                            let from = format!("{}{}", prefix, old_part);
-                            let to = format!("{}{}", prefix, new_part);
-                            return Some(FileStatus {
-                                path: to,
-                                state: FileState::Renamed { from },
-                            });
-                        }
+                if let Some(brace_start) = rest.find('{')
+                    && let Some(brace_end) = rest.find('}')
+                {
+                    let prefix = &rest[..brace_start];
+                    let inner = &rest[brace_start + 1..brace_end];
+                    if let Some((old_part, new_part)) = inner.split_once(" => ") {
+                        let from = format!("{}{}", prefix, old_part);
+                        let to = format!("{}{}", prefix, new_part);
+                        return Some(FileStatus {
+                            path: to,
+                            state: FileState::Renamed { from },
+                        });
                     }
                 }
                 return None;

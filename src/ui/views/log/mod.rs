@@ -355,12 +355,12 @@ impl LogView {
     pub fn select_change_by_id(&mut self, change_id: &str) -> bool {
         // Find the change in the selectable indices
         for (cursor, &idx) in self.selectable_indices.iter().enumerate() {
-            if let Some(change) = self.changes.get(idx) {
-                if change.change_id == change_id {
-                    self.selection_cursor = cursor;
-                    self.selected_index = idx;
-                    return true;
-                }
+            if let Some(change) = self.changes.get(idx)
+                && change.change_id == change_id
+            {
+                self.selection_cursor = cursor;
+                self.selected_index = idx;
+                return true;
             }
         }
         false

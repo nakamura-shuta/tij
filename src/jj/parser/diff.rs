@@ -100,10 +100,9 @@ impl Parser {
             }
 
             // Diff line parsing (only after we're in diff section)
-            if in_diff_section {
-                if let Some(diff_line) = Self::parse_diff_line(line, current_file_op) {
-                    content.lines.push(diff_line);
-                }
+            if in_diff_section && let Some(diff_line) = Self::parse_diff_line(line, current_file_op)
+            {
+                content.lines.push(diff_line);
             }
         }
 
@@ -142,10 +141,10 @@ impl Parser {
             }
 
             // Diff line parsing (only after we've seen at least one file header)
-            if file_count > 0 {
-                if let Some(diff_line) = Self::parse_diff_line(line, current_file_op) {
-                    content.lines.push(diff_line);
-                }
+            if file_count > 0
+                && let Some(diff_line) = Self::parse_diff_line(line, current_file_op)
+            {
+                content.lines.push(diff_line);
             }
         }
 
@@ -155,12 +154,12 @@ impl Parser {
     /// Parse author line "Name <email> (timestamp)" into (author, timestamp)
     pub(super) fn parse_author_line(line: &str) -> Option<(String, String)> {
         // Find the timestamp in parentheses at the end
-        if let Some(ts_start) = line.rfind('(') {
-            if let Some(ts_end) = line.rfind(')') {
-                let author = line[..ts_start].trim().to_string();
-                let timestamp = line[ts_start + 1..ts_end].to_string();
-                return Some((author, timestamp));
-            }
+        if let Some(ts_start) = line.rfind('(')
+            && let Some(ts_end) = line.rfind(')')
+        {
+            let author = line[..ts_start].trim().to_string();
+            let timestamp = line[ts_start + 1..ts_end].to_string();
+            return Some((author, timestamp));
         }
         // Fallback: whole line is author
         Some((line.trim().to_string(), String::new()))

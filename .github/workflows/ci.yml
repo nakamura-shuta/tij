@@ -5,14 +5,11 @@ on:
   push:
     branches:
       - main
-      - master
-      - develop
 
 env:
   CARGO_TERM_COLOR: always
 
-# ensure that the workflow is only triggered once per PR, subsequent pushes to the PR will cancel
-# and restart the workflow. See https://docs.github.com/en/actions/using-jobs/using-concurrency
+# Ensure only one workflow per PR/branch runs at a time
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
@@ -22,16 +19,12 @@ jobs:
     name: fmt
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: check formatting
-        run: cargo fmt -- --check
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+      - run: cargo fmt -- --check
+
   clippy:
     name: clippy
     runs-on: ubuntu-latest
@@ -39,52 +32,79 @@ jobs:
       contents: read
       checks: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - name: Run clippy action
-        uses: clechasseur/rs-clippy-check@v3
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
+      - uses: clechasseur/rs-clippy-check@v3
+
   doc:
-    # run docs generation on nightly rather than stable. This enables features like
-    # https://doc.rust-lang.org/beta/unstable-book/language-features/doc-cfg.html which allows an
-    # API be documented as only available in some specific platforms.
     name: doc
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@nightly
-      - name: Run cargo doc
-        run: cargo doc --no-deps --all-features
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo doc --no-deps --all-features
         env:
           RUSTDOCFLAGS: --cfg docsrs
-  test:
+
+  # Unit tests (no jj required) - all platforms
+  test-unit:
+    name: unit ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    name: test ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      # if your project needs OpenSSL, uncomment this to fix Windows builds.
-      # it's commented out by default as the install command takes 5-10m.
-      # - run: echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append
-      #   if: runner.os == 'Windows'
-      # - run: vcpkg install openssl:x64-windows-static-md
-      #   if: runner.os == 'Windows'
       - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-      # enable this ci template to run regardless of whether the lockfile is checked in or not
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: cargo generate-lockfile
         if: hashFiles('Cargo.lock') == ''
         run: cargo generate-lockfile
-      - name: cargo test --locked
-        run: cargo test --locked --all-features --all-targets
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+      - name: Unit tests
+        run: cargo test --locked --lib
+
+  # Integration tests (jj required) - Linux & macOS
+  test-integration:
+    name: integration ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+      - name: Install jj
+        run: cargo binstall -y --no-confirm jj-cli
+      - name: Verify jj
+        run: jj version
+      - name: Configure jj
+        run: |
+          jj config set --user user.name "CI"
+          jj config set --user user.email "ci@test.local"
+      - name: cargo generate-lockfile
+        if: hashFiles('Cargo.lock') == ''
+        run: cargo generate-lockfile
+      - name: Integration tests
+        run: cargo test --locked --tests
+
+  # MSRV check
+  msrv:
+    name: msrv (1.88)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo generate-lockfile
+        if: hashFiles('Cargo.lock') == ''
+        run: cargo generate-lockfile
+      - name: Check MSRV
+        run: cargo check --locked

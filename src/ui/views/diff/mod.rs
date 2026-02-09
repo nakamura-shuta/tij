@@ -285,24 +285,23 @@ impl DiffView {
     /// but StatusView passes just the new path `prefix/new`.
     pub fn jump_to_file(&mut self, file_path: &str) {
         // First try exact match
-        if let Some(idx) = self.file_names.iter().position(|name| name == file_path) {
-            if let Some(&pos) = self.file_header_positions.get(idx) {
-                self.scroll_offset = pos;
-                self.current_file_index = idx;
-                return;
-            }
+        if let Some(idx) = self.file_names.iter().position(|name| name == file_path)
+            && let Some(&pos) = self.file_header_positions.get(idx)
+        {
+            self.scroll_offset = pos;
+            self.current_file_index = idx;
+            return;
         }
 
         // Try matching renamed files: "prefix{old => new}" should match "prefix/new"
         for (idx, name) in self.file_names.iter().enumerate() {
-            if let Some(new_path) = Self::extract_new_path_from_rename(name) {
-                if new_path == file_path {
-                    if let Some(&pos) = self.file_header_positions.get(idx) {
-                        self.scroll_offset = pos;
-                        self.current_file_index = idx;
-                        return;
-                    }
-                }
+            if let Some(new_path) = Self::extract_new_path_from_rename(name)
+                && new_path == file_path
+                && let Some(&pos) = self.file_header_positions.get(idx)
+            {
+                self.scroll_offset = pos;
+                self.current_file_index = idx;
+                return;
             }
         }
     }

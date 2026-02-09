@@ -11,7 +11,7 @@ documentation = "https://docs.rs/tij"
 readme = "README.md"
 keywords = ["jujutsu", "jj", "tui", "vcs", "git"]
 categories = ["command-line-utilities", "development-tools"]
-rust-version = "1.85"
+rust-version = "1.88"
 exclude = [".work/", ".github/", "CLAUDE.md"]
 
 [lib]

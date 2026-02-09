@@ -133,10 +133,10 @@ impl App {
 
     /// Clear expired notification
     pub(crate) fn clear_expired_notification(&mut self) {
-        if let Some(ref notification) = self.notification {
-            if notification.is_expired() {
-                self.notification = None;
-            }
+        if let Some(ref notification) = self.notification
+            && notification.is_expired()
+        {
+            self.notification = None;
         }
     }
 }

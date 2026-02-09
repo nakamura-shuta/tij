@@ -134,20 +134,19 @@ impl StatusView {
     ///
     /// Returns true if a conflict file was found and selection moved.
     fn jump_to_first_conflict(&mut self) -> bool {
-        if let Some(ref status) = self.status {
-            if let Some(idx) = status
+        if let Some(ref status) = self.status
+            && let Some(idx) = status
                 .files
                 .iter()
                 .position(|f| matches!(f.state, FileState::Conflicted))
-            {
-                self.selected_index = idx;
-                self.scroll_offset = navigation::adjust_scroll(
-                    self.selected_index,
-                    self.scroll_offset,
-                    Self::DEFAULT_VISIBLE_COUNT,
-                );
-                return true;
-            }
+        {
+            self.selected_index = idx;
+            self.scroll_offset = navigation::adjust_scroll(
+                self.selected_index,
+                self.scroll_offset,
+                Self::DEFAULT_VISIBLE_COUNT,
+            );
+            return true;
         }
         false
     }
@@ -177,15 +176,12 @@ impl StatusView {
 
     /// Jump to bottom
     fn jump_to_bottom(&mut self, visible_count: usize) {
-        if let Some(ref status) = self.status {
-            if !status.files.is_empty() {
-                self.selected_index = status.files.len() - 1;
-                self.scroll_offset = navigation::adjust_scroll(
-                    self.selected_index,
-                    self.scroll_offset,
-                    visible_count,
-                );
-            }
+        if let Some(ref status) = self.status
+            && !status.files.is_empty()
+        {
+            self.selected_index = status.files.len() - 1;
+            self.scroll_offset =
+                navigation::adjust_scroll(self.selected_index, self.scroll_offset, visible_count);
         }
     }
 }
