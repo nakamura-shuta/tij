@@ -10,6 +10,7 @@ use tij::jj::JjExecutor;
 
 #[test]
 fn test_abandon_removes_change() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     // Create a chain with some content so abandon doesn't affect current @
     repo.jj(&["new", "-m", "base"]);
@@ -34,6 +35,7 @@ fn test_abandon_removes_change() {
 
 #[test]
 fn test_abandon_rebases_descendants() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     repo.jj(&["new", "-m", "middle"]);
     let middle_id = repo.current_change_id();
@@ -54,6 +56,7 @@ fn test_abandon_rebases_descendants() {
 
 #[test]
 fn test_rebase_moves_change() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
 
     // Create history: A → B → C
@@ -86,6 +89,7 @@ fn test_rebase_moves_change() {
 
 #[test]
 fn test_rebase_with_conflict() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
 
     // A creates file.txt
@@ -117,6 +121,7 @@ fn test_rebase_with_conflict() {
 
 #[test]
 fn test_abandon_current_change() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
 
     // Create a chain: root → A → B (current)

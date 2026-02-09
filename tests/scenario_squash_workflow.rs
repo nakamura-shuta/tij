@@ -14,6 +14,7 @@ use tij::jj::JjExecutor;
 
 #[test]
 fn story_squash_wip_commits() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let _executor = JjExecutor::with_repo_path(repo.path());
 
@@ -54,6 +55,7 @@ fn story_squash_wip_commits() {
 
 #[test]
 fn story_squash_current_into_parent() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 
@@ -77,6 +79,7 @@ fn story_squash_current_into_parent() {
 
 #[test]
 fn story_selective_squash_workflow() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
 
     // Create commits that should remain separate

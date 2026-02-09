@@ -14,6 +14,7 @@ use tij::jj::JjExecutor;
 
 #[test]
 fn story_absorb_workflow() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 
@@ -46,6 +47,7 @@ fn story_absorb_workflow() {
 
 #[test]
 fn story_absorb_single_file_fix() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 
@@ -68,6 +70,7 @@ fn story_absorb_single_file_fix() {
 
 #[test]
 fn story_absorb_does_not_affect_unrelated() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 
@@ -100,6 +103,7 @@ fn story_absorb_does_not_affect_unrelated() {
 
 #[test]
 fn story_absorb_empty_wip() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 

@@ -14,6 +14,7 @@ use tij::model::FileState;
 
 #[test]
 fn story_rebase_creates_conflict() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 
@@ -50,6 +51,7 @@ fn story_rebase_creates_conflict() {
 
 #[test]
 fn story_detect_conflict_via_status() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 
@@ -90,6 +92,7 @@ fn story_detect_conflict_via_status() {
 
 #[test]
 fn story_conflict_then_abandon() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 
@@ -124,6 +127,7 @@ fn story_conflict_then_abandon() {
 
 #[test]
 fn story_conflict_resolution_via_new_commit() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 

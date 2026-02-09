@@ -10,6 +10,7 @@ use tij::jj::JjExecutor;
 
 #[test]
 fn test_git_fetch_from_empty_remote() {
+    skip_if_no_jj!();
     let remote = RemoteRepo::new_bare();
     let repo = TestRepo::with_remote(&remote);
 
@@ -22,6 +23,7 @@ fn test_git_fetch_from_empty_remote() {
 
 #[test]
 fn test_git_push_new_bookmark_with_named() {
+    skip_if_no_jj!();
     let remote = RemoteRepo::new_bare();
     let repo = TestRepo::with_remote(&remote);
 
@@ -50,6 +52,7 @@ fn test_git_push_new_bookmark_with_named() {
 
 #[test]
 fn test_git_push_updates_existing_bookmark() {
+    skip_if_no_jj!();
     let remote = RemoteRepo::new_bare();
     let repo = TestRepo::with_remote(&remote);
 
@@ -84,6 +87,7 @@ fn test_git_push_updates_existing_bookmark() {
 
 #[test]
 fn test_bookmark_track() {
+    skip_if_no_jj!();
     let remote = RemoteRepo::new_bare();
 
     // Create bookmark on remote (via another repo)
@@ -106,6 +110,7 @@ fn test_bookmark_track() {
 
 #[test]
 fn test_git_fetch_updates_bookmarks() {
+    skip_if_no_jj!();
     let remote = RemoteRepo::new_bare();
 
     // Setup: create initial state on remote using --named

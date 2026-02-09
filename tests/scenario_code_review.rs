@@ -16,6 +16,7 @@ use tij::jj::JjExecutor;
 
 #[test]
 fn story_code_review_fix() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 
@@ -53,6 +54,7 @@ fn story_code_review_fix() {
 
 #[test]
 fn story_fix_multiple_past_commits() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 

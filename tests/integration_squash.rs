@@ -10,6 +10,7 @@ use tij::jj::JjExecutor;
 
 #[test]
 fn test_squash_into_merges_changes() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
 
     // Setup: parent with changes, child with more changes
@@ -38,6 +39,7 @@ fn test_squash_into_merges_changes() {
 
 #[test]
 fn test_squash_default_into_parent() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
 
     // Setup: parent with a file, child with modifications
@@ -63,6 +65,7 @@ fn test_squash_default_into_parent() {
 
 #[test]
 fn test_absorb_moves_changes_to_ancestor() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
 
     // Setup

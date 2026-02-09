@@ -15,3 +15,24 @@ pub mod test_repo;
 
 pub use remote_repo::RemoteRepo;
 pub use test_repo::TestRepo;
+
+/// Check if the `jj` command is available on this system.
+pub fn jj_available() -> bool {
+    std::process::Command::new("jj")
+        .arg("version")
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+/// Macro to skip a test if `jj` is not available.
+///
+/// Use at the beginning of any test that requires the `jj` CLI.
+#[macro_export]
+macro_rules! skip_if_no_jj {
+    () => {
+        if !common::jj_available() {
+            eprintln!("Skipping test: jj command not found");
+            return;
+        }
+    };
+}

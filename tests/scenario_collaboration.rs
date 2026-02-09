@@ -15,6 +15,7 @@ use tij::jj::JjExecutor;
 
 #[test]
 fn story_team_collaboration() {
+    skip_if_no_jj!();
     // Setup: Two repositories (Alice and Bob)
     let remote = RemoteRepo::new_bare();
 
@@ -68,6 +69,7 @@ fn story_team_collaboration() {
 
 #[test]
 fn story_pull_and_rebase_local_work() {
+    skip_if_no_jj!();
     let remote = RemoteRepo::new_bare();
 
     // Alice pushes initial work
@@ -129,6 +131,7 @@ fn story_pull_and_rebase_local_work() {
 
 #[test]
 fn story_fetch_and_merge_upstream() {
+    skip_if_no_jj!();
     let remote = RemoteRepo::new_bare();
 
     // Maintainer creates main

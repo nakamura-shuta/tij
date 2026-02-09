@@ -10,6 +10,7 @@ use tij::jj::JjExecutor;
 
 #[test]
 fn test_describe_updates_message() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     repo.write_file("test.txt", "hello");
 
@@ -26,6 +27,7 @@ fn test_describe_updates_message() {
 
 #[test]
 fn test_edit_changes_working_copy() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     repo.jj(&["new", "-m", "parent"]);
     repo.jj(&["new", "-m", "child"]);
@@ -46,6 +48,7 @@ fn test_edit_changes_working_copy() {
 
 #[test]
 fn test_new_creates_empty_change() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let before = repo.count_changes("all()");
 
@@ -58,6 +61,7 @@ fn test_new_creates_empty_change() {
 
 #[test]
 fn test_new_from_creates_child_of_specified_revision() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     repo.jj(&["new", "-m", "base"]);
     let base_id = repo.current_change_id();

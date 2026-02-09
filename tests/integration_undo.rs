@@ -10,6 +10,7 @@ use tij::jj::JjExecutor;
 
 #[test]
 fn test_undo_reverts_last_operation() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     repo.write_file("test.txt", "original");
     repo.jj(&["describe", "-m", "original"]);
@@ -28,6 +29,7 @@ fn test_undo_reverts_last_operation() {
 
 #[test]
 fn test_redo_after_undo() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     repo.write_file("test.txt", "content");
     repo.jj(&["describe", "-m", "original"]);
@@ -53,6 +55,7 @@ fn test_redo_after_undo() {
 
 #[test]
 fn test_op_log_returns_operations() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     repo.jj(&["new", "-m", "first"]);
     repo.jj(&["new", "-m", "second"]);
@@ -70,6 +73,7 @@ fn test_op_log_returns_operations() {
 
 #[test]
 fn test_op_restore_reverts_to_previous_state() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     repo.jj(&["new", "-m", "before"]);
 

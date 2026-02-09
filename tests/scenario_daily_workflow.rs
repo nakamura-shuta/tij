@@ -17,6 +17,7 @@ use tij::jj::JjExecutor;
 
 #[test]
 fn story_daily_development_workflow() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 
@@ -51,6 +52,7 @@ fn story_daily_development_workflow() {
 
 #[test]
 fn story_incremental_changes_throughout_day() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 

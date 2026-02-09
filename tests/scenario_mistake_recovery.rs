@@ -15,6 +15,7 @@ use tij::jj::JjExecutor;
 
 #[test]
 fn story_mistake_recovery() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 
@@ -57,6 +58,7 @@ fn story_mistake_recovery() {
 
 #[test]
 fn story_undo_wrong_rebase() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 
@@ -92,6 +94,7 @@ fn story_undo_wrong_rebase() {
 
 #[test]
 fn story_redo_after_undo() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 
@@ -123,6 +126,7 @@ fn story_redo_after_undo() {
 
 #[test]
 fn story_op_restore_to_earlier_state() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let executor = JjExecutor::with_repo_path(repo.path());
 

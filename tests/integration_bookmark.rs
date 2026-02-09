@@ -10,6 +10,7 @@ use tij::jj::JjExecutor;
 
 #[test]
 fn test_bookmark_create() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let change_id = repo.current_change_id();
 
@@ -26,6 +27,7 @@ fn test_bookmark_create() {
 
 #[test]
 fn test_bookmark_create_duplicate_fails() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let change_id = repo.current_change_id();
 
@@ -41,6 +43,7 @@ fn test_bookmark_create_duplicate_fails() {
 
 #[test]
 fn test_bookmark_set_moves_existing() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     repo.jj(&["new", "-m", "first"]);
     let first_id = repo.current_change_id();
@@ -74,6 +77,7 @@ fn test_bookmark_set_moves_existing() {
 
 #[test]
 fn test_bookmark_delete() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let change_id = repo.current_change_id();
     repo.jj(&["bookmark", "create", "to-delete", "-r", &change_id]);
@@ -96,6 +100,7 @@ fn test_bookmark_delete() {
 
 #[test]
 fn test_bookmark_list_all() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let change_id = repo.current_change_id();
     repo.jj(&["bookmark", "create", "main", "-r", &change_id]);
@@ -113,6 +118,7 @@ fn test_bookmark_list_all() {
 
 #[test]
 fn test_bookmark_set_creates_if_not_exists() {
+    skip_if_no_jj!();
     let repo = TestRepo::new();
     let change_id = repo.current_change_id();
 

@@ -16,6 +16,7 @@ use tij::jj::JjExecutor;
 
 #[test]
 fn story_feature_branch_workflow() {
+    skip_if_no_jj!();
     // Setup: Remote with main branch
     let remote = RemoteRepo::new_bare();
     let setup_repo = TestRepo::with_remote(&remote);
@@ -59,6 +60,7 @@ fn story_feature_branch_workflow() {
 
 #[test]
 fn story_multiple_features_in_progress() {
+    skip_if_no_jj!();
     let remote = RemoteRepo::new_bare();
 
     // Setup remote with main
