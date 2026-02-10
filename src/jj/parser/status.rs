@@ -83,6 +83,7 @@ impl Parser {
                 // Renamed: "R prefix{old => new}" (jj format)
                 if let Some(brace_start) = rest.find('{')
                     && let Some(brace_end) = rest.find('}')
+                    && brace_end > brace_start
                 {
                     let prefix = &rest[..brace_start];
                     let inner = &rest[brace_start + 1..brace_end];
