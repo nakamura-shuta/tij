@@ -240,7 +240,11 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     },
     KeyBindEntry {
         key: "d",
-        description: "Edit description",
+        description: "Describe (1-line quick edit; opens editor for multi-line)",
+    },
+    KeyBindEntry {
+        key: "Ctrl+e",
+        description: "Describe in external editor (full text)",
     },
     KeyBindEntry {
         key: "e",
@@ -336,6 +340,22 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     },
 ];
 
+/// Input mode key bindings (describe, search, revset, bookmark)
+pub const INPUT_KEYS: &[KeyBindEntry] = &[
+    KeyBindEntry {
+        key: "Enter",
+        description: "Submit input",
+    },
+    KeyBindEntry {
+        key: "Esc",
+        description: "Cancel input",
+    },
+    KeyBindEntry {
+        key: "Backspace",
+        description: "Delete character",
+    },
+];
+
 /// Diff view key bindings for help display
 pub const DIFF_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
@@ -385,7 +405,12 @@ pub const LOG_VIEW_HINTS: &[KeyHint] = &[
     },
     KeyHint {
         key: "d",
-        label: "Describe",
+        label: "Desc",
+        color: Color::Green,
+    },
+    KeyHint {
+        key: "^E",
+        label: "Editor",
         color: Color::Green,
     },
     KeyHint {

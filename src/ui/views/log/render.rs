@@ -5,7 +5,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::Paragraph,
 };
 
 use crate::jj::constants;
@@ -17,28 +17,17 @@ use super::{InputMode, LogView, RebaseMode, empty_text};
 impl LogView {
     /// Render the view with optional notification in title bar
     pub fn render(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
-        // Handle DescribeInput mode separately (multi-line textarea)
-        if self.input_mode == InputMode::DescribeInput {
-            // Split: Log (top) + TextArea (bottom, 6 lines = 4 lines + 2 borders)
-            let chunks = Layout::vertical([Constraint::Min(5), Constraint::Length(6)]).split(area);
-
-            // Render log in top area
-            self.render_log_list(frame, chunks[0], notification);
-
-            // Render textarea in bottom area
-            self.render_textarea(frame, chunks[1]);
-            return;
-        }
-
-        // Split area for input bar if in other input modes
+        // Split area for input bar if in input modes
         let (log_area, input_area) = match self.input_mode {
             InputMode::Normal
             | InputMode::RebaseModeSelect
             | InputMode::RebaseSelect
             | InputMode::SquashSelect
-            | InputMode::CompareSelect
-            | InputMode::DescribeInput => (area, None),
-            InputMode::SearchInput | InputMode::RevsetInput | InputMode::BookmarkInput => {
+            | InputMode::CompareSelect => (area, None),
+            InputMode::SearchInput
+            | InputMode::RevsetInput
+            | InputMode::DescribeInput
+            | InputMode::BookmarkInput => {
                 let chunks =
                     Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).split(area);
                 (chunks[0], Some(chunks[1]))
@@ -328,19 +317,5 @@ impl LogView {
         // Show cursor (clamped to available width, character-based)
         let cursor_pos = char_count.min(available_width);
         frame.set_cursor_position((area.x + cursor_pos as u16 + 1, area.y + 1));
-    }
-
-    fn render_textarea(&self, frame: &mut Frame, area: Rect) {
-        let Some(ref textarea) = self.textarea else {
-            return;
-        };
-
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(" Description (Ctrl+S: save, Esc: cancel) ");
-
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-        frame.render_widget(textarea, inner);
     }
 }

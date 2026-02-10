@@ -188,7 +188,7 @@ impl App {
         frame: &mut Frame,
         resolve_view: &crate::ui::views::ResolveView,
     ) {
-        use ratatui::style::{Style, Stylize};
+        use ratatui::style::Style;
         use ratatui::text::{Line, Span};
         use ratatui::widgets::Paragraph;
 

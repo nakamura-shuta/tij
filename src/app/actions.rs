@@ -24,20 +24,96 @@ impl App {
     }
 
     /// Start describe input mode by fetching the full description
+    ///
+    /// If the description is multi-line, automatically opens the external
+    /// editor instead of the 1-line input bar to prevent data loss.
     pub(crate) fn start_describe_input(&mut self, change_id: &str) {
         // Fetch the full (multi-line) description from jj
         match self.jj.get_description(change_id) {
             Ok(full_description) => {
-                // Remove only trailing newline that jj adds, preserve intentional blank lines
                 let description = full_description.trim_end_matches('\n').to_string();
+
+                // Multi-line: fall through to external editor directly
+                if description.lines().nth(1).is_some() {
+                    self.execute_describe_external(change_id);
+                    return;
+                }
+
                 self.log_view
                     .set_describe_input(change_id.to_string(), description);
             }
             Err(e) => {
-                // If we can't fetch the description, show error
                 self.error_message = Some(format!("Failed to get description: {}", e));
             }
         }
+    }
+
+    /// Execute describe via external editor (jj describe --edit)
+    ///
+    /// Temporarily exits TUI mode to allow the editor to run.
+    /// Uses before/after description comparison to detect changes,
+    /// since jj describe --edit exits 0 regardless of whether the user saved.
+    pub(crate) fn execute_describe_external(&mut self, change_id: &str) {
+        use crossterm::execute;
+        use crossterm::terminal::{
+            Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+            enable_raw_mode,
+        };
+        use std::io::stdout;
+
+        // Capture description before editing for change detection
+        let before = match self.jj.get_description(change_id) {
+            Ok(desc) => Some(desc.trim_end().to_string()),
+            Err(_) => None,
+        };
+
+        // 1. Exit TUI mode
+        let _ = disable_raw_mode();
+        let _ = execute!(stdout(), LeaveAlternateScreen, Clear(ClearType::All));
+
+        // 2. Scope guard to ensure terminal restoration
+        let _guard = scopeguard::guard((), |_| {
+            let _ = enable_raw_mode();
+            let _ = execute!(stdout(), EnterAlternateScreen);
+        });
+
+        // 3. Run jj describe --edit (blocking, interactive)
+        let result = self.jj.describe_edit_interactive(change_id);
+
+        // 4. Handle result
+        match result {
+            Ok(status) if status.success() => {
+                // Compare before/after to detect actual changes
+                let after = match self.jj.get_description(change_id) {
+                    Ok(desc) => Some(desc.trim_end().to_string()),
+                    Err(_) => None,
+                };
+
+                match (before, after) {
+                    (Some(b), Some(a)) if b == a => {
+                        self.notification = Some(Notification::info("Description unchanged"));
+                    }
+                    (Some(_), Some(_)) => {
+                        self.notification = Some(Notification::success("Description updated"));
+                    }
+                    _ => {
+                        // Could not compare (get_description failed before or after)
+                        self.notification = Some(Notification::success("Describe editor closed"));
+                    }
+                }
+            }
+            Ok(_) => {
+                self.notification = Some(Notification::info("Describe editor exited with error"));
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Describe failed: {}", e));
+            }
+        }
+
+        // 5. Refresh views
+        let revset = self.log_view.current_revset.clone();
+        self.refresh_log(revset.as_deref());
+        self.refresh_status();
     }
 
     /// Execute describe operation
@@ -1135,5 +1211,74 @@ mod tests {
     fn test_is_bookmark_exists_error_not_command_failed() {
         let error = JjError::NotARepository;
         assert!(!is_bookmark_exists_error(&error));
+    }
+
+    // =========================================================================
+    // Describe multi-line detection tests
+    //
+    // The App::start_describe_input() method uses `desc.lines().nth(1).is_some()`
+    // to detect multi-line descriptions and fall through to the external editor.
+    // These tests verify the detection logic matches expectations.
+    // =========================================================================
+
+    #[test]
+    fn test_multiline_detection_single_line() {
+        let desc = "single line description";
+        assert!(!desc.lines().nth(1).is_some());
+    }
+
+    #[test]
+    fn test_multiline_detection_two_lines() {
+        let desc = "first line\nsecond line";
+        assert!(desc.lines().nth(1).is_some());
+    }
+
+    #[test]
+    fn test_multiline_detection_empty_string() {
+        let desc = "";
+        assert!(!desc.lines().nth(1).is_some());
+    }
+
+    #[test]
+    fn test_multiline_detection_trailing_newline_only() {
+        // After trim_end_matches('\n'), a single-line desc with trailing \n becomes single-line
+        let desc = "single line\n".trim_end_matches('\n');
+        assert!(!desc.lines().nth(1).is_some());
+    }
+
+    #[test]
+    fn test_multiline_detection_two_lines_with_trailing_newline() {
+        // After trim_end_matches('\n'), multi-line desc is still multi-line
+        let desc = "first\nsecond\n".trim_end_matches('\n');
+        assert!(desc.lines().nth(1).is_some());
+    }
+
+    // =========================================================================
+    // Before/after description comparison tests
+    //
+    // The App::execute_describe_external() method compares descriptions
+    // using trim_end() to normalize trailing whitespace.
+    // These tests verify the comparison logic.
+    // =========================================================================
+
+    #[test]
+    fn test_description_comparison_identical() {
+        let before = "test description".trim_end().to_string();
+        let after = "test description".trim_end().to_string();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn test_description_comparison_trailing_whitespace_normalized() {
+        let before = "test description\n".trim_end().to_string();
+        let after = "test description\n\n".trim_end().to_string();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn test_description_comparison_different() {
+        let before = "old description".trim_end().to_string();
+        let after = "new description".trim_end().to_string();
+        assert_ne!(before, after);
     }
 }

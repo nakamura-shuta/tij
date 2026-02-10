@@ -1,6 +1,6 @@
 [package]
 name = "tij"
-version = "0.3.15"
+version = "0.3.16"
 description = "Text-mode interface for Jujutsu - a TUI for jj version control"
 authors = ["nakamura.shuta <nakamura.shuta@classmethod.jp>"]
 license = "MIT"
@@ -23,12 +23,11 @@ name = "tij"
 path = "src/main.rs"
 
 [dependencies]
-crossterm = "0.28.1"
-ratatui = "0.29.0"
+crossterm = "0.29"
+ratatui = "0.30"
 color-eyre = "0.6.3"
 thiserror = "2.0"
 scopeguard = "1"
-tui-textarea = { version = "0.7", features = ["crossterm"] }
 regex = "1"
 
 [dev-dependencies]

@@ -235,6 +235,28 @@ impl JjExecutor {
         self.run(&[commands::UNDO])
     }
 
+    /// Run `jj describe -r <change-id> --edit` interactively
+    ///
+    /// This spawns jj as a child process with inherited stdio,
+    /// allowing the user to interact with their configured editor.
+    /// The caller must disable raw mode before calling this method.
+    ///
+    /// Note: Unlike `run()`, this method does NOT use `--color=never`
+    /// because interactive mode benefits from the editor's native behavior.
+    pub fn describe_edit_interactive(&self, change_id: &str) -> io::Result<ExitStatus> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+
+        if let Some(ref repo_path) = self.repo_path {
+            cmd.arg(flags::REPO_PATH).arg(repo_path);
+        }
+
+        cmd.args([commands::DESCRIBE, "-r", change_id, flags::EDIT_FLAG])
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+    }
+
     /// Run `jj split -r <change-id>` interactively
     ///
     /// This spawns jj as a child process with inherited stdio,

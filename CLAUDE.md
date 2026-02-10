@@ -18,7 +18,7 @@ cli reference:https://docs.jj-vcs.dev/latest/cli-reference/
 
 - **Language**: Rust (Edition 2024)
 - **TUI Framework**: ratatui 0.30
-- **Terminal Backend**: crossterm 0.28
+- **Terminal Backend**: crossterm 0.29
 - **Error Handling**: color-eyre
 
 ## Development Commands

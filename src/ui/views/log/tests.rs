@@ -1097,7 +1097,7 @@ fn test_absorb_key_works_without_selection() {
 }
 
 // =============================================================================
-// Describe tests (multi-line textarea)
+// Describe tests (1-line input bar + Ctrl+E external editor)
 // =============================================================================
 
 #[test]
@@ -1113,37 +1113,17 @@ fn test_describe_key_returns_start_describe_action() {
 }
 
 #[test]
-fn test_set_describe_input() {
+fn test_set_describe_input_prefills_first_line() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    // Simulate App calling set_describe_input with full description
-    view.set_describe_input(
-        "abc12345".to_string(),
-        "Full description\nSecond line".to_string(),
-    );
+    // Simulate App calling set_describe_input with single-line description
+    view.set_describe_input("abc12345".to_string(), "First commit".to_string());
 
     assert_eq!(view.input_mode, InputMode::DescribeInput);
     assert_eq!(view.editing_change_id, Some("abc12345".to_string()));
-    assert!(view.textarea.is_some());
-
-    // Check textarea contains the full multi-line description
-    let textarea = view.textarea.as_ref().unwrap();
-    assert_eq!(textarea.lines().join("\n"), "Full description\nSecond line");
-}
-
-#[test]
-fn test_describe_input_start_with_existing_description() {
-    let mut view = LogView::new();
-    view.set_changes(create_test_changes());
-
-    // First change has "First commit" description
-    view.start_describe_input();
-
-    assert!(view.textarea.is_some());
-    let textarea = view.textarea.as_ref().unwrap();
-    // TextArea should contain the existing description
-    assert_eq!(textarea.lines().join("\n"), "First commit");
+    // input_buffer should be prefilled with the description
+    assert_eq!(view.input_buffer, "First commit");
 }
 
 #[test]
@@ -1152,15 +1132,14 @@ fn test_describe_input_cancel() {
     view.set_changes(create_test_changes());
 
     // Start describe input
-    view.start_describe_input();
+    view.set_describe_input("abc12345".to_string(), "Test".to_string());
     assert_eq!(view.input_mode, InputMode::DescribeInput);
-    assert!(view.textarea.is_some());
 
-    // Cancel with cancel_describe_input
-    view.cancel_describe_input();
+    // Cancel with cancel_input
+    view.cancel_input();
 
     assert_eq!(view.input_mode, InputMode::Normal);
-    assert!(view.textarea.is_none());
+    assert!(view.input_buffer.is_empty());
     assert!(view.editing_change_id.is_none());
 }
 
@@ -1177,7 +1156,7 @@ fn test_describe_input_escape_cancels() {
     let action = escape(&mut view);
     assert_eq!(action, LogAction::None);
     assert_eq!(view.input_mode, InputMode::Normal);
-    assert!(view.textarea.is_none());
+    assert!(view.input_buffer.is_empty());
 }
 
 #[test]
@@ -1189,25 +1168,19 @@ fn test_describe_key_no_selection_returns_none() {
     let action = press_key(&mut view, keys::DESCRIBE);
     assert_eq!(action, LogAction::None);
     assert_eq!(view.input_mode, InputMode::Normal);
-    assert!(view.textarea.is_none());
 }
 
 #[test]
-fn test_describe_input_ctrl_s_saves() {
-    use crossterm::event::KeyModifiers;
-
+fn test_describe_input_enter_submits() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    // Start describe input
-    view.start_describe_input();
+    // Start describe input with prefilled text
+    view.set_describe_input("abc12345".to_string(), "First commit".to_string());
     assert_eq!(view.editing_change_id, Some("abc12345".to_string()));
 
-    // The textarea already has "First commit" from start_describe_input
-
-    // Press Ctrl+S to save
-    let key = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
-    let action = view.handle_key(key);
+    // Press Enter to submit
+    let action = submit(&mut view);
 
     assert!(matches!(
         action,
@@ -1215,24 +1188,127 @@ fn test_describe_input_ctrl_s_saves() {
         if change_id == "abc12345" && message == "First commit"
     ));
     assert_eq!(view.input_mode, InputMode::Normal);
-    assert!(view.textarea.is_none());
+    assert!(view.input_buffer.is_empty());
 }
 
 #[test]
-fn test_describe_input_enter_adds_newline() {
+fn test_describe_input_empty_submit_cancels() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    // Start describe input (starts with "First commit")
-    view.start_describe_input();
+    // Start describe input with empty text
+    view.set_describe_input("abc12345".to_string(), String::new());
 
-    // Press Enter - should add newline, not submit
-    let action = press_key(&mut view, KeyCode::Enter);
+    // Submit empty - should cancel (return None)
+    let action = submit(&mut view);
     assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::Normal);
+}
+
+#[test]
+fn test_describe_input_type_and_submit() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Start describe input with empty text
+    view.set_describe_input("abc12345".to_string(), String::new());
+
+    // Type new description
+    type_text(&mut view, "new desc");
+    assert_eq!(view.input_buffer, "new desc");
+
+    // Submit
+    let action = submit(&mut view);
+    assert!(matches!(
+        action,
+        LogAction::Describe { change_id, message }
+        if change_id == "abc12345" && message == "new desc"
+    ));
+}
+
+// =============================================================================
+// Describe External (Ctrl+E) tests
+// =============================================================================
+
+#[test]
+fn test_describe_external_key_returns_action() {
+    use crossterm::event::KeyModifiers;
+
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Press Ctrl+E
+    let key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL);
+    let action = view.handle_key(key);
+    assert_eq!(action, LogAction::DescribeExternal("abc12345".to_string()));
+}
+
+#[test]
+fn test_describe_external_no_selection_returns_none() {
+    use crossterm::event::KeyModifiers;
+
+    let mut view = LogView::new();
+    // Empty changes
+
+    let key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL);
+    let action = view.handle_key(key);
+    assert_eq!(action, LogAction::None);
+}
+
+#[test]
+fn test_e_without_ctrl_returns_edit_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Plain 'e' should be Edit, not DescribeExternal
+    let action = press_key(&mut view, keys::EDIT);
+    assert_eq!(action, LogAction::Edit("abc12345".to_string()));
+}
+
+#[test]
+fn test_ctrl_e_in_search_input_mode_ignored() {
+    use crossterm::event::KeyModifiers;
+
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter search mode
+    view.start_search_input();
+    assert_eq!(view.input_mode, InputMode::SearchInput);
+
+    // Ctrl+E in search mode should NOT trigger DescribeExternal
+    // and should NOT add 'e' to input_buffer
+    let key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL);
+    let action = view.handle_key(key);
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::SearchInput);
+    assert!(
+        view.input_buffer.is_empty(),
+        "Ctrl+E should not add 'e' to input_buffer"
+    );
+}
+
+#[test]
+fn test_ctrl_e_in_describe_input_mode_ignored() {
+    use crossterm::event::KeyModifiers;
+
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter describe input mode
+    view.set_describe_input("abc12345".to_string(), "test".to_string());
     assert_eq!(view.input_mode, InputMode::DescribeInput);
 
-    // Should still have textarea
-    assert!(view.textarea.is_some());
+    // Ctrl+E in describe input mode should NOT trigger DescribeExternal
+    // and should NOT add 'e' to input_buffer
+    let key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL);
+    let action = view.handle_key(key);
+    assert_eq!(action, LogAction::None);
+    assert_eq!(view.input_mode, InputMode::DescribeInput);
+    assert_eq!(
+        view.input_buffer, "test",
+        "Ctrl+E should not modify input_buffer"
+    );
 }
 
 // =============================================================================

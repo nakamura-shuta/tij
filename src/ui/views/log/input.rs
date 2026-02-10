@@ -36,6 +36,17 @@ impl LogView {
     }
 
     fn handle_normal_key(&mut self, key: KeyEvent) -> LogAction {
+        // Ctrl+E: external editor describe (must be checked before 'e' match)
+        if key.modifiers.contains(KeyModifiers::CONTROL)
+            && matches!(key.code, KeyCode::Char('e') | KeyCode::Char('E'))
+        {
+            return if let Some(change) = self.selected_change() {
+                LogAction::DescribeExternal(change.change_id.clone())
+            } else {
+                LogAction::None
+            };
+        }
+
         match key.code {
             k if keys::is_move_down(k) => {
                 self.move_down();
@@ -197,35 +208,17 @@ impl LogView {
     }
 
     fn handle_describe_input_key(&mut self, key: KeyEvent) -> LogAction {
-        // Ctrl+S to save
-        if key.modifiers.contains(KeyModifiers::CONTROL)
-            && matches!(key.code, KeyCode::Char('s') | KeyCode::Char('S'))
-        {
-            if let (Some(change_id), Some(textarea)) =
-                (self.editing_change_id.take(), self.textarea.take())
-            {
-                let message = textarea.lines().join("\n");
-                self.input_mode = InputMode::Normal;
-
+        self.handle_text_input(key, |view, message| {
+            if let Some(change_id) = view.editing_change_id.take() {
                 if message.trim().is_empty() {
-                    return LogAction::None; // Empty = cancel
+                    LogAction::None // Empty = cancel
+                } else {
+                    LogAction::Describe { change_id, message }
                 }
-                return LogAction::Describe { change_id, message };
+            } else {
+                LogAction::None
             }
-            return LogAction::None;
-        }
-
-        // Esc to cancel
-        if key.code == KeyCode::Esc {
-            self.cancel_describe_input();
-            return LogAction::None;
-        }
-
-        // All other keys delegate to textarea (Enter = newline, cursor movement, etc.)
-        if let Some(ref mut textarea) = self.textarea {
-            textarea.input(key);
-        }
-        LogAction::None
+        })
     }
 
     fn handle_bookmark_input_key(&mut self, key: KeyEvent) -> LogAction {
@@ -458,7 +451,11 @@ impl LogView {
                 self.input_mode = InputMode::Normal;
                 on_submit(self, input)
             }
-            KeyCode::Char(c) => {
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
                 self.input_buffer.push(c);
                 LogAction::None
             }

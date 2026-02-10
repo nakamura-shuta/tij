@@ -76,6 +76,8 @@ pub mod flags {
     pub const FROM: &str = "--from";
     /// Diff to revision
     pub const TO: &str = "--to";
+    /// Open editor for interactive editing (e.g., jj describe --edit)
+    pub const EDIT_FLAG: &str = "--edit";
 }
 
 /// Special jj values

@@ -35,8 +35,7 @@ impl App {
         }
 
         // Handle Ctrl+R for redo (only in Log view, normal mode)
-        // Skip in DescribeInput mode because tui-textarea uses Ctrl+R for its own redo
-        // Skip in SquashSelect mode because user is selecting destination
+        // Only active in Normal mode to avoid conflicts with input modes
         if key.modifiers.contains(KeyModifiers::CONTROL)
             && matches!(key.code, KeyCode::Char('r') | KeyCode::Char('R'))
             && self.current_view == View::Log
@@ -191,6 +190,9 @@ impl App {
             }
             LogAction::Describe { change_id, message } => {
                 self.execute_describe(&change_id, &message);
+            }
+            LogAction::DescribeExternal(change_id) => {
+                self.execute_describe_external(&change_id);
             }
             LogAction::Edit(change_id) => {
                 self.execute_edit(&change_id);
