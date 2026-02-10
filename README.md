@@ -50,7 +50,7 @@ Press `?` for help, `q` to quit.
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
 | Recovery | Undo / Redo / Operation Restore |
 | Bookmarks | Create / Move / Delete (multi-select) / Track remote / Jump |
-| Git Integration | Fetch / Push (with confirmation dialog) |
+| Git Integration | Fetch / Push (with dry-run preview and confirmation dialog) |
 | Diff | Compare two revisions (`jj diff --from --to`) |
 | Usability | Revset filtering / Text search / Adaptive status bar |
 
@@ -59,7 +59,7 @@ Press `?` for help, `q` to quit.
 | Area | Features |
 |------|----------|
 | Views | Bookmark View |
-| Safety | Push preview (dry-run) / Force push warnings |
+| Safety | Force push warnings |
 | Customization | Keybindings config / Themes |
 
 ## Revset Examples
@@ -95,7 +95,7 @@ cargo test --tests            # Integration tests only
 cargo insta test              # Snapshot tests
 ```
 
-**Test categories**: Unit (308), Integration (50+), Snapshot (7), Property-based (15)
+**Test categories**: Unit (315), Integration (50+), Snapshot (7), Property-based (15)
 
 ## Acknowledgments
 

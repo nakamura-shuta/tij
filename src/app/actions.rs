@@ -1,5 +1,6 @@
 //! jj operations (actions that modify repository state)
 
+use crate::jj::{PushPreviewResult, parse_push_dry_run};
 use crate::model::Notification;
 use crate::ui::components::{Dialog, DialogCallback, DialogResult, SelectItem};
 use crate::ui::views::RebaseMode;
@@ -492,10 +493,11 @@ impl App {
         }
     }
 
-    /// Start push flow
+    /// Start push flow with dry-run preview
     ///
-    /// If the selected change has bookmarks, opens a confirmation or
-    /// selection dialog. If no bookmarks, shows an info notification.
+    /// Runs `jj git push --dry-run` to preview what will be pushed,
+    /// then shows a confirmation/selection dialog with the preview.
+    /// If dry-run fails (untracked bookmark, etc.), falls back to dialog without preview.
     pub(crate) fn start_push(&mut self) {
         let (change_id, bookmarks) = match self.log_view.selected_change() {
             Some(change) => (change.change_id.clone(), change.bookmarks.clone()),
@@ -508,26 +510,81 @@ impl App {
         }
 
         if bookmarks.len() == 1 {
-            // Single bookmark: show confirm dialog directly
             let name = &bookmarks[0];
-            self.active_dialog = Some(Dialog::confirm(
-                "Push to Remote",
-                format!("Push bookmark \"{}\"?", name),
-                Some("Remote changes cannot be undone with 'u'.".to_string()),
-                DialogCallback::GitPush,
-            ));
-            // Store bookmark name for callback (Confirm dialog only)
-            self.pending_push_bookmarks = vec![name.clone()];
+
+            // Run dry-run to preview push
+            match self.jj.git_push_dry_run(name) {
+                Ok(output) => {
+                    let preview = parse_push_dry_run(&output);
+                    match preview {
+                        PushPreviewResult::NothingChanged => {
+                            self.notification = Some(Notification::info(format!(
+                                "Nothing to push: {} is already up to date",
+                                name
+                            )));
+                        }
+                        PushPreviewResult::Changes(actions) => {
+                            // Include dry-run result in message (multi-line)
+                            let preview_text = format_preview_actions(&actions);
+                            let body = format!("Push bookmark \"{}\"?\n{}", name, preview_text);
+
+                            self.active_dialog = Some(Dialog::confirm(
+                                "Push to Remote",
+                                body,
+                                Some("Remote changes cannot be undone with 'u'.".to_string()),
+                                DialogCallback::GitPush,
+                            ));
+                            self.pending_push_bookmarks = vec![name.clone()];
+                        }
+                        PushPreviewResult::Unparsed => {
+                            // Unknown output format: fallback to dialog without preview
+                            self.active_dialog = Some(Dialog::confirm(
+                                "Push to Remote",
+                                format!("Push bookmark \"{}\"?", name),
+                                Some("Remote changes cannot be undone with 'u'.".to_string()),
+                                DialogCallback::GitPush,
+                            ));
+                            self.pending_push_bookmarks = vec![name.clone()];
+                        }
+                    }
+                }
+                Err(_) => {
+                    // dry-run failed (untracked, empty description, etc.):
+                    // Fallback to dialog without preview.
+                    // execute_push() may still succeed via --allow-new retry.
+                    self.active_dialog = Some(Dialog::confirm(
+                        "Push to Remote",
+                        format!("Push bookmark \"{}\"?", name),
+                        Some("Remote changes cannot be undone with 'u'.".to_string()),
+                        DialogCallback::GitPush,
+                    ));
+                    self.pending_push_bookmarks = vec![name.clone()];
+                }
+            }
         } else {
-            // Multiple bookmarks: show selection dialog
-            let items: Vec<SelectItem> = bookmarks
-                .iter()
-                .map(|name| SelectItem {
-                    label: name.clone(),
+            // Multiple bookmarks: run dry-run for each to get status labels
+            let mut items: Vec<SelectItem> = Vec::new();
+            for name in &bookmarks {
+                let status = match self.jj.git_push_dry_run(name) {
+                    Ok(output) => {
+                        let preview = parse_push_dry_run(&output);
+                        format_bookmark_status(&preview, name)
+                    }
+                    Err(_) => String::new(), // dry-run failed → no label
+                };
+
+                let label = if status.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{} ({})", name, status)
+                };
+
+                items.push(SelectItem {
+                    label,
                     value: name.clone(),
                     selected: false,
-                })
-                .collect();
+                });
+            }
 
             self.active_dialog = Some(Dialog::select(
                 "Push to Remote",
@@ -950,6 +1007,60 @@ impl App {
                 self.error_message = Some(format!("Failed to track: {}", e));
             }
         }
+    }
+}
+
+/// Format preview actions for confirm dialog display
+///
+/// Produces a compact single-line per action, with hashes truncated to 8 chars.
+fn format_preview_actions(actions: &[crate::jj::PushPreviewAction]) -> String {
+    use crate::jj::PushPreviewAction;
+    actions
+        .iter()
+        .map(|action| match action {
+            PushPreviewAction::MoveForward { bookmark, from, to } => {
+                let from_short = &from[..8.min(from.len())];
+                let to_short = &to[..8.min(to.len())];
+                format!(
+                    "Move forward {} from {}.. to {}..",
+                    bookmark, from_short, to_short
+                )
+            }
+            PushPreviewAction::Add { bookmark, to } => {
+                let to_short = &to[..8.min(to.len())];
+                format!("Add {} to {}..", bookmark, to_short)
+            }
+            PushPreviewAction::Delete { bookmark, from } => {
+                let from_short = &from[..8.min(from.len())];
+                format!("Delete {} from {}..", bookmark, from_short)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Format a single bookmark's dry-run status for select dialog label
+fn format_bookmark_status(preview: &crate::jj::PushPreviewResult, name: &str) -> String {
+    use crate::jj::{PushPreviewAction, PushPreviewResult};
+    match preview {
+        PushPreviewResult::Changes(actions) => actions
+            .iter()
+            .find_map(|a| match a {
+                PushPreviewAction::MoveForward { bookmark, from, .. } if bookmark == name => {
+                    let short = &from[..8.min(from.len())];
+                    Some(format!("move from {}..", short))
+                }
+                PushPreviewAction::Add { bookmark, .. } if bookmark == name => {
+                    Some("new".to_string())
+                }
+                PushPreviewAction::Delete { bookmark, .. } if bookmark == name => {
+                    Some("delete".to_string())
+                }
+                _ => None,
+            })
+            .unwrap_or_default(),
+        PushPreviewResult::NothingChanged => "up to date".to_string(),
+        PushPreviewResult::Unparsed => String::new(),
     }
 }
 

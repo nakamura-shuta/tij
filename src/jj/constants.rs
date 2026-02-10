@@ -70,6 +70,8 @@ pub mod flags {
     pub const INSERT_AFTER: &str = "-A";
     /// Insert before target revision
     pub const INSERT_BEFORE: &str = "-B";
+    /// Dry-run mode (preview only, no actual push)
+    pub const DRY_RUN: &str = "--dry-run";
     /// Diff from revision
     pub const FROM: &str = "--from";
     /// Diff to revision

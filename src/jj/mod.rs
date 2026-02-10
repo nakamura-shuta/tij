@@ -8,7 +8,7 @@ mod executor;
 pub mod parser;
 mod template;
 
-pub use executor::JjExecutor;
+pub use executor::{JjExecutor, PushPreviewAction, PushPreviewResult, parse_push_dry_run};
 
 use std::io;
 use thiserror::Error;

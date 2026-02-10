@@ -30,9 +30,14 @@ impl Dialog {
         message: &str,
         detail: Option<&str>,
     ) {
-        // Calculate dialog size
+        // Split message by newlines for multi-line support (e.g., push dry-run preview)
+        let message_lines: Vec<&str> = message.split('\n').collect();
+        let extra_lines = message_lines.len().saturating_sub(1) as u16;
+
+        // Calculate dialog size (dynamic height based on message lines)
         let width = 50.min(area.width.saturating_sub(4));
-        let height = if detail.is_some() { 9 } else { 7 };
+        let base_height: u16 = if detail.is_some() { 9 } else { 7 };
+        let height = (base_height + extra_lines).min(area.height.saturating_sub(4));
 
         let dialog_area = centered_rect(width, height, area);
 
@@ -40,14 +45,24 @@ impl Dialog {
         frame.render_widget(Clear, dialog_area);
 
         // Build content
-        let mut lines = vec![
-            Line::from(""),
-            Line::from(Span::styled(
-                message,
+        let mut lines = vec![Line::from("")];
+
+        // First line: bold (question text)
+        if let Some(first) = message_lines.first() {
+            lines.push(Line::from(Span::styled(
+                *first,
                 Style::default().add_modifier(Modifier::BOLD),
-            )),
-            Line::from(""),
-        ];
+            )));
+        }
+        // Subsequent lines: cyan (preview info)
+        for line_text in message_lines.iter().skip(1) {
+            lines.push(Line::from(Span::styled(
+                *line_text,
+                Style::default().fg(Color::Cyan),
+            )));
+        }
+
+        lines.push(Line::from(""));
 
         if let Some(detail_text) = detail {
             lines.push(Line::from(Span::styled(

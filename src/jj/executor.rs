@@ -706,6 +706,47 @@ impl JjExecutor {
         ])
     }
 
+    /// Run `jj git push --dry-run --bookmark <name>` to preview push
+    ///
+    /// Returns the dry-run output describing what would change on the remote.
+    /// Does NOT actually push anything.
+    ///
+    /// On success (exit 0), returns stderr which can be parsed with `parse_push_dry_run()`.
+    /// On failure (exit != 0), returns `Err(JjError)` — e.g., untracked bookmark or
+    /// empty description validation errors.
+    pub fn git_push_dry_run(&self, bookmark_name: &str) -> Result<String, JjError> {
+        // Note: `jj git push --dry-run` outputs to stderr, not stdout,
+        // so we can't use the generic `run()` method here.
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+        if let Some(ref path) = self.repo_path {
+            cmd.arg(flags::REPO_PATH).arg(path);
+        }
+        cmd.arg(flags::NO_COLOR);
+        cmd.args([
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::DRY_RUN,
+            flags::BOOKMARK_FLAG,
+            bookmark_name,
+        ]);
+
+        let output = cmd.output().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                JjError::JjNotFound
+            } else {
+                JjError::IoError(e)
+            }
+        })?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+            let exit_code = output.status.code().unwrap_or(-1);
+            Err(JjError::CommandFailed { stderr, exit_code })
+        }
+    }
+
     /// Run `jj git push --named <bookmark>=<revision>` for new remote bookmarks (jj 0.37+)
     ///
     /// This is the recommended way to push new bookmarks in jj 0.37+.
@@ -791,6 +832,88 @@ impl JjExecutor {
     }
 }
 
+/// Parsed action from a dry-run push preview
+#[derive(Debug, Clone, PartialEq)]
+pub enum PushPreviewAction {
+    /// Move forward bookmark from old_hash to new_hash
+    MoveForward {
+        bookmark: String,
+        from: String,
+        to: String,
+    },
+    /// Add new bookmark at hash
+    Add { bookmark: String, to: String },
+    /// Delete bookmark at hash
+    Delete { bookmark: String, from: String },
+}
+
+/// Result of parsing `jj git push --dry-run` output
+///
+/// Only used when `git_push_dry_run()` returns `Ok(output)` (exit 0).
+/// Error cases (exit != 0) are handled by the caller's `Err(_)` branch.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PushPreviewResult {
+    /// Changes to push
+    Changes(Vec<PushPreviewAction>),
+    /// Already up to date (no changes needed)
+    NothingChanged,
+    /// Output could not be parsed (unknown format from newer jj version, etc.)
+    Unparsed,
+}
+
+/// Parse the output of `jj git push --dry-run` (exit 0 only)
+///
+/// Expected output patterns:
+/// - `Move forward bookmark NAME from HASH to HASH`
+/// - `Add bookmark NAME to HASH`
+/// - `Delete bookmark NAME from HASH`
+/// - `Nothing changed.` (when bookmark is already up to date)
+pub fn parse_push_dry_run(output: &str) -> PushPreviewResult {
+    if output.contains("Nothing changed.") {
+        return PushPreviewResult::NothingChanged;
+    }
+
+    let mut actions = Vec::new();
+    for line in output.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("Move forward bookmark ") {
+            // "Move forward bookmark NAME from HASH to HASH"
+            if let Some((name, hashes)) = rest.split_once(" from ")
+                && let Some((from, to)) = hashes.split_once(" to ")
+            {
+                actions.push(PushPreviewAction::MoveForward {
+                    bookmark: name.to_string(),
+                    from: from.to_string(),
+                    to: to.to_string(),
+                });
+            }
+        } else if let Some(rest) = line.strip_prefix("Add bookmark ") {
+            // "Add bookmark NAME to HASH"
+            if let Some((name, hash)) = rest.split_once(" to ") {
+                actions.push(PushPreviewAction::Add {
+                    bookmark: name.to_string(),
+                    to: hash.to_string(),
+                });
+            }
+        } else if let Some(rest) = line.strip_prefix("Delete bookmark ") {
+            // "Delete bookmark NAME from HASH"
+            if let Some((name, hash)) = rest.split_once(" from ") {
+                actions.push(PushPreviewAction::Delete {
+                    bookmark: name.to_string(),
+                    from: hash.to_string(),
+                });
+            }
+        }
+        // "Changes to push to origin:" and "Dry-run requested, not pushing." are ignored
+    }
+
+    if actions.is_empty() {
+        PushPreviewResult::Unparsed
+    } else {
+        PushPreviewResult::Changes(actions)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -805,5 +928,105 @@ mod tests {
     fn test_executor_with_path() {
         let executor = JjExecutor::with_repo_path(PathBuf::from("/tmp/test"));
         assert_eq!(executor.repo_path, Some(PathBuf::from("/tmp/test")));
+    }
+
+    // --- parse_push_dry_run tests ---
+
+    #[test]
+    fn test_parse_move_forward() {
+        let output = "Changes to push to origin:\n  Move forward bookmark main from 6c733e1ae096 to f70230817ff4\nDry-run requested, not pushing.\n";
+        let result = parse_push_dry_run(output);
+        match result {
+            PushPreviewResult::Changes(actions) => {
+                assert_eq!(actions.len(), 1);
+                assert_eq!(
+                    actions[0],
+                    PushPreviewAction::MoveForward {
+                        bookmark: "main".to_string(),
+                        from: "6c733e1ae096".to_string(),
+                        to: "f70230817ff4".to_string(),
+                    }
+                );
+            }
+            _ => panic!("Expected Changes"),
+        }
+    }
+
+    #[test]
+    fn test_parse_add_bookmark() {
+        let output = "Changes to push to origin:\n  Add bookmark feature/new to f70230817ff4\nDry-run requested, not pushing.\n";
+        let result = parse_push_dry_run(output);
+        match result {
+            PushPreviewResult::Changes(actions) => {
+                assert_eq!(actions.len(), 1);
+                assert_eq!(
+                    actions[0],
+                    PushPreviewAction::Add {
+                        bookmark: "feature/new".to_string(),
+                        to: "f70230817ff4".to_string(),
+                    }
+                );
+            }
+            _ => panic!("Expected Changes"),
+        }
+    }
+
+    #[test]
+    fn test_parse_delete_bookmark() {
+        let output = "Changes to push to origin:\n  Delete bookmark old-branch from 6c733e1ae096\nDry-run requested, not pushing.\n";
+        let result = parse_push_dry_run(output);
+        match result {
+            PushPreviewResult::Changes(actions) => {
+                assert_eq!(actions.len(), 1);
+                assert_eq!(
+                    actions[0],
+                    PushPreviewAction::Delete {
+                        bookmark: "old-branch".to_string(),
+                        from: "6c733e1ae096".to_string(),
+                    }
+                );
+            }
+            _ => panic!("Expected Changes"),
+        }
+    }
+
+    #[test]
+    fn test_parse_multiple_changes() {
+        let output = "Changes to push to origin:\n  Move forward bookmark another-branch from 6c733e1ae096 to f70230817ff4\n  Add bookmark fuga to bfeefc809de1\n  Add bookmark main to f70230817ff4\nDry-run requested, not pushing.\n";
+        let result = parse_push_dry_run(output);
+        match result {
+            PushPreviewResult::Changes(actions) => {
+                assert_eq!(actions.len(), 3);
+                assert!(matches!(&actions[0], PushPreviewAction::MoveForward { .. }));
+                assert!(
+                    matches!(&actions[1], PushPreviewAction::Add { bookmark, .. } if bookmark == "fuga")
+                );
+                assert!(
+                    matches!(&actions[2], PushPreviewAction::Add { bookmark, .. } if bookmark == "main")
+                );
+            }
+            _ => panic!("Expected Changes"),
+        }
+    }
+
+    #[test]
+    fn test_parse_nothing_changed() {
+        let output =
+            "Bookmark test-feature@origin already matches test-feature\nNothing changed.\n";
+        let result = parse_push_dry_run(output);
+        assert_eq!(result, PushPreviewResult::NothingChanged);
+    }
+
+    #[test]
+    fn test_parse_empty_output() {
+        let result = parse_push_dry_run("");
+        assert_eq!(result, PushPreviewResult::Unparsed);
+    }
+
+    #[test]
+    fn test_parse_unknown_output() {
+        // Unknown jj output format should return Unparsed, not NothingChanged
+        let result = parse_push_dry_run("Some unexpected jj output format\n");
+        assert_eq!(result, PushPreviewResult::Unparsed);
     }
 }
