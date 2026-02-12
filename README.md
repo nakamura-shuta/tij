@@ -52,7 +52,7 @@ Press `?` for help, `q` to quit.
 | Bookmarks | Create / Move / Delete (multi-select) / Track remote / Jump |
 | Git Integration | Fetch / Push (with dry-run preview, force push warnings, and protected bookmark detection) |
 | Diff | Compare two revisions (`jj diff --from --to`) |
-| Usability | Revset filtering / Text search / Adaptive status bar |
+| Usability | Revset filtering / Text search / Adaptive status bar / Dynamic context-aware hints |
 
 ### Planned
 
@@ -94,7 +94,7 @@ cargo test --tests            # Integration tests only
 cargo insta test              # Snapshot tests
 ```
 
-**Test categories**: Unit (328), Integration (50+), Snapshot (7), Property-based (15)
+**Test categories**: Unit (363), Integration (50+), Snapshot (7), Property-based (15)
 
 ## Acknowledgments
 

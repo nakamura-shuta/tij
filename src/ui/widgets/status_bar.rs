@@ -5,8 +5,8 @@
 
 use ratatui::{Frame, prelude::*, text::Line, widgets::Paragraph};
 
-use crate::keys::{self, KeyHint};
-use crate::ui::views::{BlameView, DiffView, InputMode};
+use crate::keys::KeyHint;
+use crate::ui::views::{BlameView, DiffView};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hint formatting
@@ -105,42 +105,12 @@ pub fn build_status_bar_with_prefix(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Calculate status bar height for given hints and width
-fn calc_height(hints: &[KeyHint], width: u16) -> u16 {
+pub fn status_hints_height(hints: &[KeyHint], width: u16) -> u16 {
     if total_hints_width(hints) > width as usize {
         3 // 2 rows + 1 spacer
     } else {
         1
     }
-}
-
-/// Get the hints to use for the current log view mode
-fn log_view_hints(input_mode: InputMode) -> &'static [KeyHint] {
-    match input_mode {
-        InputMode::RebaseModeSelect => keys::REBASE_MODE_SELECT_HINTS,
-        InputMode::RebaseSelect => keys::REBASE_SELECT_HINTS,
-        InputMode::CompareSelect => keys::COMPARE_SELECT_HINTS,
-        _ => keys::LOG_VIEW_HINTS,
-    }
-}
-
-/// Get the status bar height for log view
-pub fn log_view_status_bar_height(width: u16, input_mode: InputMode) -> u16 {
-    calc_height(log_view_hints(input_mode), width)
-}
-
-/// Get the status bar height for status view
-pub fn status_view_status_bar_height(width: u16) -> u16 {
-    calc_height(keys::STATUS_VIEW_HINTS, width)
-}
-
-/// Get the status bar height for operation view
-pub fn operation_view_status_bar_height(width: u16) -> u16 {
-    calc_height(keys::OPERATION_VIEW_HINTS, width)
-}
-
-/// Get the status bar height for blame view
-pub fn blame_view_status_bar_height(width: u16) -> u16 {
-    calc_height(keys::BLAME_VIEW_HINTS, width)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -154,7 +124,7 @@ fn status_bar_area(frame: &Frame, hints: &[KeyHint]) -> Option<Rect> {
         return None;
     }
 
-    let height = calc_height(hints, area.width);
+    let height = status_hints_height(hints, area.width);
 
     // Fallback to single row if not enough space
     let actual_height = if area.height < height + 1 { 1 } else { height };
@@ -167,8 +137,8 @@ fn status_bar_area(frame: &Frame, hints: &[KeyHint]) -> Option<Rect> {
     })
 }
 
-/// Generic status bar renderer
-fn render_hints(frame: &mut Frame, hints: &[KeyHint]) {
+/// Render status bar hints at the bottom of the screen
+pub fn render_status_hints(frame: &mut Frame, hints: &[KeyHint]) {
     let Some(status_area) = status_bar_area(frame, hints) else {
         return;
     };
@@ -182,24 +152,10 @@ fn render_hints(frame: &mut Frame, hints: &[KeyHint]) {
     frame.render_widget(Paragraph::new(content), status_area);
 }
 
-/// Render the status bar for log view
-pub fn render_status_bar(frame: &mut Frame, input_mode: InputMode) {
-    render_hints(frame, log_view_hints(input_mode));
-}
-
-/// Render the status bar for status view
-pub fn render_status_view_status_bar(frame: &mut Frame) {
-    render_hints(frame, keys::STATUS_VIEW_HINTS);
-}
-
-/// Render the status bar for operation history view
-pub fn render_operation_status_bar(frame: &mut Frame) {
-    render_hints(frame, keys::OPERATION_VIEW_HINTS);
-}
-
 /// Render the status bar for diff view (special: includes context prefix)
 pub fn render_diff_status_bar(frame: &mut Frame, diff_view: &DiffView) {
-    let Some(status_area) = status_bar_area(frame, keys::DIFF_VIEW_HINTS) else {
+    let hints = crate::keys::DIFF_VIEW_HINTS;
+    let Some(status_area) = status_bar_area(frame, hints) else {
         return;
     };
 
@@ -213,13 +169,14 @@ pub fn render_diff_status_bar(frame: &mut Frame, diff_view: &DiffView) {
         Span::styled(format!(" {} ", context), Style::default().fg(Color::Cyan)),
     ];
 
-    let status = build_status_bar_with_prefix(prefix, keys::DIFF_VIEW_HINTS);
+    let status = build_status_bar_with_prefix(prefix, hints);
     frame.render_widget(Paragraph::new(status), status_area);
 }
 
 /// Render the status bar for blame view (special: includes file path prefix)
 pub fn render_blame_status_bar(frame: &mut Frame, blame_view: &BlameView) {
-    let Some(status_area) = status_bar_area(frame, keys::BLAME_VIEW_HINTS) else {
+    let hints = crate::keys::BLAME_VIEW_HINTS;
+    let Some(status_area) = status_bar_area(frame, hints) else {
         return;
     };
 
@@ -232,7 +189,7 @@ pub fn render_blame_status_bar(frame: &mut Frame, blame_view: &BlameView) {
         Span::raw(" "),
     ];
 
-    let status = build_status_bar_with_prefix(prefix, keys::BLAME_VIEW_HINTS);
+    let status = build_status_bar_with_prefix(prefix, hints);
     frame.render_widget(Paragraph::new(status), status_area);
 }
 
@@ -332,17 +289,17 @@ mod tests {
     }
 
     #[test]
-    fn test_calc_height_single() {
+    fn test_status_hints_height_single() {
         let hints = &[KeyHint {
             key: "q",
             label: "Quit",
             color: Color::Red,
         }];
-        assert_eq!(calc_height(hints, 80), 1);
+        assert_eq!(status_hints_height(hints, 80), 1);
     }
 
     #[test]
-    fn test_calc_height_multi() {
+    fn test_status_hints_height_multi() {
         let hints = &[
             KeyHint {
                 key: "a",
@@ -355,7 +312,7 @@ mod tests {
                 color: Color::Red,
             },
         ];
-        assert_eq!(calc_height(hints, 15), 3);
+        assert_eq!(status_hints_height(hints, 15), 3);
     }
 
     #[test]

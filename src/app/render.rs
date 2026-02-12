@@ -3,11 +3,11 @@
 use ratatui::{Frame, prelude::*};
 
 use super::state::{App, View};
+use crate::keys::{self, DialogHintKind, HintContext};
+use crate::ui::components::dialog::DialogKind;
 use crate::ui::widgets::{
-    blame_view_status_bar_height, log_view_status_bar_height, operation_view_status_bar_height,
     render_blame_status_bar, render_diff_status_bar, render_error_banner, render_help_panel,
-    render_operation_status_bar, render_placeholder, render_status_bar,
-    render_status_view_status_bar, status_view_status_bar_height,
+    render_placeholder, render_status_hints, status_hints_height,
 };
 
 impl App {
@@ -42,14 +42,55 @@ impl App {
     /// Get the status bar height for the current view
     fn get_current_status_bar_height(&self, width: u16) -> u16 {
         match self.current_view {
-            View::Log => log_view_status_bar_height(width, self.log_view.input_mode),
+            View::Log | View::Status | View::Operation => {
+                let ctx = self.build_hint_context();
+                let hints = keys::current_hints(self.current_view, self.log_view.input_mode, &ctx);
+                status_hints_height(&hints, width)
+            }
+            View::Resolve => {
+                let ctx = self.build_resolve_hint_context();
+                let hints = keys::current_hints(View::Resolve, self.log_view.input_mode, &ctx);
+                status_hints_height(&hints, width)
+            }
             View::Diff => 1,
-            View::Status => status_view_status_bar_height(width),
-            View::Operation => operation_view_status_bar_height(width),
-            View::Blame => blame_view_status_bar_height(width),
-            View::Resolve => 1, // Simple status bar
+            View::Blame => status_hints_height(keys::BLAME_VIEW_HINTS, width),
             View::Help => 0,
         }
+    }
+
+    /// Build HintContext from current App state (Log/Status/Operation views)
+    fn build_hint_context(&self) -> HintContext {
+        let change = self.log_view.selected_change();
+        HintContext {
+            has_bookmarks: change.is_some_and(|c| !c.bookmarks.is_empty()),
+            has_conflicts: change.is_some_and(|c| c.has_conflict),
+            is_working_copy: change.is_some_and(|c| c.is_working_copy),
+            dialog: self.dialog_hint_kind(),
+        }
+    }
+
+    /// Build HintContext for Resolve view (uses resolve_view.is_working_copy)
+    fn build_resolve_hint_context(&self) -> HintContext {
+        HintContext {
+            is_working_copy: self
+                .resolve_view
+                .as_ref()
+                .is_some_and(|rv| rv.is_working_copy),
+            dialog: self.dialog_hint_kind(),
+            ..HintContext::default()
+        }
+    }
+
+    /// Convert active dialog to DialogHintKind
+    fn dialog_hint_kind(&self) -> Option<DialogHintKind> {
+        self.active_dialog.as_ref().map(|d| match &d.kind {
+            DialogKind::Confirm { .. } => DialogHintKind::Confirm,
+            DialogKind::Select {
+                single_select: true,
+                ..
+            } => DialogHintKind::SingleSelect,
+            DialogKind::Select { .. } => DialogHintKind::Select,
+        })
     }
 
     fn render_log_view(
@@ -58,19 +99,20 @@ impl App {
         notification: Option<&crate::model::Notification>,
     ) {
         let area = frame.area();
-        let input_mode = self.log_view.input_mode;
-        let status_bar_height = log_view_status_bar_height(area.width, input_mode);
+        let ctx = self.build_hint_context();
+        let hints = keys::current_hints(View::Log, self.log_view.input_mode, &ctx);
+        let sb_height = status_hints_height(&hints, area.width);
 
         // Reserve space for status bar at bottom
         let main_area = Rect {
             x: area.x,
             y: area.y,
             width: area.width,
-            height: area.height.saturating_sub(status_bar_height),
+            height: area.height.saturating_sub(sb_height),
         };
 
         self.log_view.render(frame, main_area, notification);
-        render_status_bar(frame, input_mode);
+        render_status_hints(frame, &hints);
     }
 
     fn render_diff_view(
@@ -112,14 +154,16 @@ impl App {
         notification: Option<&crate::model::Notification>,
     ) {
         let area = frame.area();
-        let status_bar_height = status_view_status_bar_height(area.width);
+        let ctx = self.build_hint_context();
+        let hints = keys::current_hints(View::Status, self.log_view.input_mode, &ctx);
+        let sb_height = status_hints_height(&hints, area.width);
 
         // Reserve space for status bar at bottom
         let main_area = Rect {
             x: area.x,
             y: area.y,
             width: area.width,
-            height: area.height.saturating_sub(status_bar_height),
+            height: area.height.saturating_sub(sb_height),
         };
 
         // Store visible height for file list (2 borders + 3 header lines)
@@ -128,7 +172,7 @@ impl App {
         self.last_frame_height.set(file_list_height);
 
         self.status_view.render(frame, main_area, notification);
-        render_status_view_status_bar(frame);
+        render_status_hints(frame, &hints);
     }
 
     fn render_operation_view(
@@ -137,18 +181,20 @@ impl App {
         notification: Option<&crate::model::Notification>,
     ) {
         let area = frame.area();
-        let status_bar_height = operation_view_status_bar_height(area.width);
+        let ctx = self.build_hint_context();
+        let hints = keys::current_hints(View::Operation, self.log_view.input_mode, &ctx);
+        let sb_height = status_hints_height(&hints, area.width);
 
         // Reserve space for status bar at bottom
         let main_area = Rect {
             x: area.x,
             y: area.y,
             width: area.width,
-            height: area.height.saturating_sub(status_bar_height),
+            height: area.height.saturating_sub(sb_height),
         };
 
         self.operation_view.render(frame, main_area, notification);
-        render_operation_status_bar(frame);
+        render_status_hints(frame, &hints);
     }
 
     fn render_help_view(&self, frame: &mut Frame) {
@@ -162,17 +208,20 @@ impl App {
     ) {
         if let Some(ref resolve_view) = self.resolve_view {
             let area = frame.area();
+            let ctx = self.build_resolve_hint_context();
+            let hints = keys::current_hints(View::Resolve, self.log_view.input_mode, &ctx);
+            let sb_height = status_hints_height(&hints, area.width);
 
-            // Reserve 1 line for status bar
+            // Reserve space for status bar
             let main_area = Rect {
                 x: area.x,
                 y: area.y,
                 width: area.width,
-                height: area.height.saturating_sub(1),
+                height: area.height.saturating_sub(sb_height),
             };
 
             resolve_view.render(frame, main_area, notification);
-            self.render_resolve_status_bar(frame, resolve_view);
+            render_status_hints(frame, &hints);
         } else {
             render_placeholder(
                 frame,
@@ -183,73 +232,17 @@ impl App {
         }
     }
 
-    fn render_resolve_status_bar(
-        &self,
-        frame: &mut Frame,
-        resolve_view: &crate::ui::views::ResolveView,
-    ) {
-        use ratatui::style::Style;
-        use ratatui::text::{Line, Span};
-        use ratatui::widgets::Paragraph;
-
-        let area = frame.area();
-        let status_area = Rect {
-            x: area.x,
-            y: area.height.saturating_sub(1),
-            width: area.width,
-            height: 1,
-        };
-
-        let mut spans = Vec::new();
-
-        if resolve_view.is_working_copy {
-            spans.push(Span::styled(
-                " Enter ",
-                Style::default().fg(Color::Black).bg(Color::Green),
-            ));
-            spans.push(Span::raw(" Resolve "));
-        }
-
-        spans.push(Span::styled(
-            " o ",
-            Style::default().fg(Color::Black).bg(Color::Cyan),
-        ));
-        spans.push(Span::raw(" Ours "));
-
-        spans.push(Span::styled(
-            " t ",
-            Style::default().fg(Color::Black).bg(Color::Cyan),
-        ));
-        spans.push(Span::raw(" Theirs "));
-
-        spans.push(Span::styled(
-            " d ",
-            Style::default().fg(Color::Black).bg(Color::Magenta),
-        ));
-        spans.push(Span::raw(" Diff "));
-
-        spans.push(Span::styled(
-            " q ",
-            Style::default().fg(Color::Black).bg(Color::Red),
-        ));
-        spans.push(Span::raw(" Back "));
-
-        let status_line =
-            Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::DarkGray).bold());
-        frame.render_widget(status_line, status_area);
-    }
-
     fn render_blame_view(&self, frame: &mut Frame) {
         if let Some(ref blame_view) = self.blame_view {
             let area = frame.area();
-            let status_bar_height = blame_view_status_bar_height(area.width);
+            let sb_height = status_hints_height(keys::BLAME_VIEW_HINTS, area.width);
 
             // Reserve space for status bar at bottom
             let main_area = Rect {
                 x: area.x,
                 y: area.y,
                 width: area.width,
-                height: area.height.saturating_sub(status_bar_height),
+                height: area.height.saturating_sub(sb_height),
             };
 
             // Store visible height for blame content
