@@ -1082,10 +1082,17 @@ impl App {
         }
     }
 
-    /// Open the Bookmark View
+    /// Open the Bookmark View (only navigates if refresh succeeds)
     pub(crate) fn open_bookmark_view(&mut self) {
-        self.refresh_bookmark_view();
-        self.go_to_view(View::Bookmark);
+        match self.jj.bookmark_list_with_info() {
+            Ok(bookmarks) => {
+                self.bookmark_view.set_bookmarks(bookmarks);
+                self.go_to_view(View::Bookmark);
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to list bookmarks: {}", e));
+            }
+        }
     }
 
     /// Refresh the bookmark view data

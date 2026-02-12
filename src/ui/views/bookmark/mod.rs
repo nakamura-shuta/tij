@@ -423,4 +423,21 @@ mod tests {
         assert_eq!(view.display_rows.len(), 3);
         assert_eq!(view.bookmark_count(), 2);
     }
+
+    #[test]
+    fn test_non_ascii_bookmark_names() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(vec![
+            make_local("機能ブランチ", Some("abc12345"), Some("日本語の説明")),
+            make_local("feat-🚀-rocket", Some("def67890"), Some("Emoji branch")),
+            make_untracked_remote("功能分支", "origin"),
+        ]);
+        assert_eq!(view.bookmark_count(), 3);
+        // Verify navigation works with non-ASCII names
+        let selected = view.selected_bookmark().unwrap();
+        assert_eq!(selected.bookmark.name, "feat-🚀-rocket");
+        view.select_next();
+        let selected = view.selected_bookmark().unwrap();
+        assert_eq!(selected.bookmark.name, "機能ブランチ");
+    }
 }

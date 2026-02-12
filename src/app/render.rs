@@ -3,7 +3,7 @@
 use ratatui::{Frame, prelude::*};
 
 use super::state::{App, View};
-use crate::keys::{self, DialogHintKind, HintContext};
+use crate::keys::{self, BookmarkKind, DialogHintKind, HintContext};
 use crate::ui::components::dialog::DialogKind;
 use crate::ui::widgets::{
     render_blame_status_bar, render_diff_status_bar, render_error_banner, render_help_panel,
@@ -43,9 +43,14 @@ impl App {
     /// Get the status bar height for the current view
     fn get_current_status_bar_height(&self, width: u16) -> u16 {
         match self.current_view {
-            View::Log | View::Status | View::Operation | View::Bookmark => {
+            View::Log | View::Status | View::Operation => {
                 let ctx = self.build_hint_context();
                 let hints = keys::current_hints(self.current_view, self.log_view.input_mode, &ctx);
+                status_hints_height(&hints, width)
+            }
+            View::Bookmark => {
+                let ctx = self.build_bookmark_hint_context();
+                let hints = keys::current_hints(View::Bookmark, self.log_view.input_mode, &ctx);
                 status_hints_height(&hints, width)
             }
             View::Resolve => {
@@ -67,6 +72,7 @@ impl App {
             has_conflicts: change.is_some_and(|c| c.has_conflict),
             is_working_copy: change.is_some_and(|c| c.is_working_copy),
             dialog: self.dialog_hint_kind(),
+            ..HintContext::default()
         }
     }
 
@@ -198,13 +204,35 @@ impl App {
         render_status_hints(frame, &hints);
     }
 
+    /// Build HintContext for Bookmark View (uses selected bookmark kind)
+    fn build_bookmark_hint_context(&self) -> HintContext {
+        let kind = self.bookmark_view.selected_bookmark().map(|info| {
+            if info.bookmark.remote.is_none() {
+                if info.change_id.is_some() {
+                    BookmarkKind::LocalJumpable
+                } else {
+                    BookmarkKind::LocalNoChange
+                }
+            } else if info.bookmark.is_untracked_remote() {
+                BookmarkKind::UntrackedRemote
+            } else {
+                BookmarkKind::TrackedRemote
+            }
+        });
+        HintContext {
+            selected_bookmark_kind: kind,
+            dialog: self.dialog_hint_kind(),
+            ..HintContext::default()
+        }
+    }
+
     fn render_bookmark_view(
         &self,
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
         let area = frame.area();
-        let ctx = self.build_hint_context();
+        let ctx = self.build_bookmark_hint_context();
         let hints = keys::current_hints(View::Bookmark, self.log_view.input_mode, &ctx);
         let sb_height = status_hints_height(&hints, area.width);
 

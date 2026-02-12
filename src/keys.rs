@@ -634,6 +634,19 @@ pub const HINT_UNTRACK: KeyHint = KeyHint {
 // HintContext + DialogHintKind
 // =============================================================================
 
+/// Bookmark kind for context-dependent Bookmark View hints
+#[derive(Clone, Copy)]
+pub enum BookmarkKind {
+    /// Local bookmark with change_id (jumpable)
+    LocalJumpable,
+    /// Local bookmark without change_id
+    LocalNoChange,
+    /// Tracked remote bookmark
+    TrackedRemote,
+    /// Untracked remote bookmark
+    UntrackedRemote,
+}
+
 /// Context for dynamic hint selection
 #[derive(Default)]
 pub struct HintContext {
@@ -645,6 +658,8 @@ pub struct HintContext {
     pub is_working_copy: bool,
     /// Active dialog kind (overrides view hints)
     pub dialog: Option<DialogHintKind>,
+    /// Selected bookmark kind (Bookmark View only)
+    pub selected_bookmark_kind: Option<BookmarkKind>,
 }
 
 /// Dialog kind for hint selection
@@ -751,16 +766,26 @@ fn resolve_hints(ctx: &HintContext) -> Vec<KeyHint> {
     h
 }
 
-fn bookmark_view_hints(_ctx: &HintContext) -> Vec<KeyHint> {
-    vec![
-        HINT_JUMP_ENTER,
-        HINT_TRACK,
-        HINT_UNTRACK,
-        HINT_DEL_BKM,
-        HINT_UNDO,
-        HINT_REFRESH,
-        HINT_BACK,
-    ]
+fn bookmark_view_hints(ctx: &HintContext) -> Vec<KeyHint> {
+    let mut h = Vec::new();
+    match ctx.selected_bookmark_kind {
+        Some(BookmarkKind::LocalJumpable) => {
+            h.push(HINT_JUMP_ENTER);
+            h.push(HINT_DEL_BKM);
+        }
+        Some(BookmarkKind::LocalNoChange) => {
+            h.push(HINT_DEL_BKM);
+        }
+        Some(BookmarkKind::TrackedRemote) => {
+            h.push(HINT_UNTRACK);
+        }
+        Some(BookmarkKind::UntrackedRemote) => {
+            h.push(HINT_TRACK);
+        }
+        None => {}
+    }
+    h.extend([HINT_UNDO, HINT_REFRESH, HINT_BACK]);
+    h
 }
 
 /// CompareSelect mode status bar hints
