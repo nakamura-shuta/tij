@@ -478,6 +478,16 @@ impl JjExecutor {
         self.run(&args)
     }
 
+    /// Run `jj bookmark untrack <names...>` to stop tracking remote bookmarks
+    ///
+    /// Stops tracking the specified remote bookmarks locally.
+    /// Format: `<name>@<remote>` (e.g., "feature-x@origin")
+    pub fn bookmark_untrack(&self, names: &[&str]) -> Result<String, JjError> {
+        let mut args = vec![commands::BOOKMARK, commands::BOOKMARK_UNTRACK];
+        args.extend(names);
+        self.run(&args)
+    }
+
     /// Run `jj rebase -r <source> -d <destination>` to move a change
     ///
     /// Moves the specified change to be a child of the destination.

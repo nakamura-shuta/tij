@@ -10,7 +10,7 @@ use tij::ui::widgets::render_help_panel;
 
 #[test]
 fn test_help_panel_full() {
-    let mut terminal = Terminal::new(TestBackend::new(80, 40)).unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(80, 80)).unwrap();
     terminal
         .draw(|frame| {
             render_help_panel(frame, frame.area());

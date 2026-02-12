@@ -24,6 +24,7 @@ impl App {
             View::Operation => self.render_operation_view(frame, notification),
             View::Blame => self.render_blame_view(frame),
             View::Resolve => self.render_resolve_view(frame, notification),
+            View::Bookmark => self.render_bookmark_view(frame, notification),
             View::Help => self.render_help_view(frame),
         }
 
@@ -42,7 +43,7 @@ impl App {
     /// Get the status bar height for the current view
     fn get_current_status_bar_height(&self, width: u16) -> u16 {
         match self.current_view {
-            View::Log | View::Status | View::Operation => {
+            View::Log | View::Status | View::Operation | View::Bookmark => {
                 let ctx = self.build_hint_context();
                 let hints = keys::current_hints(self.current_view, self.log_view.input_mode, &ctx);
                 status_hints_height(&hints, width)
@@ -194,6 +195,27 @@ impl App {
         };
 
         self.operation_view.render(frame, main_area, notification);
+        render_status_hints(frame, &hints);
+    }
+
+    fn render_bookmark_view(
+        &self,
+        frame: &mut Frame,
+        notification: Option<&crate::model::Notification>,
+    ) {
+        let area = frame.area();
+        let ctx = self.build_hint_context();
+        let hints = keys::current_hints(View::Bookmark, self.log_view.input_mode, &ctx);
+        let sb_height = status_hints_height(&hints, area.width);
+
+        let main_area = Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: area.height.saturating_sub(sb_height),
+        };
+
+        self.bookmark_view.render(frame, main_area, notification);
         render_status_hints(frame, &hints);
     }
 

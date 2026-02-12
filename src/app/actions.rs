@@ -1082,6 +1082,42 @@ impl App {
         }
     }
 
+    /// Open the Bookmark View
+    pub(crate) fn open_bookmark_view(&mut self) {
+        self.refresh_bookmark_view();
+        self.go_to_view(View::Bookmark);
+    }
+
+    /// Refresh the bookmark view data
+    pub(crate) fn refresh_bookmark_view(&mut self) {
+        match self.jj.bookmark_list_with_info() {
+            Ok(bookmarks) => {
+                self.bookmark_view.set_bookmarks(bookmarks);
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to list bookmarks: {}", e));
+            }
+        }
+    }
+
+    /// Execute untrack for a remote bookmark
+    pub(crate) fn execute_untrack(&mut self, full_name: &str) {
+        match self.jj.bookmark_untrack(&[full_name]) {
+            Ok(_) => {
+                let display = full_name.split('@').next().unwrap_or(full_name);
+                self.notification = Some(Notification::success(format!(
+                    "Stopped tracking: {}",
+                    display
+                )));
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to untrack: {}", e));
+            }
+        }
+    }
+
     /// Execute track for selected bookmarks
     pub(crate) fn execute_track(&mut self, names: &[String]) {
         if names.is_empty() {

@@ -19,6 +19,7 @@ pub fn render_help_panel(frame: &mut Frame, area: Rect) {
     push_key_section(&mut lines, "Input Mode", keys::INPUT_KEYS);
     push_key_section(&mut lines, "Diff View", keys::DIFF_KEYS);
     push_key_section(&mut lines, "Status View", keys::STATUS_KEYS);
+    push_key_section(&mut lines, "Bookmark View", keys::BOOKMARK_KEYS);
     push_key_section(&mut lines, "Operation View", keys::OPERATION_KEYS);
 
     frame.render_widget(

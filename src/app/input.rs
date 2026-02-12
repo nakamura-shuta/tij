@@ -6,8 +6,8 @@ use super::state::{App, View};
 use crate::keys;
 use crate::model::Notification;
 use crate::ui::views::{
-    BlameAction, DiffAction, InputMode, LogAction, OperationAction, ResolveAction, StatusAction,
-    StatusInputMode,
+    BlameAction, BookmarkAction, DiffAction, InputMode, LogAction, OperationAction, ResolveAction,
+    StatusAction, StatusInputMode,
 };
 
 impl App {
@@ -106,9 +106,12 @@ impl App {
                 self.go_to_view(View::Status);
                 true
             }
-            keys::UNDO if self.current_view == View::Log => {
+            keys::UNDO if matches!(self.current_view, View::Log | View::Bookmark) => {
                 self.notification = None; // Clear any existing notification
                 self.execute_undo();
+                if self.current_view == View::Bookmark {
+                    self.refresh_bookmark_view();
+                }
                 true
             }
             keys::OPERATION_HISTORY if self.current_view == View::Log => {
@@ -160,6 +163,10 @@ impl App {
                     let action = blame_view.handle_key(key);
                     self.handle_blame_action(action);
                 }
+            }
+            View::Bookmark => {
+                let action = self.bookmark_view.handle_key(key);
+                self.handle_bookmark_action(action);
             }
             View::Resolve => {
                 if let Some(ref mut resolve_view) = self.resolve_view {
@@ -272,6 +279,31 @@ impl App {
             }
             LogAction::CompareSameRevision => {
                 self.notification = Some(Notification::info("Cannot compare revision with itself"));
+            }
+            LogAction::OpenBookmarkView => {
+                self.open_bookmark_view();
+            }
+        }
+    }
+
+    fn handle_bookmark_action(&mut self, action: BookmarkAction) {
+        match action {
+            BookmarkAction::None => {}
+            BookmarkAction::Jump(change_id) => {
+                self.execute_bookmark_jump(&change_id);
+                self.go_to_view(View::Log);
+            }
+            BookmarkAction::Track(full_name) => {
+                self.execute_track(&[full_name]);
+                self.refresh_bookmark_view();
+            }
+            BookmarkAction::Untrack(full_name) => {
+                self.execute_untrack(&full_name);
+                self.refresh_bookmark_view();
+            }
+            BookmarkAction::Delete(name) => {
+                self.execute_bookmark_delete(&[name]);
+                self.refresh_bookmark_view();
             }
         }
     }

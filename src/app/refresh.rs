@@ -136,6 +136,10 @@ impl App {
                     self.notification = Some(Notification::info("Refreshed"));
                 }
             }
+            View::Bookmark => {
+                self.refresh_bookmark_view();
+                self.notification = Some(Notification::info("Refreshed"));
+            }
             View::Blame => {
                 // Only refresh if blame_view is loaded
                 if let Some(ref blame_view) = self.blame_view {

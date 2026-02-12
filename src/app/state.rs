@@ -5,7 +5,9 @@ use std::cell::Cell;
 use crate::jj::JjExecutor;
 use crate::model::Notification;
 use crate::ui::components::Dialog;
-use crate::ui::views::{BlameView, DiffView, LogView, OperationView, ResolveView, StatusView};
+use crate::ui::views::{
+    BlameView, BookmarkView, DiffView, LogView, OperationView, ResolveView, StatusView,
+};
 
 /// Available views in the application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -17,6 +19,7 @@ pub enum View {
     Operation,
     Blame,
     Resolve,
+    Bookmark,
     Help,
 }
 
@@ -37,6 +40,8 @@ pub struct App {
     pub blame_view: Option<BlameView>,
     /// Resolve view state (created on demand)
     pub resolve_view: Option<ResolveView>,
+    /// Bookmark view state
+    pub bookmark_view: BookmarkView,
     /// Status view state
     pub status_view: StatusView,
     /// Operation history view state
@@ -72,6 +77,7 @@ impl App {
             diff_view: None,
             blame_view: None,
             resolve_view: None,
+            bookmark_view: BookmarkView::new(),
             status_view: StatusView::new(),
             operation_view: OperationView::new(),
             jj: JjExecutor::new(),
@@ -97,6 +103,7 @@ impl App {
             View::Operation => View::Log,
             View::Blame => View::Log,
             View::Resolve => View::Log,
+            View::Bookmark => View::Log,
             View::Help => View::Log,
         };
         self.go_to_view(next);

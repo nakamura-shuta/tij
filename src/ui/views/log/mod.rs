@@ -127,6 +127,8 @@ pub enum LogAction {
     StartCompare(String),
     /// Compare blocked: same revision selected
     CompareSameRevision,
+    /// Open Bookmark View
+    OpenBookmarkView,
 }
 
 /// Log View state

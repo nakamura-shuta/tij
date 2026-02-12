@@ -27,6 +27,7 @@ pub mod commands {
     pub const BOOKMARK_DELETE: &str = "delete";
     pub const BOOKMARK_LIST: &str = "list";
     pub const BOOKMARK_TRACK: &str = "track";
+    pub const BOOKMARK_UNTRACK: &str = "untrack";
     pub const REBASE: &str = "rebase";
     pub const ABSORB: &str = "absorb";
     pub const FILE: &str = "file";

@@ -177,6 +177,7 @@ impl LogView {
                     LogAction::None
                 }
             }
+            k if k == keys::BOOKMARK_VIEW => LogAction::OpenBookmarkView,
             _ => LogAction::None,
         }
     }

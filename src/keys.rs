@@ -139,6 +139,12 @@ pub const BOOKMARK_JUMP: KeyCode = KeyCode::Char('\'');
 /// Compare two revisions (Log View)
 pub const COMPARE: KeyCode = KeyCode::Char('=');
 
+/// Open Bookmark View (Log View)
+pub const BOOKMARK_VIEW: KeyCode = KeyCode::Char('M');
+
+/// Untrack remote bookmark (Bookmark View)
+pub const BOOKMARK_UNTRACK: KeyCode = KeyCode::Char('U');
+
 /// Jump to first conflict file (Status View)
 pub const JUMP_CONFLICT: KeyCode = KeyCode::Char('f');
 
@@ -340,6 +346,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "=",
         description: "Compare revisions",
+    },
+    KeyBindEntry {
+        key: "M",
+        description: "Bookmark view",
     },
 ];
 
@@ -603,6 +613,22 @@ pub const HINT_DIFF: KeyHint = KeyHint {
     label: "Diff",
     color: Color::Magenta,
 };
+// Bookmark view hints
+pub const HINT_BOOKMARK_VIEW: KeyHint = KeyHint {
+    key: "M",
+    label: "Bookmarks",
+    color: Color::Cyan,
+};
+pub const HINT_JUMP_ENTER: KeyHint = KeyHint {
+    key: "Enter",
+    label: "Jump",
+    color: Color::Green,
+};
+pub const HINT_UNTRACK: KeyHint = KeyHint {
+    key: "U",
+    label: "Untrack",
+    color: Color::Yellow,
+};
 
 // =============================================================================
 // HintContext + DialogHintKind
@@ -648,6 +674,7 @@ pub fn current_hints(view: View, input_mode: InputMode, ctx: &HintContext) -> Ve
     match view {
         View::Log => log_hints(input_mode, ctx),
         View::Resolve => resolve_hints(ctx),
+        View::Bookmark => bookmark_view_hints(ctx),
         View::Status => STATUS_VIEW_HINTS.to_vec(),
         View::Operation => OPERATION_VIEW_HINTS.to_vec(),
         // Diff, Blame use prefix-based rendering; Help has no status bar.
@@ -705,6 +732,7 @@ fn log_normal_hints(ctx: &HintContext) -> Vec<KeyHint> {
         HINT_TRACK,
         HINT_JUMP,
         HINT_COMPARE,
+        HINT_BOOKMARK_VIEW,
         HINT_OPS,
         HINT_UNDO,
         HINT_REFRESH,
@@ -721,6 +749,18 @@ fn resolve_hints(ctx: &HintContext) -> Vec<KeyHint> {
     }
     h.extend([HINT_OURS, HINT_THEIRS, HINT_DIFF, HINT_BACK]);
     h
+}
+
+fn bookmark_view_hints(_ctx: &HintContext) -> Vec<KeyHint> {
+    vec![
+        HINT_JUMP_ENTER,
+        HINT_TRACK,
+        HINT_UNTRACK,
+        HINT_DEL_BKM,
+        HINT_UNDO,
+        HINT_REFRESH,
+        HINT_BACK,
+    ]
 }
 
 /// CompareSelect mode status bar hints
@@ -912,6 +952,42 @@ pub const OPERATION_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "Enter",
         description: "Restore operation",
+    },
+    KeyBindEntry {
+        key: "q",
+        description: "Back to log",
+    },
+];
+
+/// Bookmark view key bindings for help display
+pub const BOOKMARK_KEYS: &[KeyBindEntry] = &[
+    KeyBindEntry {
+        key: "j/k",
+        description: "Move down/up",
+    },
+    KeyBindEntry {
+        key: "g/G",
+        description: "Go to top/bottom",
+    },
+    KeyBindEntry {
+        key: "Enter",
+        description: "Jump to bookmark in log",
+    },
+    KeyBindEntry {
+        key: "T",
+        description: "Track remote bookmark",
+    },
+    KeyBindEntry {
+        key: "U",
+        description: "Untrack remote bookmark",
+    },
+    KeyBindEntry {
+        key: "D",
+        description: "Delete local bookmark",
+    },
+    KeyBindEntry {
+        key: "u",
+        description: "Undo",
     },
     KeyBindEntry {
         key: "q",
