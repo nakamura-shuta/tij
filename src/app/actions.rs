@@ -602,12 +602,38 @@ impl App {
                         PushPreviewResult::Changes(actions) => {
                             // Include dry-run result in message (multi-line)
                             let preview_text = format_preview_actions(&actions);
-                            let body = format!("Push bookmark \"{}\"?\n{}", name, preview_text);
+                            let is_force = has_force_push(&actions);
+                            let is_protected = is_immutable_bookmark(name);
+
+                            let (body, detail) = if is_force && is_protected {
+                                (
+                                    format!(
+                                        "\u{26A0} FORCE PUSH to protected bookmark \"{}\"!\n{}",
+                                        name, preview_text
+                                    ),
+                                    "WARNING: Force pushing to a protected bookmark rewrites shared history!"
+                                        .to_string(),
+                                )
+                            } else if is_force {
+                                (
+                                    format!(
+                                        "\u{26A0} FORCE PUSH bookmark \"{}\"?\n{}",
+                                        name, preview_text
+                                    ),
+                                    "This will rewrite remote history! Cannot be undone with 'u'."
+                                        .to_string(),
+                                )
+                            } else {
+                                (
+                                    format!("Push bookmark \"{}\"?\n{}", name, preview_text),
+                                    "Remote changes cannot be undone with 'u'.".to_string(),
+                                )
+                            };
 
                             self.active_dialog = Some(Dialog::confirm(
                                 "Push to Remote",
                                 body,
-                                Some("Remote changes cannot be undone with 'u'.".to_string()),
+                                Some(detail),
                                 DialogCallback::GitPush,
                             ));
                             self.pending_push_bookmarks = vec![name.clone()];
@@ -1086,9 +1112,43 @@ impl App {
     }
 }
 
+/// Check if any push actions involve a force push (non-fast-forward)
+///
+/// Uses safe-side detection: anything that is NOT a known-safe action
+/// (MoveForward, Add, Delete) is treated as a force push. This ensures
+/// that future jj action types (e.g. new move directions) are flagged
+/// as potentially dangerous by default.
+fn has_force_push(actions: &[crate::jj::PushPreviewAction]) -> bool {
+    use crate::jj::PushPreviewAction;
+    actions.iter().any(|a| {
+        !matches!(
+            a,
+            PushPreviewAction::MoveForward { .. }
+                | PushPreviewAction::Add { .. }
+                | PushPreviewAction::Delete { .. }
+        )
+    })
+}
+
+/// Default list of protected/immutable bookmark names.
+///
+/// These are shared integration branches where force pushing rewrites
+/// history for all collaborators. Extracted as a constant to make
+/// future configuration-file-based overrides a minimal diff.
+const DEFAULT_IMMUTABLE_BOOKMARKS: &[&str] = &["main", "master", "trunk"];
+
+/// Check if a bookmark name is considered immutable/protected
+///
+/// Protected bookmarks are shared integration branches.
+/// Force pushing to them rewrites shared history for all collaborators.
+fn is_immutable_bookmark(name: &str) -> bool {
+    DEFAULT_IMMUTABLE_BOOKMARKS.contains(&name)
+}
+
 /// Format preview actions for confirm dialog display
 ///
 /// Produces a compact single-line per action, with hashes truncated to 8 chars.
+/// Force push actions are prefixed with a warning symbol.
 fn format_preview_actions(actions: &[crate::jj::PushPreviewAction]) -> String {
     use crate::jj::PushPreviewAction;
     actions
@@ -1099,6 +1159,22 @@ fn format_preview_actions(actions: &[crate::jj::PushPreviewAction]) -> String {
                 let to_short = &to[..8.min(to.len())];
                 format!(
                     "Move forward {} from {}.. to {}..",
+                    bookmark, from_short, to_short
+                )
+            }
+            PushPreviewAction::MoveSideways { bookmark, from, to } => {
+                let from_short = &from[..8.min(from.len())];
+                let to_short = &to[..8.min(to.len())];
+                format!(
+                    "\u{26A0} Move sideways {} from {}.. to {}..",
+                    bookmark, from_short, to_short
+                )
+            }
+            PushPreviewAction::MoveBackward { bookmark, from, to } => {
+                let from_short = &from[..8.min(from.len())];
+                let to_short = &to[..8.min(to.len())];
+                format!(
+                    "\u{26A0} Move backward {} from {}.. to {}..",
                     bookmark, from_short, to_short
                 )
             }
@@ -1125,6 +1201,20 @@ fn format_bookmark_status(preview: &crate::jj::PushPreviewResult, name: &str) ->
                 PushPreviewAction::MoveForward { bookmark, from, .. } if bookmark == name => {
                     let short = &from[..8.min(from.len())];
                     Some(format!("move from {}..", short))
+                }
+                PushPreviewAction::MoveSideways { bookmark, .. } if bookmark == name => {
+                    if is_immutable_bookmark(name) {
+                        Some("\u{26A0} PROTECTED force".to_string())
+                    } else {
+                        Some("\u{26A0} force".to_string())
+                    }
+                }
+                PushPreviewAction::MoveBackward { bookmark, .. } if bookmark == name => {
+                    if is_immutable_bookmark(name) {
+                        Some("\u{26A0} PROTECTED force".to_string())
+                    } else {
+                        Some("\u{26A0} force".to_string())
+                    }
                 }
                 PushPreviewAction::Add { bookmark, .. } if bookmark == name => {
                     Some("new".to_string())
@@ -1280,5 +1370,108 @@ mod tests {
         let before = "old description".trim_end().to_string();
         let after = "new description".trim_end().to_string();
         assert_ne!(before, after);
+    }
+
+    // =========================================================================
+    // has_force_push tests
+    // =========================================================================
+
+    #[test]
+    fn test_has_force_push_forward_only() {
+        use crate::jj::PushPreviewAction;
+        let actions = vec![PushPreviewAction::MoveForward {
+            bookmark: "main".to_string(),
+            from: "aaa".to_string(),
+            to: "bbb".to_string(),
+        }];
+        assert!(!has_force_push(&actions));
+    }
+
+    #[test]
+    fn test_has_force_push_sideways() {
+        use crate::jj::PushPreviewAction;
+        let actions = vec![PushPreviewAction::MoveSideways {
+            bookmark: "feature".to_string(),
+            from: "aaa".to_string(),
+            to: "bbb".to_string(),
+        }];
+        assert!(has_force_push(&actions));
+    }
+
+    #[test]
+    fn test_has_force_push_backward() {
+        use crate::jj::PushPreviewAction;
+        let actions = vec![PushPreviewAction::MoveBackward {
+            bookmark: "main".to_string(),
+            from: "bbb".to_string(),
+            to: "aaa".to_string(),
+        }];
+        assert!(has_force_push(&actions));
+    }
+
+    // =========================================================================
+    // is_immutable_bookmark tests
+    // =========================================================================
+
+    #[test]
+    fn test_is_immutable_bookmark_main() {
+        assert!(is_immutable_bookmark("main"));
+    }
+
+    #[test]
+    fn test_is_immutable_bookmark_master() {
+        assert!(is_immutable_bookmark("master"));
+    }
+
+    #[test]
+    fn test_is_immutable_bookmark_trunk() {
+        assert!(is_immutable_bookmark("trunk"));
+    }
+
+    #[test]
+    fn test_is_immutable_bookmark_feature() {
+        assert!(!is_immutable_bookmark("feature-x"));
+    }
+
+    // =========================================================================
+    // format_bookmark_status tests (multi-bookmark select dialog labels)
+    // =========================================================================
+
+    #[test]
+    fn test_format_bookmark_status_protected_force_label() {
+        use crate::jj::{PushPreviewAction, PushPreviewResult};
+        // Protected bookmark (main) with sideways move should show "⚠ PROTECTED force"
+        let preview = PushPreviewResult::Changes(vec![PushPreviewAction::MoveSideways {
+            bookmark: "main".to_string(),
+            from: "aaa111bbb222".to_string(),
+            to: "ccc333ddd444".to_string(),
+        }]);
+        let status = format_bookmark_status(&preview, "main");
+        assert_eq!(status, "\u{26A0} PROTECTED force");
+    }
+
+    #[test]
+    fn test_format_bookmark_status_force_label() {
+        use crate::jj::{PushPreviewAction, PushPreviewResult};
+        // Non-protected bookmark with backward move should show "⚠ force"
+        let preview = PushPreviewResult::Changes(vec![PushPreviewAction::MoveBackward {
+            bookmark: "feature-x".to_string(),
+            from: "aaa111bbb222".to_string(),
+            to: "ccc333ddd444".to_string(),
+        }]);
+        let status = format_bookmark_status(&preview, "feature-x");
+        assert_eq!(status, "\u{26A0} force");
+    }
+
+    #[test]
+    fn test_format_bookmark_status_forward_is_not_force() {
+        use crate::jj::{PushPreviewAction, PushPreviewResult};
+        let preview = PushPreviewResult::Changes(vec![PushPreviewAction::MoveForward {
+            bookmark: "main".to_string(),
+            from: "aaa111bbb222".to_string(),
+            to: "ccc333ddd444".to_string(),
+        }]);
+        let status = format_bookmark_status(&preview, "main");
+        assert!(status.starts_with("move from"));
     }
 }

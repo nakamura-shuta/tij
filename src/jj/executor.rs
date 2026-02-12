@@ -857,8 +857,20 @@ impl JjExecutor {
 /// Parsed action from a dry-run push preview
 #[derive(Debug, Clone, PartialEq)]
 pub enum PushPreviewAction {
-    /// Move forward bookmark from old_hash to new_hash
+    /// Move forward bookmark from old_hash to new_hash (safe fast-forward)
     MoveForward {
+        bookmark: String,
+        from: String,
+        to: String,
+    },
+    /// Move sideways bookmark (diverged: e.g. after rebase) — force push
+    MoveSideways {
+        bookmark: String,
+        from: String,
+        to: String,
+    },
+    /// Move backward bookmark (regression: e.g. after reset) — force push
+    MoveBackward {
         bookmark: String,
         from: String,
         to: String,
@@ -887,6 +899,8 @@ pub enum PushPreviewResult {
 ///
 /// Expected output patterns:
 /// - `Move forward bookmark NAME from HASH to HASH`
+/// - `Move sideways bookmark NAME from HASH to HASH` (force push)
+/// - `Move backward bookmark NAME from HASH to HASH` (force push)
 /// - `Add bookmark NAME to HASH`
 /// - `Delete bookmark NAME from HASH`
 /// - `Nothing changed.` (when bookmark is already up to date)
@@ -904,6 +918,28 @@ pub fn parse_push_dry_run(output: &str) -> PushPreviewResult {
                 && let Some((from, to)) = hashes.split_once(" to ")
             {
                 actions.push(PushPreviewAction::MoveForward {
+                    bookmark: name.to_string(),
+                    from: from.to_string(),
+                    to: to.to_string(),
+                });
+            }
+        } else if let Some(rest) = line.strip_prefix("Move sideways bookmark ") {
+            // "Move sideways bookmark NAME from HASH to HASH" (force push)
+            if let Some((name, hashes)) = rest.split_once(" from ")
+                && let Some((from, to)) = hashes.split_once(" to ")
+            {
+                actions.push(PushPreviewAction::MoveSideways {
+                    bookmark: name.to_string(),
+                    from: from.to_string(),
+                    to: to.to_string(),
+                });
+            }
+        } else if let Some(rest) = line.strip_prefix("Move backward bookmark ") {
+            // "Move backward bookmark NAME from HASH to HASH" (force push)
+            if let Some((name, hashes)) = rest.split_once(" from ")
+                && let Some((from, to)) = hashes.split_once(" to ")
+            {
+                actions.push(PushPreviewAction::MoveBackward {
                     bookmark: name.to_string(),
                     from: from.to_string(),
                     to: to.to_string(),
@@ -1050,5 +1086,63 @@ mod tests {
         // Unknown jj output format should return Unparsed, not NothingChanged
         let result = parse_push_dry_run("Some unexpected jj output format\n");
         assert_eq!(result, PushPreviewResult::Unparsed);
+    }
+
+    #[test]
+    fn test_parse_move_sideways() {
+        let output = "Changes to push to origin:\n  Move sideways bookmark feature from 6c733e1ae096 to f70230817ff4\nDry-run requested, not pushing.\n";
+        let result = parse_push_dry_run(output);
+        match result {
+            PushPreviewResult::Changes(actions) => {
+                assert_eq!(actions.len(), 1);
+                assert_eq!(
+                    actions[0],
+                    PushPreviewAction::MoveSideways {
+                        bookmark: "feature".to_string(),
+                        from: "6c733e1ae096".to_string(),
+                        to: "f70230817ff4".to_string(),
+                    }
+                );
+            }
+            _ => panic!("Expected Changes"),
+        }
+    }
+
+    #[test]
+    fn test_parse_move_backward() {
+        let output = "Changes to push to origin:\n  Move backward bookmark main from f70230817ff4 to 6c733e1ae096\nDry-run requested, not pushing.\n";
+        let result = parse_push_dry_run(output);
+        match result {
+            PushPreviewResult::Changes(actions) => {
+                assert_eq!(actions.len(), 1);
+                assert_eq!(
+                    actions[0],
+                    PushPreviewAction::MoveBackward {
+                        bookmark: "main".to_string(),
+                        from: "f70230817ff4".to_string(),
+                        to: "6c733e1ae096".to_string(),
+                    }
+                );
+            }
+            _ => panic!("Expected Changes"),
+        }
+    }
+
+    #[test]
+    fn test_parse_mixed_actions_with_force() {
+        let output = "Changes to push to origin:\n  Move forward bookmark main from 6c733e1ae096 to f70230817ff4\n  Move sideways bookmark feature from aaa111bbb222 to ccc333ddd444\nDry-run requested, not pushing.\n";
+        let result = parse_push_dry_run(output);
+        match result {
+            PushPreviewResult::Changes(actions) => {
+                assert_eq!(actions.len(), 2);
+                assert!(
+                    matches!(&actions[0], PushPreviewAction::MoveForward { bookmark, .. } if bookmark == "main")
+                );
+                assert!(
+                    matches!(&actions[1], PushPreviewAction::MoveSideways { bookmark, .. } if bookmark == "feature")
+                );
+            }
+            _ => panic!("Expected Changes"),
+        }
     }
 }

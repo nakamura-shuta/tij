@@ -50,7 +50,7 @@ Press `?` for help, `q` to quit.
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
 | Recovery | Undo / Redo / Operation Restore |
 | Bookmarks | Create / Move / Delete (multi-select) / Track remote / Jump |
-| Git Integration | Fetch / Push (with dry-run preview and confirmation dialog) |
+| Git Integration | Fetch / Push (with dry-run preview, force push warnings, and protected bookmark detection) |
 | Diff | Compare two revisions (`jj diff --from --to`) |
 | Usability | Revset filtering / Text search / Adaptive status bar |
 
@@ -59,7 +59,6 @@ Press `?` for help, `q` to quit.
 | Area | Features |
 |------|----------|
 | Views | Bookmark View |
-| Safety | Force push warnings |
 | Customization | Keybindings config / Themes |
 
 ## Revset Examples
