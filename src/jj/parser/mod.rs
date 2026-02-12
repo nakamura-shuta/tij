@@ -7,10 +7,12 @@ mod bookmark;
 mod diff;
 mod log;
 mod operation;
+mod push;
 mod resolve;
 mod status;
 
 pub use bookmark::parse_bookmark_list;
+pub use push::{PushPreviewAction, PushPreviewResult, parse_push_dry_run};
 
 #[cfg(test)]
 mod tests;

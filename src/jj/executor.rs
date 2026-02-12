@@ -2,9 +2,8 @@
 //!
 //! Handles running jj commands and capturing their output.
 
-use std::io;
 use std::path::PathBuf;
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::Command;
 
 use crate::model::{
     AnnotationContent, Bookmark, BookmarkInfo, Change, ConflictFile, DiffContent, Operation, Status,
@@ -40,6 +39,11 @@ impl JjExecutor {
         Self {
             repo_path: Some(path),
         }
+    }
+
+    /// Get the repository path (for use by other impl blocks in sibling modules)
+    pub(crate) fn repo_path(&self) -> Option<&PathBuf> {
+        self.repo_path.as_ref()
     }
 
     /// Run a jj command with the given arguments
@@ -185,32 +189,6 @@ impl JjExecutor {
         self.run(&[commands::COMMIT, "-m", message])
     }
 
-    /// Run `jj squash --from <source> --into <destination>` interactively
-    ///
-    /// Moves changes from the source revision into the destination.
-    /// If the source becomes empty, it is automatically abandoned.
-    ///
-    /// Uses inherited stdio because jj may open an editor when both
-    /// source and destination have non-empty descriptions.
-    /// The caller must disable raw mode before calling this method.
-    pub fn squash_into_interactive(
-        &self,
-        source: &str,
-        destination: &str,
-    ) -> io::Result<ExitStatus> {
-        let mut cmd = Command::new(constants::JJ_COMMAND);
-
-        if let Some(ref repo_path) = self.repo_path {
-            cmd.arg(flags::REPO_PATH).arg(repo_path);
-        }
-
-        cmd.args([commands::SQUASH, "--from", source, "--into", destination])
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-    }
-
     /// Run `jj squash` to squash @ into @- (non-interactive)
     ///
     /// Moves changes from the current working copy into its parent.
@@ -233,51 +211,6 @@ impl JjExecutor {
     /// Returns the raw output from the command for notification display.
     pub fn undo(&self) -> Result<String, JjError> {
         self.run(&[commands::UNDO])
-    }
-
-    /// Run `jj describe -r <change-id> --edit` interactively
-    ///
-    /// This spawns jj as a child process with inherited stdio,
-    /// allowing the user to interact with their configured editor.
-    /// The caller must disable raw mode before calling this method.
-    ///
-    /// Note: Unlike `run()`, this method does NOT use `--color=never`
-    /// because interactive mode benefits from the editor's native behavior.
-    pub fn describe_edit_interactive(&self, change_id: &str) -> io::Result<ExitStatus> {
-        let mut cmd = Command::new(constants::JJ_COMMAND);
-
-        if let Some(ref repo_path) = self.repo_path {
-            cmd.arg(flags::REPO_PATH).arg(repo_path);
-        }
-
-        cmd.args([commands::DESCRIBE, "-r", change_id, flags::EDIT_FLAG])
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-    }
-
-    /// Run `jj split -r <change-id>` interactively
-    ///
-    /// This spawns jj as a child process with inherited stdio,
-    /// allowing the user to interact with their configured diff editor.
-    /// The caller must disable raw mode before calling this method.
-    ///
-    /// Note: Unlike `run()`, this method does NOT use `--color=never`
-    /// because interactive mode benefits from color output in the diff editor.
-    pub fn split_interactive(&self, change_id: &str) -> io::Result<ExitStatus> {
-        let mut cmd = Command::new(constants::JJ_COMMAND);
-
-        // repo_path がある場合は -R を付与（tij /path/to/repo 対応）
-        if let Some(ref repo_path) = self.repo_path {
-            cmd.arg(flags::REPO_PATH).arg(repo_path);
-        }
-
-        cmd.args([commands::SPLIT, "-r", change_id])
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
     }
 
     /// Run `jj op restore` to restore a previous operation (redo)
@@ -662,36 +595,6 @@ impl JjExecutor {
         self.run(&args)
     }
 
-    /// Resolve a conflict interactively using an external merge tool
-    ///
-    /// Spawns jj resolve as a child process with inherited stdio.
-    /// The caller must disable raw mode before calling this method.
-    /// Only works for @ (working copy).
-    pub fn resolve_interactive(
-        &self,
-        file_path: &str,
-        change_id: Option<&str>,
-    ) -> io::Result<ExitStatus> {
-        let mut cmd = Command::new(constants::JJ_COMMAND);
-
-        if let Some(ref repo_path) = self.repo_path {
-            cmd.arg(flags::REPO_PATH).arg(repo_path);
-        }
-
-        let mut args = vec![commands::RESOLVE];
-        if let Some(rev) = change_id {
-            args.push(flags::REVISION);
-            args.push(rev);
-        }
-        args.push(file_path);
-
-        cmd.args(args)
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-    }
-
     /// Run `jj git fetch` to fetch from all tracked remotes
     ///
     /// Returns the command output describing what was fetched.
@@ -854,124 +757,6 @@ impl JjExecutor {
     }
 }
 
-/// Parsed action from a dry-run push preview
-#[derive(Debug, Clone, PartialEq)]
-pub enum PushPreviewAction {
-    /// Move forward bookmark from old_hash to new_hash (safe fast-forward)
-    MoveForward {
-        bookmark: String,
-        from: String,
-        to: String,
-    },
-    /// Move sideways bookmark (diverged: e.g. after rebase) — force push
-    MoveSideways {
-        bookmark: String,
-        from: String,
-        to: String,
-    },
-    /// Move backward bookmark (regression: e.g. after reset) — force push
-    MoveBackward {
-        bookmark: String,
-        from: String,
-        to: String,
-    },
-    /// Add new bookmark at hash
-    Add { bookmark: String, to: String },
-    /// Delete bookmark at hash
-    Delete { bookmark: String, from: String },
-}
-
-/// Result of parsing `jj git push --dry-run` output
-///
-/// Only used when `git_push_dry_run()` returns `Ok(output)` (exit 0).
-/// Error cases (exit != 0) are handled by the caller's `Err(_)` branch.
-#[derive(Debug, Clone, PartialEq)]
-pub enum PushPreviewResult {
-    /// Changes to push
-    Changes(Vec<PushPreviewAction>),
-    /// Already up to date (no changes needed)
-    NothingChanged,
-    /// Output could not be parsed (unknown format from newer jj version, etc.)
-    Unparsed,
-}
-
-/// Parse the output of `jj git push --dry-run` (exit 0 only)
-///
-/// Expected output patterns:
-/// - `Move forward bookmark NAME from HASH to HASH`
-/// - `Move sideways bookmark NAME from HASH to HASH` (force push)
-/// - `Move backward bookmark NAME from HASH to HASH` (force push)
-/// - `Add bookmark NAME to HASH`
-/// - `Delete bookmark NAME from HASH`
-/// - `Nothing changed.` (when bookmark is already up to date)
-pub fn parse_push_dry_run(output: &str) -> PushPreviewResult {
-    if output.contains("Nothing changed.") {
-        return PushPreviewResult::NothingChanged;
-    }
-
-    let mut actions = Vec::new();
-    for line in output.lines() {
-        let line = line.trim();
-        if let Some(rest) = line.strip_prefix("Move forward bookmark ") {
-            // "Move forward bookmark NAME from HASH to HASH"
-            if let Some((name, hashes)) = rest.split_once(" from ")
-                && let Some((from, to)) = hashes.split_once(" to ")
-            {
-                actions.push(PushPreviewAction::MoveForward {
-                    bookmark: name.to_string(),
-                    from: from.to_string(),
-                    to: to.to_string(),
-                });
-            }
-        } else if let Some(rest) = line.strip_prefix("Move sideways bookmark ") {
-            // "Move sideways bookmark NAME from HASH to HASH" (force push)
-            if let Some((name, hashes)) = rest.split_once(" from ")
-                && let Some((from, to)) = hashes.split_once(" to ")
-            {
-                actions.push(PushPreviewAction::MoveSideways {
-                    bookmark: name.to_string(),
-                    from: from.to_string(),
-                    to: to.to_string(),
-                });
-            }
-        } else if let Some(rest) = line.strip_prefix("Move backward bookmark ") {
-            // "Move backward bookmark NAME from HASH to HASH" (force push)
-            if let Some((name, hashes)) = rest.split_once(" from ")
-                && let Some((from, to)) = hashes.split_once(" to ")
-            {
-                actions.push(PushPreviewAction::MoveBackward {
-                    bookmark: name.to_string(),
-                    from: from.to_string(),
-                    to: to.to_string(),
-                });
-            }
-        } else if let Some(rest) = line.strip_prefix("Add bookmark ") {
-            // "Add bookmark NAME to HASH"
-            if let Some((name, hash)) = rest.split_once(" to ") {
-                actions.push(PushPreviewAction::Add {
-                    bookmark: name.to_string(),
-                    to: hash.to_string(),
-                });
-            }
-        } else if let Some(rest) = line.strip_prefix("Delete bookmark ") {
-            // "Delete bookmark NAME from HASH"
-            if let Some((name, hash)) = rest.split_once(" from ") {
-                actions.push(PushPreviewAction::Delete {
-                    bookmark: name.to_string(),
-                    from: hash.to_string(),
-                });
-            }
-        }
-        // "Changes to push to origin:" and "Dry-run requested, not pushing." are ignored
-    }
-
-    if actions.is_empty() {
-        PushPreviewResult::Unparsed
-    } else {
-        PushPreviewResult::Changes(actions)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -979,170 +764,12 @@ mod tests {
     #[test]
     fn test_executor_default() {
         let executor = JjExecutor::default();
-        assert!(executor.repo_path.is_none());
+        assert!(executor.repo_path().is_none());
     }
 
     #[test]
     fn test_executor_with_path() {
         let executor = JjExecutor::with_repo_path(PathBuf::from("/tmp/test"));
-        assert_eq!(executor.repo_path, Some(PathBuf::from("/tmp/test")));
-    }
-
-    // --- parse_push_dry_run tests ---
-
-    #[test]
-    fn test_parse_move_forward() {
-        let output = "Changes to push to origin:\n  Move forward bookmark main from 6c733e1ae096 to f70230817ff4\nDry-run requested, not pushing.\n";
-        let result = parse_push_dry_run(output);
-        match result {
-            PushPreviewResult::Changes(actions) => {
-                assert_eq!(actions.len(), 1);
-                assert_eq!(
-                    actions[0],
-                    PushPreviewAction::MoveForward {
-                        bookmark: "main".to_string(),
-                        from: "6c733e1ae096".to_string(),
-                        to: "f70230817ff4".to_string(),
-                    }
-                );
-            }
-            _ => panic!("Expected Changes"),
-        }
-    }
-
-    #[test]
-    fn test_parse_add_bookmark() {
-        let output = "Changes to push to origin:\n  Add bookmark feature/new to f70230817ff4\nDry-run requested, not pushing.\n";
-        let result = parse_push_dry_run(output);
-        match result {
-            PushPreviewResult::Changes(actions) => {
-                assert_eq!(actions.len(), 1);
-                assert_eq!(
-                    actions[0],
-                    PushPreviewAction::Add {
-                        bookmark: "feature/new".to_string(),
-                        to: "f70230817ff4".to_string(),
-                    }
-                );
-            }
-            _ => panic!("Expected Changes"),
-        }
-    }
-
-    #[test]
-    fn test_parse_delete_bookmark() {
-        let output = "Changes to push to origin:\n  Delete bookmark old-branch from 6c733e1ae096\nDry-run requested, not pushing.\n";
-        let result = parse_push_dry_run(output);
-        match result {
-            PushPreviewResult::Changes(actions) => {
-                assert_eq!(actions.len(), 1);
-                assert_eq!(
-                    actions[0],
-                    PushPreviewAction::Delete {
-                        bookmark: "old-branch".to_string(),
-                        from: "6c733e1ae096".to_string(),
-                    }
-                );
-            }
-            _ => panic!("Expected Changes"),
-        }
-    }
-
-    #[test]
-    fn test_parse_multiple_changes() {
-        let output = "Changes to push to origin:\n  Move forward bookmark another-branch from 6c733e1ae096 to f70230817ff4\n  Add bookmark fuga to bfeefc809de1\n  Add bookmark main to f70230817ff4\nDry-run requested, not pushing.\n";
-        let result = parse_push_dry_run(output);
-        match result {
-            PushPreviewResult::Changes(actions) => {
-                assert_eq!(actions.len(), 3);
-                assert!(matches!(&actions[0], PushPreviewAction::MoveForward { .. }));
-                assert!(
-                    matches!(&actions[1], PushPreviewAction::Add { bookmark, .. } if bookmark == "fuga")
-                );
-                assert!(
-                    matches!(&actions[2], PushPreviewAction::Add { bookmark, .. } if bookmark == "main")
-                );
-            }
-            _ => panic!("Expected Changes"),
-        }
-    }
-
-    #[test]
-    fn test_parse_nothing_changed() {
-        let output =
-            "Bookmark test-feature@origin already matches test-feature\nNothing changed.\n";
-        let result = parse_push_dry_run(output);
-        assert_eq!(result, PushPreviewResult::NothingChanged);
-    }
-
-    #[test]
-    fn test_parse_empty_output() {
-        let result = parse_push_dry_run("");
-        assert_eq!(result, PushPreviewResult::Unparsed);
-    }
-
-    #[test]
-    fn test_parse_unknown_output() {
-        // Unknown jj output format should return Unparsed, not NothingChanged
-        let result = parse_push_dry_run("Some unexpected jj output format\n");
-        assert_eq!(result, PushPreviewResult::Unparsed);
-    }
-
-    #[test]
-    fn test_parse_move_sideways() {
-        let output = "Changes to push to origin:\n  Move sideways bookmark feature from 6c733e1ae096 to f70230817ff4\nDry-run requested, not pushing.\n";
-        let result = parse_push_dry_run(output);
-        match result {
-            PushPreviewResult::Changes(actions) => {
-                assert_eq!(actions.len(), 1);
-                assert_eq!(
-                    actions[0],
-                    PushPreviewAction::MoveSideways {
-                        bookmark: "feature".to_string(),
-                        from: "6c733e1ae096".to_string(),
-                        to: "f70230817ff4".to_string(),
-                    }
-                );
-            }
-            _ => panic!("Expected Changes"),
-        }
-    }
-
-    #[test]
-    fn test_parse_move_backward() {
-        let output = "Changes to push to origin:\n  Move backward bookmark main from f70230817ff4 to 6c733e1ae096\nDry-run requested, not pushing.\n";
-        let result = parse_push_dry_run(output);
-        match result {
-            PushPreviewResult::Changes(actions) => {
-                assert_eq!(actions.len(), 1);
-                assert_eq!(
-                    actions[0],
-                    PushPreviewAction::MoveBackward {
-                        bookmark: "main".to_string(),
-                        from: "f70230817ff4".to_string(),
-                        to: "6c733e1ae096".to_string(),
-                    }
-                );
-            }
-            _ => panic!("Expected Changes"),
-        }
-    }
-
-    #[test]
-    fn test_parse_mixed_actions_with_force() {
-        let output = "Changes to push to origin:\n  Move forward bookmark main from 6c733e1ae096 to f70230817ff4\n  Move sideways bookmark feature from aaa111bbb222 to ccc333ddd444\nDry-run requested, not pushing.\n";
-        let result = parse_push_dry_run(output);
-        match result {
-            PushPreviewResult::Changes(actions) => {
-                assert_eq!(actions.len(), 2);
-                assert!(
-                    matches!(&actions[0], PushPreviewAction::MoveForward { bookmark, .. } if bookmark == "main")
-                );
-                assert!(
-                    matches!(&actions[1], PushPreviewAction::MoveSideways { bookmark, .. } if bookmark == "feature")
-                );
-            }
-            _ => panic!("Expected Changes"),
-        }
+        assert_eq!(executor.repo_path(), Some(&PathBuf::from("/tmp/test")));
     }
 }

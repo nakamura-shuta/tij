@@ -4,11 +4,13 @@
 
 pub mod constants;
 mod executor;
+mod interactive;
 /// Parser module (public for integration testing)
 pub mod parser;
 mod template;
 
-pub use executor::{JjExecutor, PushPreviewAction, PushPreviewResult, parse_push_dry_run};
+pub use executor::JjExecutor;
+pub use parser::{PushPreviewAction, PushPreviewResult, parse_push_dry_run};
 
 use std::io;
 use thiserror::Error;
