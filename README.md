@@ -20,7 +20,10 @@ Jujutsu (jj) makes Git's painful operations easy and safe. Tij brings that power
 ## Installation
 
 ```bash
-# From crates.io (recommended)
+# Homebrew (macOS/Linux)
+brew tap nakamura-shuta/tij && brew install tij
+
+# From crates.io
 cargo install tij
 
 # From source
@@ -28,7 +31,7 @@ git clone https://github.com/nakamura-shuta/tij.git
 cd tij && cargo install --path .
 ```
 
-**Requirements**: Rust 1.88+, [Jujutsu](https://github.com/jj-vcs/jj) in PATH
+**Requirements**: [Jujutsu](https://github.com/jj-vcs/jj) in PATH (Homebrew installs it automatically)
 
 ## Quick Start
 
@@ -93,7 +96,7 @@ cargo test --tests            # Integration tests only
 cargo insta test              # Snapshot tests
 ```
 
-**Test categories**: Unit (381), Integration (50+), Snapshot (7), Property-based (15)
+**Test categories**: Unit (390), Integration (50+), Snapshot (7), Property-based (15)
 
 ## Acknowledgments
 
