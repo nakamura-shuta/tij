@@ -58,6 +58,8 @@ pub struct App {
     pub active_dialog: Option<Dialog>,
     /// Bookmark names pending for push (Confirm dialog only; Select dialog uses DialogResult names)
     pub(crate) pending_push_bookmarks: Vec<String>,
+    /// Pending jump target from Blame View (for 2-step J: first shows hint, second expands revset)
+    pub(crate) pending_jump_change_id: Option<String>,
 }
 
 impl Default for App {
@@ -86,6 +88,7 @@ impl App {
             last_frame_height: Cell::new(24), // Default terminal height
             active_dialog: None,
             pending_push_bookmarks: Vec::new(),
+            pending_jump_change_id: None,
         };
 
         // Load initial log

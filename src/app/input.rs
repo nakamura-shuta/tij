@@ -398,6 +398,9 @@ impl App {
             BlameAction::OpenDiff(change_id) => {
                 self.open_diff(&change_id);
             }
+            BlameAction::JumpToLog(change_id) => {
+                self.jump_to_log(&change_id);
+            }
         }
     }
 }

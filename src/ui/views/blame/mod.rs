@@ -17,6 +17,8 @@ pub enum BlameAction {
     Back,
     /// Open diff for the selected change
     OpenDiff(String),
+    /// Jump to this change in Log View
+    JumpToLog(String),
 }
 
 /// View state for blame/annotation display

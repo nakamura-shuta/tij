@@ -145,6 +145,9 @@ pub const BOOKMARK_VIEW: KeyCode = KeyCode::Char('M');
 /// Untrack remote bookmark (Bookmark View)
 pub const BOOKMARK_UNTRACK: KeyCode = KeyCode::Char('U');
 
+/// Jump to change in Log View (Blame View)
+pub const JUMP_TO_LOG: KeyCode = KeyCode::Char('J');
+
 /// Jump to first conflict file (Status View)
 pub const JUMP_CONFLICT: KeyCode = KeyCode::Char('f');
 
@@ -629,6 +632,11 @@ pub const HINT_UNTRACK: KeyHint = KeyHint {
     label: "Untrack",
     color: Color::Yellow,
 };
+pub const HINT_LOG_JUMP: KeyHint = KeyHint {
+    key: "J",
+    label: "Log Jump",
+    color: Color::Yellow,
+};
 
 // =============================================================================
 // HintContext + DialogHintKind
@@ -1036,6 +1044,10 @@ pub const BLAME_KEYS: &[KeyBindEntry] = &[
         description: "Show diff",
     },
     KeyBindEntry {
+        key: "J",
+        description: "Jump to change in log",
+    },
+    KeyBindEntry {
         key: "q",
         description: "Back",
     },
@@ -1105,6 +1117,11 @@ pub const BLAME_VIEW_HINTS: &[KeyHint] = &[
         key: "Enter",
         label: "Diff",
         color: Color::Green,
+    },
+    KeyHint {
+        key: "J",
+        label: "Log Jump",
+        color: Color::Yellow,
     },
     KeyHint {
         key: "^L",

@@ -46,7 +46,7 @@ Press `?` for help, `q` to quit.
 
 | Area | Features |
 |------|----------|
-| Views | Log / Diff / Status / Help / Operation History / Blame / Bookmark |
+| Views | Log / Diff / Status / Help / Operation History / Blame (with Log jump) / Bookmark |
 | History Editing | Describe (`d` quick edit / `Ctrl+E` external editor) / Edit / New / New from selected / Commit / Squash / Abandon / Split / Rebase (revision/source/insert-after/insert-before) / Absorb |
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
 | Recovery | Undo / Redo / Operation Restore |
@@ -88,7 +88,7 @@ cargo test --tests            # Integration tests only
 cargo insta test              # Snapshot tests
 ```
 
-**Test categories**: Unit (390), Integration (50+), Snapshot (7), Property-based (15)
+**Test categories**: Unit (399), Integration (50+), Snapshot (7), Property-based (15)
 
 ## Acknowledgments
 

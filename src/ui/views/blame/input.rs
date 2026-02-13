@@ -1,14 +1,30 @@
 //! Input handling for BlameView
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::keys;
 
 use super::{BlameAction, BlameView};
 
+/// Check if key is Shift+J (Jump to Log)
+/// Some terminals send Char('J'), others send Char('j') + SHIFT modifier
+fn is_jump_to_log_key(key: &KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char('J'))
+        || (matches!(key.code, KeyCode::Char('j')) && key.modifiers.contains(KeyModifiers::SHIFT))
+}
+
 impl BlameView {
     /// Handle key event and return action
     pub fn handle_key(&mut self, key: KeyEvent) -> BlameAction {
+        // Check Shift+J first (before key.code match, since it needs full KeyEvent)
+        if is_jump_to_log_key(&key) {
+            return if let Some(change_id) = self.selected_change_id() {
+                BlameAction::JumpToLog(change_id.to_string())
+            } else {
+                BlameAction::None
+            };
+        }
+
         match key.code {
             // Navigation
             k if keys::is_move_down(k) => {
@@ -101,5 +117,39 @@ mod tests {
 
         let action = view.handle_key(key_event(KeyCode::Esc));
         assert_eq!(action, BlameAction::Back);
+    }
+
+    #[test]
+    fn test_handle_key_jump_to_log() {
+        let mut view = BlameView::new();
+        view.set_content(make_test_content(), None);
+
+        // Char('J') — standard uppercase
+        let action = view.handle_key(key_event(KeyCode::Char('J')));
+        assert_eq!(action, BlameAction::JumpToLog("change01".to_string()));
+
+        // Move to second line and jump
+        view.move_down();
+        let action = view.handle_key(key_event(KeyCode::Char('J')));
+        assert_eq!(action, BlameAction::JumpToLog("change02".to_string()));
+    }
+
+    #[test]
+    fn test_handle_key_jump_to_log_shift_j() {
+        // Some terminals send Char('j') + SHIFT instead of Char('J')
+        let mut view = BlameView::new();
+        view.set_content(make_test_content(), None);
+
+        let shift_j = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::SHIFT);
+        let action = view.handle_key(shift_j);
+        assert_eq!(action, BlameAction::JumpToLog("change01".to_string()));
+    }
+
+    #[test]
+    fn test_handle_key_jump_to_log_empty() {
+        let mut view = BlameView::new();
+
+        let action = view.handle_key(key_event(KeyCode::Char('J')));
+        assert_eq!(action, BlameAction::None);
     }
 }

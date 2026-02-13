@@ -8,6 +8,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
+use crate::model::Notification;
 use crate::ui::components;
 
 use super::BlameView;
@@ -45,9 +46,21 @@ mod colors {
 
 impl BlameView {
     /// Render the blame view
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    pub fn render(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
         let title = format!(" Blame View: {} ", self.file_path());
-        let block = components::bordered_block(Line::from(title).bold().cyan().centered());
+
+        // Build title with optional notification
+        let title_width = title.len();
+        let available_for_notif = area.width.saturating_sub(title_width as u16 + 4) as usize;
+        let notif_line = notification
+            .filter(|n| !n.is_expired())
+            .map(|n| components::build_notification_title(n, Some(available_for_notif)))
+            .filter(|line| !line.spans.is_empty());
+
+        let block = components::bordered_block_with_notification(
+            Line::from(title).bold().cyan().centered(),
+            notif_line,
+        );
 
         if self.is_empty() {
             let paragraph = components::empty_state("No content to annotate", None).block(block);

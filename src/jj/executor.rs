@@ -746,13 +746,14 @@ impl JjExecutor {
     ///
     /// Returns AnnotationContent containing line-by-line blame information.
     ///
-    /// Note: Uses default output format (no custom template) for jj 0.37.x compatibility.
-    /// The AnnotationLine template methods are only available in jj 0.38+.
+    /// Uses a custom template with `change_id.short(8)` to ensure change_id
+    /// length matches the log template, enabling reliable cross-view ID matching.
     pub fn file_annotate(
         &self,
         file_path: &str,
         revision: Option<&str>,
     ) -> Result<AnnotationContent, JjError> {
+        let template = Templates::file_annotate();
         let mut args = vec![commands::FILE, commands::FILE_ANNOTATE];
 
         if let Some(rev) = revision {
@@ -760,6 +761,8 @@ impl JjExecutor {
             args.push(rev);
         }
 
+        args.push(flags::TEMPLATE);
+        args.push(template);
         args.push(file_path);
 
         let output = self.run(&args)?;

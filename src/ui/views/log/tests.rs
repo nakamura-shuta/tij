@@ -1436,3 +1436,49 @@ fn test_select_change_by_id_not_found() {
     // Selection should remain unchanged
     assert_eq!(view.selected_index, 0);
 }
+
+// =============================================================================
+// select_change_by_prefix tests (Blame → Log jump)
+// =============================================================================
+
+#[test]
+fn test_select_change_by_prefix_exact_match() {
+    let mut view = LogView::default();
+    view.set_changes(create_test_changes());
+
+    let found = view.select_change_by_prefix("abc12345");
+    assert!(found);
+    assert_eq!(view.selected_index, 0);
+    assert_eq!(view.selected_change().unwrap().change_id, "abc12345");
+}
+
+#[test]
+fn test_select_change_by_prefix_short_prefix() {
+    let mut view = LogView::default();
+    view.set_changes(create_test_changes());
+
+    // Shorter prefix should still match
+    let found = view.select_change_by_prefix("xyz9");
+    assert!(found);
+    assert_eq!(view.selected_index, 1);
+    assert_eq!(view.selected_change().unwrap().change_id, "xyz98765");
+}
+
+#[test]
+fn test_select_change_by_prefix_no_match() {
+    let mut view = LogView::default();
+    view.set_changes(create_test_changes());
+
+    let found = view.select_change_by_prefix("qqq");
+    assert!(!found);
+    assert_eq!(view.selected_index, 0); // unchanged
+}
+
+#[test]
+fn test_select_change_by_prefix_empty() {
+    let mut view = LogView::default();
+    view.set_changes(vec![]);
+
+    let found = view.select_change_by_prefix("abc");
+    assert!(!found);
+}

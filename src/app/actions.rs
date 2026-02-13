@@ -1069,6 +1069,60 @@ impl App {
         }
     }
 
+    /// Jump to a change in Log View (from Blame View)
+    ///
+    /// Resets the view stack to Log (not push-based) since the intent
+    /// is "go to Log" rather than "peek and come back".
+    pub(crate) fn jump_to_log(&mut self, change_id: &str) {
+        // Step 1: Try to find in current log view
+        if self.log_view.select_change_by_prefix(change_id) {
+            let short_id = &change_id[..8.min(change_id.len())];
+            self.notification = Some(Notification::success(format!(
+                "Jumped to {} in log",
+                short_id
+            )));
+            self.pending_jump_change_id = None;
+            self.previous_view = None;
+            self.current_view = View::Log;
+            return;
+        }
+
+        // Step 2: Check if this is a retry (user pressed J again after hint)
+        if self.pending_jump_change_id.as_deref() == Some(change_id) {
+            // Second press — expand revset to include the change
+            self.pending_jump_change_id = None;
+
+            let current = self.log_view.current_revset.clone();
+            if let Some(base) = current.as_deref() {
+                // Custom revset active: add the change to it
+                let expanded = format!("{} | {}", base, change_id);
+                self.refresh_log(Some(&expanded));
+            } else {
+                // Default view: reset to default + the target change
+                let expanded = format!("ancestors({}) | {}", change_id, change_id);
+                self.refresh_log(Some(&expanded));
+            }
+
+            if self.log_view.select_change_by_prefix(change_id) {
+                let short_id = &change_id[..8.min(change_id.len())];
+                self.notification = Some(Notification::success(format!(
+                    "Jumped to {} (revset expanded, r+Enter to reset)",
+                    short_id
+                )));
+                self.previous_view = None;
+                self.current_view = View::Log;
+            } else {
+                self.notification = Some(Notification::warning("Change not found in repository"));
+            }
+        } else {
+            // First press — show hint and store pending
+            self.pending_jump_change_id = Some(change_id.to_string());
+            self.notification = Some(Notification::info(
+                "Change not in current revset. Press J again to search full log",
+            ));
+        }
+    }
+
     /// Execute bookmark jump - select the change in log view
     pub(crate) fn execute_bookmark_jump(&mut self, change_id: &str) {
         if self.log_view.select_change_by_id(change_id) {

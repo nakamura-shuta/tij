@@ -362,7 +362,7 @@ impl LogView {
         self.input_mode = InputMode::Normal;
     }
 
-    /// Select a change by its change_id
+    /// Select a change by its change_id (exact match)
     ///
     /// Returns true if the change was found and selected, false otherwise.
     /// The scroll_offset will be updated during next render via calculate_scroll_offset().
@@ -371,6 +371,23 @@ impl LogView {
         for (cursor, &idx) in self.selectable_indices.iter().enumerate() {
             if let Some(change) = self.changes.get(idx)
                 && change.change_id == change_id
+            {
+                self.selection_cursor = cursor;
+                self.selected_index = idx;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Select a change by prefix match on change_id
+    ///
+    /// Used when the caller has a potentially shorter change_id (e.g., from
+    /// `jj file annotate` which uses `shortest()` format instead of `short(8)`).
+    pub fn select_change_by_prefix(&mut self, prefix: &str) -> bool {
+        for (cursor, &idx) in self.selectable_indices.iter().enumerate() {
+            if let Some(change) = self.changes.get(idx)
+                && change.change_id.starts_with(prefix)
             {
                 self.selection_cursor = cursor;
                 self.selected_index = idx;

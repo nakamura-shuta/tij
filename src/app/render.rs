@@ -22,7 +22,7 @@ impl App {
             View::Diff => self.render_diff_view(frame, notification),
             View::Status => self.render_status_view(frame, notification),
             View::Operation => self.render_operation_view(frame, notification),
-            View::Blame => self.render_blame_view(frame),
+            View::Blame => self.render_blame_view(frame, notification),
             View::Resolve => self.render_resolve_view(frame, notification),
             View::Bookmark => self.render_bookmark_view(frame, notification),
             View::Help => self.render_help_view(frame),
@@ -282,7 +282,11 @@ impl App {
         }
     }
 
-    fn render_blame_view(&self, frame: &mut Frame) {
+    fn render_blame_view(
+        &self,
+        frame: &mut Frame,
+        notification: Option<&crate::model::Notification>,
+    ) {
         if let Some(ref blame_view) = self.blame_view {
             let area = frame.area();
             let sb_height = status_hints_height(keys::BLAME_VIEW_HINTS, area.width);
@@ -299,7 +303,7 @@ impl App {
             let blame_content_height = main_area.height.saturating_sub(2);
             self.last_frame_height.set(blame_content_height);
 
-            blame_view.render(frame, main_area);
+            blame_view.render(frame, main_area, notification);
             render_blame_status_bar(frame, blame_view);
         } else {
             render_placeholder(

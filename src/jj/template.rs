@@ -95,14 +95,28 @@ impl Templates {
         )
     }
 
-    // Note: `jj file annotate` does NOT use a custom template.
-    // The AnnotationLine template methods (line_number(), content(), first_line_in_hunk())
-    // are only available in jj 0.38+. For compatibility with jj 0.37.x, we parse
-    // the default output format instead.
-    //
-    // Default output format:
-    // `<change_id> <author> <timestamp>  <line_number>: <content>`
-    // Example: `twzksoxt nakamura 2026-01-30 10:43:19    1: //! Tij`
+    /// Template for `jj file annotate` output
+    ///
+    /// Uses `commit.change_id().short(8)` to ensure change_id length matches
+    /// the log template (8 chars), enabling reliable cross-view ID matching.
+    ///
+    /// Output format (same structure as default but with fixed-length change_id):
+    /// `<change_id> <author> <timestamp>  <line_number>: <content>`
+    ///
+    /// Note: Uses AnnotationLine template methods available in jj 0.38+.
+    pub fn file_annotate() -> &'static str {
+        concat!(
+            "commit.change_id().short(8)",
+            " ++ \" \" ++ ",
+            "commit.author().name()",
+            " ++ \" \" ++ ",
+            "commit.committer().timestamp().format(\"%Y-%m-%d %H:%M:%S\")",
+            " ++ \"    \" ++ ",
+            "self.line_number()",
+            " ++ \": \" ++ ",
+            "self.content()",
+        )
+    }
 }
 
 #[cfg(test)]
@@ -121,5 +135,20 @@ mod tests {
     #[test]
     fn test_field_separator_is_tab() {
         assert_eq!(FIELD_SEPARATOR, '\t');
+    }
+
+    #[test]
+    fn test_file_annotate_template_uses_short_8() {
+        let template = Templates::file_annotate();
+        assert!(template.contains("change_id().short(8)"));
+    }
+
+    #[test]
+    fn test_file_annotate_template_has_required_fields() {
+        let template = Templates::file_annotate();
+        assert!(template.contains("change_id"));
+        assert!(template.contains("author"));
+        assert!(template.contains("line_number"));
+        assert!(template.contains("content"));
     }
 }
