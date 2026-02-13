@@ -50,7 +50,7 @@ Press `?` for help, `q` to quit.
 | History Editing | Describe (`d` quick edit / `Ctrl+E` external editor) / Edit / New / New from selected / Commit / Squash / Abandon / Split / Rebase (revision/source/insert-after/insert-before) / Absorb |
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
 | Recovery | Undo / Redo / Operation Restore |
-| Bookmarks | Create / Move / Delete (multi-select) / Track / Untrack / Jump / Bookmark View (`M`) |
+| Bookmarks | Create / Move (with confirmation) / Delete (multi-select) / Track / Untrack / Jump / Bookmark View (`M`) |
 | Git Integration | Fetch / Push (with dry-run preview, force push warnings, and protected bookmark detection) |
 | Diff | Compare two revisions (`jj diff --from --to`) |
 | Usability | Revset filtering / Text search / Adaptive status bar / Dynamic context-aware hints |
@@ -88,7 +88,7 @@ cargo test --tests            # Integration tests only
 cargo insta test              # Snapshot tests
 ```
 
-**Test categories**: Unit (399), Integration (50+), Snapshot (7), Property-based (15)
+**Test categories**: Unit (405), Integration (50+), Snapshot (17), Property-based (15)
 
 ## Acknowledgments
 

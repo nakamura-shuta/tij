@@ -426,11 +426,12 @@ impl App {
             Err(e) => {
                 // Check if bookmark already exists - show confirmation dialog
                 if is_bookmark_exists_error(&e) {
-                    // Show confirmation dialog for moving bookmark
+                    // Build detail with From/To info
+                    let detail = self.build_bookmark_move_detail(name, change_id);
                     self.active_dialog = Some(Dialog::confirm(
                         "Move Bookmark",
                         format!("Move bookmark \"{}\" to this change?", name),
-                        Some("Bookmark will be updated.".to_string()),
+                        Some(detail),
                         DialogCallback::MoveBookmark {
                             name: name.to_string(),
                             change_id: change_id.to_string(),
@@ -440,6 +441,51 @@ impl App {
                     self.error_message = Some(format!("Failed to create bookmark: {}", e));
                 }
             }
+        }
+    }
+
+    /// Build detail text for bookmark move confirmation dialog
+    ///
+    /// Shows From/To positions and undo hint.
+    /// First tries to find the bookmark in log_view.changes (no extra jj command),
+    /// falls back to `get_change_info()` if the bookmark is outside the current view.
+    fn build_bookmark_move_detail(&self, name: &str, to_change_id: &str) -> String {
+        // Look up current bookmark position
+        let from_info = self
+            .log_view
+            .changes
+            .iter()
+            .find(|c| !c.is_graph_only && c.bookmarks.contains(&name.to_string()))
+            .map(|c| (c.change_id.clone(), c.description.clone()));
+
+        // Fallback: query jj directly if not in current view
+        let from_info = from_info.or_else(|| {
+            self.jj
+                .get_change_info(name)
+                .ok()
+                .map(|(id, _, _, _, desc)| (id, desc))
+        });
+
+        // Get destination description
+        let to_desc = self
+            .log_view
+            .selected_change()
+            .map(|c| c.display_description().to_string())
+            .unwrap_or_default();
+
+        let to_id_short = &to_change_id[..8.min(to_change_id.len())];
+
+        match from_info {
+            Some((from_id, from_desc)) => {
+                format!(
+                    "From: {}  {}\n  To: {}  {}\n\nCan be undone with 'u'.",
+                    from_id,
+                    truncate_description(&from_desc, 40),
+                    to_id_short,
+                    truncate_description(&to_desc, 40),
+                )
+            }
+            None => "Can be undone with 'u'.".to_string(),
         }
     }
 
@@ -1341,6 +1387,21 @@ fn is_untracked_bookmark_error(err_msg: &str) -> bool {
         || lower.contains("untracked")
 }
 
+/// Truncate a description string to max_len characters (UTF-8 safe)
+///
+/// Uses `chars()` to avoid panic on multibyte boundaries.
+fn truncate_description(s: &str, max_len: usize) -> String {
+    let char_count = s.chars().count();
+    if char_count <= max_len {
+        s.to_string()
+    } else if max_len > 3 {
+        let truncated: String = s.chars().take(max_len - 3).collect();
+        format!("{}...", truncated)
+    } else {
+        s.chars().take(max_len).collect()
+    }
+}
+
 /// Check if a JjError indicates that a bookmark already exists
 ///
 /// This is used to determine whether to fallback from `bookmark create` to `bookmark set`.
@@ -1570,5 +1631,46 @@ mod tests {
         }]);
         let status = format_bookmark_status(&preview, "main");
         assert!(status.starts_with("move from"));
+    }
+
+    // =========================================================================
+    // truncate_description tests (UTF-8 safe truncation)
+    // =========================================================================
+
+    #[test]
+    fn test_truncate_description_short_string() {
+        assert_eq!(truncate_description("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_description_exact_length() {
+        assert_eq!(truncate_description("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_description_long_string() {
+        assert_eq!(
+            truncate_description("This is a long description text", 15),
+            "This is a lo..."
+        );
+    }
+
+    #[test]
+    fn test_truncate_description_multibyte_japanese() {
+        // Japanese characters: each is 3 bytes in UTF-8 but 1 char
+        let s = "日本語のテスト文字列です";
+        let result = truncate_description(s, 8);
+        assert_eq!(result, "日本語のテ...");
+        // Verify no panic on multibyte boundary
+    }
+
+    #[test]
+    fn test_truncate_description_empty() {
+        assert_eq!(truncate_description("", 10), "");
+    }
+
+    #[test]
+    fn test_truncate_description_max_len_3() {
+        assert_eq!(truncate_description("abcdef", 3), "abc");
     }
 }

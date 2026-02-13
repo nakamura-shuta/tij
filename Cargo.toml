@@ -1,6 +1,6 @@
 [package]
 name = "tij"
-version = "0.3.23"
+version = "0.3.24"
 description = "Text-mode interface for Jujutsu - a TUI for jj version control"
 authors = ["nakamura.shuta <nakamura.shuta@classmethod.jp>"]
 license = "MIT"

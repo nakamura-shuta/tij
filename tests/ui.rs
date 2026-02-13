@@ -8,3 +8,9 @@ mod test_dialog;
 
 #[path = "ui/test_help.rs"]
 mod test_help;
+
+#[path = "ui/test_log.rs"]
+mod test_log;
+
+#[path = "ui/test_status.rs"]
+mod test_status;

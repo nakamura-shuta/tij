@@ -1,0 +1,28 @@
+---
+source: tests/ui/test_log.rs
+expression: terminal.backend()
+---
+"┌─────────────────────────────── Tij - Log View ───────────────────────────────┐"
+"│@  kxryzmql test@example.com 2025-01-15 10:30:00 main Add user authentication │"
+"│○  mzvwqtsr test@example.com 2025-01-15 10:30:00 feature/db Refactor database │"
+"│○  pqlnrxwv test@example.com 2025-01-15 10:30:00 Initial commit               │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"└──────────────────────────────────────────────────────────────────────────────┘"

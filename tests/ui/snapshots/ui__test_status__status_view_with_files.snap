@@ -1,0 +1,28 @@
+---
+source: tests/ui/test_status.rs
+expression: terminal.backend()
+---
+"┌───────────────────────────── Tij - Status View ──────────────────────────────┐"
+"│ Working copy: kxryzmql                                                       │"
+"│ Parent:       mzvwqtsr                                                       │"
+"│                                                                              │"
+"│ > M src/main.rs                                                              │"
+"│   A src/lib.rs                                                               │"
+"│   D old_config.toml                                                          │"
+"│   R src/helpers.rs -> src/utils.rs                                           │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"└──────────────────────────────────────────────────────────────────────────────┘"
