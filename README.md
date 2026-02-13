@@ -44,8 +44,6 @@ Press `?` for help, `q` to quit.
 
 ## Features
 
-### Implemented
-
 | Area | Features |
 |------|----------|
 | Views | Log / Diff / Status / Help / Operation History / Blame / Bookmark |
@@ -56,12 +54,6 @@ Press `?` for help, `q` to quit.
 | Git Integration | Fetch / Push (with dry-run preview, force push warnings, and protected bookmark detection) |
 | Diff | Compare two revisions (`jj diff --from --to`) |
 | Usability | Revset filtering / Text search / Adaptive status bar / Dynamic context-aware hints |
-
-### Planned
-
-| Area | Features |
-|------|----------|
-| Customization | Keybindings config / Themes |
 
 ## Revset Examples
 
