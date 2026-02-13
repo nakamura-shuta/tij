@@ -82,7 +82,7 @@ jobs:
           Compress-Archive -Path "target/${{ matrix.target }}/release/tij.exe" -DestinationPath "tij-${{ matrix.target }}.zip"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: tij-${{ matrix.target }}
           path: tij-${{ matrix.target }}.${{ matrix.archive }}
