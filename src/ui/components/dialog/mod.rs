@@ -15,6 +15,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
 };
 
+use crate::jj::PushBulkMode;
 use crate::keys;
 
 /// Callback identifier for dialog results
@@ -52,6 +53,18 @@ pub enum DialogCallback {
     },
     /// Remote selection for push (Select dialog, single_select)
     GitPushRemoteSelect,
+    /// Push mode selection when no bookmarks on selected change (Single Select)
+    /// User chooses between --change, --all, --tracked, --deleted
+    GitPushModeSelect { change_id: String },
+    /// Bulk push confirmation after dry-run preview (Confirm dialog)
+    GitPushBulkConfirm {
+        mode: PushBulkMode,
+        remote: Option<String>,
+    },
+    /// Bookmark move to @ confirmation
+    BookmarkMoveToWc { name: String },
+    /// Bookmark move with --allow-backwards confirmation
+    BookmarkMoveBackwards { name: String },
 }
 
 /// Selection item for Select dialog

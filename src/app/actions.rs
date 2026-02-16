@@ -1,6 +1,6 @@
 //! jj operations (actions that modify repository state)
 
-use crate::jj::{PushPreviewResult, parse_push_dry_run};
+use crate::jj::{PushBulkMode, PushPreviewResult, parse_push_dry_run};
 use crate::model::Notification;
 use crate::ui::components::{Dialog, DialogCallback, DialogResult, SelectItem};
 use crate::ui::views::RebaseMode;
@@ -911,40 +911,38 @@ impl App {
         }
 
         if bookmarks.is_empty() {
-            // No bookmarks: offer push by change ID (--change)
-            // Use remote-aware dry-run if a remote was selected
-            let dry_run_result = if let Some(ref remote) = self.push_target_remote {
-                self.jj
-                    .git_push_change_dry_run_to_remote(&change_id, remote)
-            } else {
-                self.jj.git_push_change_dry_run(&change_id)
-            };
-            match dry_run_result {
-                Ok(output) => {
-                    let preview = output.trim();
-                    let short_id = &change_id[..change_id.len().min(8)];
-                    let body = if preview.is_empty() {
-                        format!("Push by change ID? (creates push-{})", short_id)
-                    } else {
-                        format!(
-                            "Push by change ID? (creates push-{})\n{}",
-                            short_id, preview
-                        )
-                    };
-                    self.active_dialog = Some(Dialog::confirm(
-                        "Push to Remote",
-                        body,
-                        Some("Remote changes cannot be undone with 'u'.".to_string()),
-                        DialogCallback::GitPushChange {
-                            change_id: change_id.clone(),
-                        },
-                    ));
-                }
-                Err(e) => {
-                    self.push_target_remote = None; // Clear on failure
-                    self.error_message = Some(format!("Push failed: {}", e));
-                }
-            }
+            // No bookmarks: show mode selection dialog
+            let items = vec![
+                SelectItem {
+                    label: "Push by change ID (--change)".into(),
+                    value: "change".into(),
+                    selected: false,
+                },
+                SelectItem {
+                    label: "Push all bookmarks (--all)".into(),
+                    value: "all".into(),
+                    selected: false,
+                },
+                SelectItem {
+                    label: "Push tracked bookmarks (--tracked)".into(),
+                    value: "tracked".into(),
+                    selected: false,
+                },
+                SelectItem {
+                    label: "Push deleted bookmarks (--deleted)".into(),
+                    value: "deleted".into(),
+                    selected: false,
+                },
+            ];
+            self.active_dialog = Some(Dialog::select_single(
+                "Push to Remote",
+                "No bookmarks on this change. Choose push mode:",
+                items,
+                None,
+                DialogCallback::GitPushModeSelect {
+                    change_id: change_id.clone(),
+                },
+            ));
             return;
         }
 
@@ -1217,6 +1215,255 @@ impl App {
         Some(format!("push-{}", &change_id[..change_id.len().min(8)]))
     }
 
+    /// Start push-by-change flow (extracted for reuse from mode selection)
+    ///
+    /// Runs dry-run for --change and shows confirm dialog.
+    fn start_push_change(&mut self, change_id: &str) {
+        let dry_run_result = if let Some(ref remote) = self.push_target_remote {
+            self.jj.git_push_change_dry_run_to_remote(change_id, remote)
+        } else {
+            self.jj.git_push_change_dry_run(change_id)
+        };
+        match dry_run_result {
+            Ok(output) => {
+                let preview = output.trim();
+                let short_id = &change_id[..change_id.len().min(8)];
+                let body = if preview.is_empty() {
+                    format!("Push by change ID? (creates push-{})", short_id)
+                } else {
+                    format!(
+                        "Push by change ID? (creates push-{})\n{}",
+                        short_id, preview
+                    )
+                };
+                self.active_dialog = Some(Dialog::confirm(
+                    "Push to Remote",
+                    body,
+                    Some("Remote changes cannot be undone with 'u'.".to_string()),
+                    DialogCallback::GitPushChange {
+                        change_id: change_id.to_string(),
+                    },
+                ));
+            }
+            Err(e) => {
+                self.push_target_remote = None;
+                self.error_message = Some(format!("Push failed: {}", e));
+            }
+        }
+    }
+
+    /// Show dry-run preview for bulk push, then confirm dialog
+    ///
+    /// Parses the dry-run output through `parse_push_dry_run()` to detect
+    /// force push and protected bookmark scenarios, matching the warning
+    /// behavior of single-bookmark push.
+    fn start_push_bulk(&mut self, mode: PushBulkMode) {
+        let remote = self.push_target_remote.clone();
+
+        let dry_run_result = self.jj.git_push_bulk_dry_run(mode, remote.as_deref());
+        match dry_run_result {
+            Ok(output) => {
+                let parsed = parse_push_dry_run(&output);
+                match parsed {
+                    PushPreviewResult::NothingChanged => {
+                        self.push_target_remote = None;
+                        self.notification = Some(Notification::info(format!(
+                            "Nothing to push ({})",
+                            mode.label()
+                        )));
+                    }
+                    PushPreviewResult::Changes(actions) => {
+                        let preview_text = format_preview_actions(&actions);
+                        let is_force = has_force_push(&actions);
+                        // Check if any action targets a protected bookmark
+                        let has_protected = actions.iter().any(|a| {
+                            let name = match a {
+                                crate::jj::PushPreviewAction::MoveForward { bookmark, .. }
+                                | crate::jj::PushPreviewAction::MoveSideways { bookmark, .. }
+                                | crate::jj::PushPreviewAction::MoveBackward { bookmark, .. }
+                                | crate::jj::PushPreviewAction::Add { bookmark, .. }
+                                | crate::jj::PushPreviewAction::Delete { bookmark, .. } => bookmark,
+                            };
+                            is_immutable_bookmark(name)
+                        });
+
+                        let (body, detail) = if is_force && has_protected {
+                            (
+                                format!(
+                                    "\u{26A0} FORCE PUSH {} (includes protected bookmarks)!\n{}",
+                                    mode.label(),
+                                    preview_text
+                                ),
+                                "WARNING: Force pushing to protected bookmarks rewrites shared history!"
+                                    .to_string(),
+                            )
+                        } else if is_force {
+                            (
+                                format!("\u{26A0} FORCE PUSH {}?\n{}", mode.label(), preview_text),
+                                "This will rewrite remote history! Cannot be undone with 'u'."
+                                    .to_string(),
+                            )
+                        } else {
+                            (
+                                format!("Push {}?\n\n{}", mode.label(), preview_text),
+                                "Remote changes cannot be undone with 'u'.".to_string(),
+                            )
+                        };
+
+                        self.active_dialog = Some(Dialog::confirm(
+                            "Push to Remote",
+                            body,
+                            Some(detail),
+                            DialogCallback::GitPushBulkConfirm { mode, remote },
+                        ));
+                    }
+                    PushPreviewResult::Unparsed => {
+                        // Fallback: show raw output
+                        let preview = output.trim();
+                        if preview.is_empty() || preview.contains("Nothing changed") {
+                            self.push_target_remote = None;
+                            self.notification = Some(Notification::info(format!(
+                                "Nothing to push ({})",
+                                mode.label()
+                            )));
+                        } else {
+                            self.active_dialog = Some(Dialog::confirm(
+                                "Push to Remote",
+                                format!("Push {}?\n\n{}", mode.label(), preview),
+                                Some("Remote changes cannot be undone with 'u'.".to_string()),
+                                DialogCallback::GitPushBulkConfirm { mode, remote },
+                            ));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                self.push_target_remote = None;
+                self.error_message = Some(format!("Push failed: {}", e));
+            }
+        }
+    }
+
+    /// Execute bulk push (called after confirmation)
+    fn execute_push_bulk(&mut self, mode: PushBulkMode, remote: Option<&str>) {
+        self.push_target_remote = None;
+
+        match self.jj.git_push_bulk(mode, remote) {
+            Ok(_) => {
+                self.notification = Some(Notification::success(format!("Pushed {}", mode.label())));
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Push failed: {}", e));
+            }
+        }
+    }
+
+    /// Start bookmark move flow (shows confirmation dialog)
+    pub(crate) fn start_bookmark_move(&mut self, name: &str) {
+        let detail = self.build_bookmark_move_to_wc_detail(name);
+
+        self.active_dialog = Some(Dialog::confirm(
+            "Move Bookmark",
+            format!("Move bookmark '{}' to @?", name),
+            Some(detail),
+            DialogCallback::BookmarkMoveToWc {
+                name: name.to_string(),
+            },
+        ));
+    }
+
+    /// Build detail text for bookmark move to @
+    fn build_bookmark_move_to_wc_detail(&self, _name: &str) -> String {
+        let from_desc = self
+            .bookmark_view
+            .selected_bookmark()
+            .map(|info| {
+                let id = info.change_id.as_deref().unwrap_or("?");
+                let desc = info.description.as_deref().unwrap_or("(no description)");
+                let short_id = &id[..id.len().min(8)];
+                format!("{} {}", short_id, desc)
+            })
+            .unwrap_or_else(|| "?".to_string());
+
+        let to_desc = self
+            .log_view
+            .changes
+            .iter()
+            .find(|c| c.is_working_copy)
+            .map(|c| {
+                let desc = if c.description.is_empty() {
+                    "(no description)"
+                } else {
+                    &c.description
+                };
+                let short_id = &c.change_id[..c.change_id.len().min(8)];
+                format!("{} {}", short_id, desc)
+            })
+            .unwrap_or_else(|| "@".to_string());
+
+        format!(
+            "From: {}\n  To: {}\n\nCan be undone with 'u'.",
+            from_desc, to_desc
+        )
+    }
+
+    /// Execute bookmark move to @ (called after confirmation)
+    fn execute_bookmark_move_to_wc(&mut self, name: &str) {
+        match self.jj.bookmark_move(name, "@") {
+            Ok(_) => {
+                self.notification = Some(Notification::success(format!(
+                    "Moved bookmark '{}' to @",
+                    name
+                )));
+                self.refresh_bookmark_view();
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                let err_msg = format!("{}", e);
+                if err_msg.contains("backwards or sideways") {
+                    self.active_dialog = Some(Dialog::confirm(
+                        "Move Bookmark (Force)",
+                        format!(
+                            "Bookmark '{}' requires backwards/sideways move.\n\
+                             Allow --allow-backwards?",
+                            name
+                        ),
+                        Some("This moves the bookmark in a non-forward direction.".to_string()),
+                        DialogCallback::BookmarkMoveBackwards {
+                            name: name.to_string(),
+                        },
+                    ));
+                } else {
+                    self.error_message = Some(format!(
+                        "Move failed: {}\nTry: jj bookmark move {} --to @ --allow-backwards",
+                        e, name
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Execute bookmark move with --allow-backwards (called after re-confirmation)
+    fn execute_bookmark_move_backwards(&mut self, name: &str) {
+        match self.jj.bookmark_move_allow_backwards(name, "@") {
+            Ok(_) => {
+                self.notification = Some(Notification::success(format!(
+                    "Moved bookmark '{}' to @ (backwards)",
+                    name
+                )));
+                self.refresh_bookmark_view();
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Move failed: {}", e));
+            }
+        }
+    }
+
     /// Resolve a conflict using :ours tool
     pub(crate) fn execute_resolve_ours(&mut self, file_path: &str) {
         let (change_id, is_wc) = match self.resolve_view {
@@ -1461,6 +1708,48 @@ impl App {
                     self.execute_fetch_with_option(value);
                 }
             }
+            // --- GitPushModeSelect ---
+            (
+                Some(DialogCallback::GitPushModeSelect { change_id }),
+                DialogResult::Confirmed(selected),
+            ) => match selected.first().map(|s| s.as_str()) {
+                Some("change") => {
+                    self.start_push_change(&change_id);
+                }
+                Some("all") => {
+                    self.start_push_bulk(PushBulkMode::All);
+                }
+                Some("tracked") => {
+                    self.start_push_bulk(PushBulkMode::Tracked);
+                }
+                Some("deleted") => {
+                    self.start_push_bulk(PushBulkMode::Deleted);
+                }
+                _ => {}
+            },
+            (Some(DialogCallback::GitPushModeSelect { .. }), DialogResult::Cancelled) => {
+                self.push_target_remote = None;
+            }
+            // --- GitPushBulkConfirm ---
+            (
+                Some(DialogCallback::GitPushBulkConfirm { mode, remote }),
+                DialogResult::Confirmed(_),
+            ) => {
+                self.execute_push_bulk(mode, remote.as_deref());
+            }
+            (Some(DialogCallback::GitPushBulkConfirm { .. }), DialogResult::Cancelled) => {
+                self.push_target_remote = None;
+            }
+            // --- BookmarkMoveToWc ---
+            (Some(DialogCallback::BookmarkMoveToWc { name }), DialogResult::Confirmed(_)) => {
+                self.execute_bookmark_move_to_wc(&name);
+            }
+            (Some(DialogCallback::BookmarkMoveToWc { .. }), DialogResult::Cancelled) => {}
+            // --- BookmarkMoveBackwards ---
+            (Some(DialogCallback::BookmarkMoveBackwards { name }), DialogResult::Confirmed(_)) => {
+                self.execute_bookmark_move_backwards(&name);
+            }
+            (Some(DialogCallback::BookmarkMoveBackwards { .. }), DialogResult::Cancelled) => {}
             (_, DialogResult::Cancelled) => {
                 // Cancelled - do nothing
             }

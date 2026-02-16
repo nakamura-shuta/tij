@@ -154,6 +154,9 @@ pub const BOOKMARK_RENAME: KeyCode = KeyCode::Char('r');
 /// Forget bookmark (Bookmark View)
 pub const BOOKMARK_FORGET: KeyCode = KeyCode::Char('f');
 
+/// Move bookmark to @ (Bookmark View)
+pub const BOOKMARK_MOVE: KeyCode = KeyCode::Char('m');
+
 /// Move @ to next child (Log View)
 pub const NEXT_CHANGE: KeyCode = KeyCode::Char(']');
 
@@ -699,6 +702,11 @@ pub const HINT_FORGET: KeyHint = KeyHint {
     label: "Forget",
     color: Color::Red,
 };
+pub const HINT_MOVE_BKM: KeyHint = KeyHint {
+    key: "m",
+    label: "Move",
+    color: Color::Yellow,
+};
 
 // =============================================================================
 // HintContext + DialogHintKind
@@ -847,11 +855,13 @@ fn bookmark_view_hints(ctx: &HintContext) -> Vec<KeyHint> {
             h.push(HINT_DEL_BKM);
             h.push(HINT_RENAME);
             h.push(HINT_FORGET);
+            h.push(HINT_MOVE_BKM);
         }
         Some(BookmarkKind::LocalNoChange) => {
             h.push(HINT_DEL_BKM);
             h.push(HINT_RENAME);
             h.push(HINT_FORGET);
+            h.push(HINT_MOVE_BKM);
         }
         Some(BookmarkKind::TrackedRemote) => {
             h.push(HINT_UNTRACK);
@@ -1094,6 +1104,10 @@ pub const BOOKMARK_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "f",
         description: "Forget bookmark (remove tracking)",
+    },
+    KeyBindEntry {
+        key: "m",
+        description: "Move bookmark to @",
     },
     KeyBindEntry {
         key: "u",

@@ -126,6 +126,17 @@ impl BookmarkView {
                     BookmarkAction::None
                 }
             }
+            k if k == keys::BOOKMARK_MOVE => {
+                if let Some(info) = self.selected_bookmark() {
+                    if info.bookmark.remote.is_none() {
+                        BookmarkAction::Move(info.bookmark.name.clone())
+                    } else {
+                        BookmarkAction::MoveUnavailable
+                    }
+                } else {
+                    BookmarkAction::None
+                }
+            }
             _ => BookmarkAction::None,
         }
     }

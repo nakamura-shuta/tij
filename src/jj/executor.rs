@@ -14,6 +14,37 @@ use super::constants::{self, commands, errors, flags, resolve_flags};
 use super::parser::Parser;
 use super::template::Templates;
 
+/// Bulk push mode (repository-wide push operations)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PushBulkMode {
+    /// Push all bookmarks (including new) — `--all`
+    All,
+    /// Push tracked bookmarks only — `--tracked`
+    Tracked,
+    /// Push deleted bookmarks — `--deleted`
+    Deleted,
+}
+
+impl PushBulkMode {
+    /// Return the jj CLI flag for this mode
+    pub fn flag(&self) -> &'static str {
+        match self {
+            Self::All => flags::ALL,
+            Self::Tracked => flags::TRACKED,
+            Self::Deleted => flags::DELETED,
+        }
+    }
+
+    /// Human-readable label for UI
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::All => "all bookmarks",
+            Self::Tracked => "tracked bookmarks",
+            Self::Deleted => "deleted bookmarks",
+        }
+    }
+}
+
 /// Executor for jj commands
 #[derive(Debug, Clone)]
 pub struct JjExecutor {
@@ -960,6 +991,88 @@ impl JjExecutor {
         }
     }
 
+    /// Push with a bulk flag (--all, --tracked, --deleted)
+    pub fn git_push_bulk(
+        &self,
+        mode: PushBulkMode,
+        remote: Option<&str>,
+    ) -> Result<String, JjError> {
+        let mut args = vec![commands::GIT, commands::GIT_PUSH, mode.flag()];
+        if let Some(r) = remote {
+            args.extend([flags::REMOTE, r]);
+        }
+        self.run(&args)
+    }
+
+    /// Dry-run push with a bulk flag
+    ///
+    /// Returns stderr output (jj git push --dry-run outputs to stderr).
+    pub fn git_push_bulk_dry_run(
+        &self,
+        mode: PushBulkMode,
+        remote: Option<&str>,
+    ) -> Result<String, JjError> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+        if let Some(ref path) = self.repo_path {
+            cmd.arg(flags::REPO_PATH).arg(path);
+        }
+        cmd.arg(flags::NO_COLOR);
+        let mut args = vec![
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::DRY_RUN,
+            mode.flag(),
+        ];
+        if let Some(r) = remote {
+            args.extend([flags::REMOTE, r]);
+        }
+        cmd.args(&args);
+
+        let output = cmd.output().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                JjError::JjNotFound
+            } else {
+                JjError::IoError(e)
+            }
+        })?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+            let exit_code = output.status.code().unwrap_or(-1);
+            Err(JjError::CommandFailed { stderr, exit_code })
+        }
+    }
+
+    /// Move a bookmark to a revision
+    ///
+    /// Runs `jj bookmark move <name> --to <to>`.
+    /// Forward moves succeed; backward/sideways moves require --allow-backwards.
+    pub fn bookmark_move(&self, name: &str, to: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::BOOKMARK,
+            commands::BOOKMARK_MOVE,
+            name,
+            flags::TO,
+            to,
+        ])
+    }
+
+    /// Move a bookmark with --allow-backwards
+    ///
+    /// Runs `jj bookmark move <name> --to <to> --allow-backwards`.
+    pub fn bookmark_move_allow_backwards(&self, name: &str, to: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::BOOKMARK,
+            commands::BOOKMARK_MOVE,
+            name,
+            flags::TO,
+            to,
+            flags::ALLOW_BACKWARDS,
+        ])
+    }
+
     /// Run `jj diff --from <from> --to <to>` to compare two revisions
     ///
     /// Returns the raw diff output between the two revisions.
@@ -1052,5 +1165,19 @@ mod tests {
     fn test_executor_with_path() {
         let executor = JjExecutor::with_repo_path(PathBuf::from("/tmp/test"));
         assert_eq!(executor.repo_path(), Some(&PathBuf::from("/tmp/test")));
+    }
+
+    #[test]
+    fn test_push_bulk_mode_flag() {
+        assert_eq!(PushBulkMode::All.flag(), "--all");
+        assert_eq!(PushBulkMode::Tracked.flag(), "--tracked");
+        assert_eq!(PushBulkMode::Deleted.flag(), "--deleted");
+    }
+
+    #[test]
+    fn test_push_bulk_mode_label() {
+        assert_eq!(PushBulkMode::All.label(), "all bookmarks");
+        assert_eq!(PushBulkMode::Tracked.label(), "tracked bookmarks");
+        assert_eq!(PushBulkMode::Deleted.label(), "deleted bookmarks");
     }
 }

@@ -9,7 +9,7 @@ mod interactive;
 pub mod parser;
 mod template;
 
-pub use executor::JjExecutor;
+pub use executor::{JjExecutor, PushBulkMode};
 pub use parser::{PushPreviewAction, PushPreviewResult, parse_push_dry_run};
 
 use std::io;

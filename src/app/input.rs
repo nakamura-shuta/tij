@@ -397,6 +397,14 @@ impl App {
                 ));
                 self.pending_forget_bookmark = Some(name);
             }
+            BookmarkAction::Move(name) => {
+                self.start_bookmark_move(&name);
+            }
+            BookmarkAction::MoveUnavailable => {
+                self.notification = Some(Notification::info(
+                    "Move is available only for local bookmarks",
+                ));
+            }
         }
     }
 

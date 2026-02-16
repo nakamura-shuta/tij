@@ -27,6 +27,10 @@ pub enum BookmarkAction {
     CancelRename,
     /// Forget bookmark (name) - removes remote tracking info
     Forget(String),
+    /// Move bookmark to working copy (name)
+    Move(String),
+    /// Move attempted on remote bookmark (show info notification)
+    MoveUnavailable,
 }
 
 /// Bookmark rename inline edit state
@@ -641,5 +645,36 @@ mod tests {
         view.select_next();
         let selected = view.selected_bookmark().unwrap();
         assert_eq!(selected.bookmark.name, "機能ブランチ");
+    }
+
+    // --- Move action tests ---
+
+    #[test]
+    fn test_move_action_local_bookmark() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(create_test_bookmarks());
+        // First selection is a local bookmark (feature-x)
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('m')));
+        assert!(matches!(action, BookmarkAction::Move(name) if name == "feature-x"));
+    }
+
+    #[test]
+    fn test_move_action_remote_shows_unavailable() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(create_test_bookmarks());
+        // Navigate to tracked remote
+        view.select_next();
+        view.select_next(); // tracked remote
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('m')));
+        assert!(matches!(action, BookmarkAction::MoveUnavailable));
+    }
+
+    #[test]
+    fn test_move_action_untracked_remote_shows_unavailable() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(create_test_bookmarks());
+        view.select_last(); // untracked remote
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('m')));
+        assert!(matches!(action, BookmarkAction::MoveUnavailable));
     }
 }

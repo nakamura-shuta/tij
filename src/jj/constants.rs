@@ -30,6 +30,7 @@ pub mod commands {
     pub const BOOKMARK_UNTRACK: &str = "untrack";
     pub const BOOKMARK_RENAME: &str = "rename";
     pub const BOOKMARK_FORGET: &str = "forget";
+    pub const BOOKMARK_MOVE: &str = "move";
     pub const NEXT: &str = "next";
     pub const PREV: &str = "prev";
     pub const REBASE: &str = "rebase";
@@ -94,6 +95,14 @@ pub mod flags {
     pub const CHANGE: &str = "--change";
     /// Specify remote for push/fetch
     pub const REMOTE: &str = "--remote";
+    /// Allow backwards bookmark move
+    pub const ALLOW_BACKWARDS: &str = "--allow-backwards";
+    /// Push all bookmarks (including new)
+    pub const ALL: &str = "--all";
+    /// Push tracked bookmarks only
+    pub const TRACKED: &str = "--tracked";
+    /// Push deleted bookmarks
+    pub const DELETED: &str = "--deleted";
 }
 
 /// Default limit for log output (no revset)
