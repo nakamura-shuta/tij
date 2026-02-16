@@ -380,6 +380,11 @@ impl LogView {
         false
     }
 
+    /// Get the current selection cursor position (index into selectable_indices)
+    pub fn selected_selectable_index(&self) -> usize {
+        self.selection_cursor
+    }
+
     /// Select a change by prefix match on change_id
     ///
     /// Used when the caller has a potentially shorter change_id (e.g., from

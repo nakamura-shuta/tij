@@ -1,13 +1,23 @@
 //! Application state and view management
 
 use std::cell::Cell;
+use std::time::Instant;
 
 use crate::jj::JjExecutor;
-use crate::model::Notification;
+use crate::model::{DiffContent, Notification};
 use crate::ui::components::Dialog;
 use crate::ui::views::{
     BlameView, BookmarkView, DiffView, LogView, OperationView, ResolveView, StatusView,
 };
+
+/// Cached preview to avoid refetching on every render
+#[derive(Debug)]
+pub(crate) struct PreviewCache {
+    pub change_id: String,
+    pub content: DiffContent,
+    /// Bookmarks captured at fetch time (from Change model, not jj show)
+    pub bookmarks: Vec<String>,
+}
 
 /// Available views in the application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -60,6 +70,16 @@ pub struct App {
     pub(crate) pending_push_bookmarks: Vec<String>,
     /// Pending jump target from Blame View (for 2-step J: first shows hint, second expands revset)
     pub(crate) pending_jump_change_id: Option<String>,
+    /// Preview pane enabled (p key toggle) — represents user intent
+    pub preview_enabled: bool,
+    /// Preview auto-disabled due to small terminal (render-time flag, does not override user intent)
+    pub(crate) preview_auto_disabled: bool,
+    /// Cached preview content (change_id → DiffContent + bookmarks)
+    pub(crate) preview_cache: Option<PreviewCache>,
+    /// Last fetch timestamp for debounce
+    pub(crate) preview_last_fetch: Option<Instant>,
+    /// Pending preview fetch (deferred by debounce)
+    pub(crate) preview_pending_id: Option<String>,
 }
 
 impl Default for App {
@@ -89,6 +109,11 @@ impl App {
             active_dialog: None,
             pending_push_bookmarks: Vec::new(),
             pending_jump_change_id: None,
+            preview_enabled: true,
+            preview_auto_disabled: false,
+            preview_cache: None,
+            preview_last_fetch: None,
+            preview_pending_id: None,
         };
 
         // Load initial log
@@ -115,6 +140,11 @@ impl App {
     /// Navigate to a specific view
     pub(crate) fn go_to_view(&mut self, view: View) {
         if self.current_view != view {
+            // Cancel pending preview when leaving Log view
+            if self.current_view == View::Log {
+                self.preview_pending_id = None;
+            }
+
             self.previous_view = Some(self.current_view);
             self.current_view = view;
 

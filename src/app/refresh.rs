@@ -7,7 +7,14 @@ use super::state::{App, View};
 
 impl App {
     /// Refresh the log view with optional revset
+    ///
+    /// Also invalidates the preview cache, since repository state may have changed
+    /// (e.g., after describe, edit, squash, rebase, etc.).
     pub fn refresh_log(&mut self, revset: Option<&str>) {
+        // Invalidate preview cache — same change_id may now have different content
+        self.preview_cache = None;
+        self.preview_pending_id = None;
+
         match self.jj.log_changes(revset) {
             Ok(changes) => {
                 self.log_view.set_changes(changes);

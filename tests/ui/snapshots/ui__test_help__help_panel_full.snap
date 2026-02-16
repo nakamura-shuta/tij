@@ -44,6 +44,7 @@ expression: terminal.backend()
 "│  '         Jump to bookmark                                                  │"
 "│  =         Compare revisions                                                 │"
 "│  M         Bookmark view                                                     │"
+"│  p         Toggle preview pane                                               │"
 "│                                                                              │"
 "│Input Mode:                                                                   │"
 "│  Enter     Submit input                                                      │"
@@ -80,5 +81,4 @@ expression: terminal.backend()
 "│                                                                              │"
 "│Operation View:                                                               │"
 "│  j/k       Move down/up                                                      │"
-"│  g/G       Go to top/bottom                                                  │"
 "└──────────────────────────────────────────────────────────────────────────────┘"

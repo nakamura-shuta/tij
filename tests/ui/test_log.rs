@@ -36,7 +36,7 @@ fn make_change(
 
 #[test]
 fn test_log_view_empty() {
-    let view = LogView::new();
+    let mut view = LogView::new();
 
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     terminal

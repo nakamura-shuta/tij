@@ -2,12 +2,10 @@
 
 use crossterm::event::{KeyCode, KeyEvent};
 
+use super::{InputMode, LogAction, LogView, RebaseMode};
 use crate::jj::constants;
 use crate::keys;
 use crate::model::Change;
-use crate::ui::{symbols, theme};
-
-use super::{InputMode, LogAction, LogView, RebaseMode};
 
 fn create_test_changes() -> Vec<Change> {
     vec![
@@ -244,38 +242,6 @@ fn test_handle_key_backspace() {
 
     press_key(&mut view, KeyCode::Backspace);
     assert_eq!(view.input_buffer, "a");
-}
-
-#[test]
-fn test_marker_for_change() {
-    let view = LogView::new();
-
-    let working_copy = Change {
-        change_id: "abc".to_string(),
-        is_working_copy: true,
-        ..Default::default()
-    };
-    let (marker, color) = view.marker_for_change(&working_copy);
-    assert_eq!(marker, symbols::markers::WORKING_COPY);
-    assert_eq!(color, theme::log_view::WORKING_COPY_MARKER);
-
-    let root = Change {
-        change_id: constants::ROOT_CHANGE_ID.to_string(),
-        is_working_copy: false,
-        ..Default::default()
-    };
-    let (marker, color) = view.marker_for_change(&root);
-    assert_eq!(marker, symbols::markers::ROOT);
-    assert_eq!(color, theme::log_view::ROOT_MARKER);
-
-    let normal = Change {
-        change_id: "xyz".to_string(),
-        is_working_copy: false,
-        ..Default::default()
-    };
-    let (marker, color) = view.marker_for_change(&normal);
-    assert_eq!(marker, symbols::markers::NORMAL);
-    assert_eq!(color, theme::log_view::NORMAL_MARKER);
 }
 
 #[test]

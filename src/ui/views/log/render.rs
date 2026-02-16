@@ -16,7 +16,7 @@ use super::{InputMode, LogView, RebaseMode, empty_text};
 
 impl LogView {
     /// Render the view with optional notification in title bar
-    pub fn render(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
+    pub fn render(&mut self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
         // Split area for input bar if in input modes
         let (log_area, input_area) = match self.input_mode {
             InputMode::Normal
@@ -34,7 +34,6 @@ impl LogView {
             }
         };
 
-        // Render log list
         self.render_log_list(frame, log_area, notification);
 
         // Render input bar if in input mode
@@ -269,20 +268,6 @@ impl LogView {
         }
 
         line
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn marker_for_change(&self, change: &Change) -> (char, ratatui::style::Color) {
-        if change.change_id == constants::ROOT_CHANGE_ID {
-            (symbols::markers::ROOT, theme::log_view::ROOT_MARKER)
-        } else if change.is_working_copy {
-            (
-                symbols::markers::WORKING_COPY,
-                theme::log_view::WORKING_COPY_MARKER,
-            )
-        } else {
-            (symbols::markers::NORMAL, theme::log_view::NORMAL_MARKER)
-        }
     }
 
     fn render_input_bar(&self, frame: &mut Frame, area: Rect) {

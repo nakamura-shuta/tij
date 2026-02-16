@@ -139,8 +139,29 @@ impl App {
     fn handle_view_key(&mut self, key: KeyEvent) {
         match self.current_view {
             View::Log => {
+                // Preview toggle (handled at App level since it's App state)
+                if key.code == keys::PREVIEW
+                    && matches!(self.log_view.input_mode, InputMode::Normal)
+                {
+                    self.preview_enabled = !self.preview_enabled;
+                    if self.preview_enabled {
+                        self.update_preview_if_needed();
+                    } else {
+                        // Clear pending fetch and cache on disable
+                        self.preview_pending_id = None;
+                        self.preview_cache = None;
+                    }
+                    return;
+                }
+
                 let action = self.log_view.handle_key(key);
                 self.handle_log_action(action);
+
+                // Update preview after key processing (debounced)
+                // Guard: only if still on Log view (Enter → Diff would have transitioned away)
+                if self.preview_enabled && self.current_view == View::Log {
+                    self.update_preview_if_needed();
+                }
             }
             View::Diff => {
                 if let Some(ref mut diff_view) = self.diff_view {

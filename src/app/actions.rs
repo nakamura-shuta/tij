@@ -1253,6 +1253,104 @@ impl App {
             }
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Preview pane
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Update preview cache if selected change has changed.
+    ///
+    /// Called after key processing, NOT during render.
+    /// Skips fetch if:
+    /// - Preview is disabled
+    /// - Same change_id is already cached (cache hit)
+    /// - Preview auto-disabled (small terminal) — tracks pending_id for later
+    /// - Rapid movement detected (debounce: skip if last fetch was < 100ms ago)
+    pub(crate) fn update_preview_if_needed(&mut self) {
+        if !self.preview_enabled {
+            return;
+        }
+
+        let current_id = match self.log_view.selected_change() {
+            Some(c) => c.change_id.clone(),
+            None => {
+                self.preview_cache = None;
+                return;
+            }
+        };
+
+        // Cache hit — same change already fetched
+        if let Some(ref cache) = self.preview_cache
+            && cache.change_id == current_id
+        {
+            return;
+        }
+
+        // Auto-disabled (small terminal): track selection but skip fetch.
+        // When terminal is resized back, resolve_pending_preview() will pick this up.
+        if self.preview_auto_disabled {
+            self.preview_pending_id = Some(current_id);
+            return;
+        }
+
+        // Debounce: skip fetch if last fetch was very recent (rapid j/k movement)
+        if let Some(ref last) = self.preview_last_fetch
+            && last.elapsed() < std::time::Duration::from_millis(100)
+        {
+            // Mark as pending — will be fetched on next idle tick
+            self.preview_pending_id = Some(current_id);
+            return;
+        }
+
+        self.fetch_preview(&current_id);
+    }
+
+    /// Actually fetch preview content via jj show
+    fn fetch_preview(&mut self, change_id: &str) {
+        self.preview_last_fetch = Some(std::time::Instant::now());
+        self.preview_pending_id = None;
+
+        // Capture bookmarks at fetch time from the Change model (not jj show)
+        // to ensure consistency between content and bookmarks in the cache
+        let bookmarks = self
+            .log_view
+            .selected_change()
+            .filter(|c| c.change_id == change_id)
+            .map(|c| c.bookmarks.clone())
+            .unwrap_or_default();
+
+        match self.jj.show(change_id) {
+            Ok(content) => {
+                self.preview_cache = Some(super::state::PreviewCache {
+                    change_id: change_id.to_string(),
+                    content,
+                    bookmarks,
+                });
+            }
+            Err(_) => {
+                self.preview_cache = None;
+            }
+        }
+    }
+
+    /// Called from the event loop idle handler (when no key is pressed).
+    /// Resolves any pending preview fetch that was deferred by debounce or auto-disable.
+    pub fn resolve_pending_preview(&mut self) {
+        if !self.preview_enabled || self.preview_auto_disabled {
+            return;
+        }
+        if let Some(pending_id) = self.preview_pending_id.take() {
+            // Verify the selection hasn't changed
+            let still_selected = self
+                .log_view
+                .selected_change()
+                .map(|c| c.change_id == pending_id)
+                .unwrap_or(false);
+            if still_selected {
+                self.fetch_preview(&pending_id);
+            }
+        }
+    }
 }
 
 /// Check if any push actions involve a force push (non-fast-forward)

@@ -142,6 +142,9 @@ pub const COMPARE: KeyCode = KeyCode::Char('=');
 /// Open Bookmark View (Log View)
 pub const BOOKMARK_VIEW: KeyCode = KeyCode::Char('M');
 
+/// Toggle preview pane (Log View)
+pub const PREVIEW: KeyCode = KeyCode::Char('p');
+
 /// Untrack remote bookmark (Bookmark View)
 pub const BOOKMARK_UNTRACK: KeyCode = KeyCode::Char('U');
 
@@ -353,6 +356,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "M",
         description: "Bookmark view",
+    },
+    KeyBindEntry {
+        key: "p",
+        description: "Toggle preview pane",
     },
 ];
 
@@ -637,6 +644,11 @@ pub const HINT_LOG_JUMP: KeyHint = KeyHint {
     label: "Log Jump",
     color: Color::Yellow,
 };
+pub const HINT_PREVIEW: KeyHint = KeyHint {
+    key: "p",
+    label: "Preview",
+    color: Color::Blue,
+};
 
 // =============================================================================
 // HintContext + DialogHintKind
@@ -756,6 +768,7 @@ fn log_normal_hints(ctx: &HintContext) -> Vec<KeyHint> {
         HINT_JUMP,
         HINT_COMPARE,
         HINT_BOOKMARK_VIEW,
+        HINT_PREVIEW,
         HINT_OPS,
         HINT_UNDO,
         HINT_REFRESH,

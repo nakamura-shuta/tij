@@ -527,6 +527,10 @@ impl LogView {
 
         if let Some(index) = found {
             self.selected_index = index;
+            // Also update selection_cursor so card mode stays in sync
+            if let Some(cursor) = self.selectable_indices.iter().position(|&i| i == index) {
+                self.selection_cursor = cursor;
+            }
             return true;
         }
 

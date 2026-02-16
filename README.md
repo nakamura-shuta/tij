@@ -46,14 +46,14 @@ Press `?` for help, `q` to quit.
 
 | Area | Features |
 |------|----------|
-| Views | Log / Diff / Status / Help / Operation History / Blame (with Log jump) / Bookmark |
+| Views | Log (with split-pane preview) / Diff / Status / Help / Operation History / Blame (with Log jump) / Bookmark |
 | History Editing | Describe (`d` quick edit / `Ctrl+E` external editor) / Edit / New / New from selected / Commit / Squash / Abandon / Split / Rebase (revision/source/insert-after/insert-before) / Absorb |
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
 | Recovery | Undo / Redo / Operation Restore |
 | Bookmarks | Create / Move (with confirmation) / Delete (multi-select) / Track / Untrack / Jump / Bookmark View (`M`) |
 | Git Integration | Fetch / Push (with dry-run preview, force push warnings, and protected bookmark detection) |
 | Diff | Compare two revisions (`jj diff --from --to`) |
-| Usability | Revset filtering / Text search / Adaptive status bar / Dynamic context-aware hints |
+| Usability | Revset filtering / Text search / Adaptive status bar / Dynamic context-aware hints / `--limit 200` default (unlimited with revset) |
 
 ## Revset Examples
 
@@ -88,7 +88,7 @@ cargo test --tests            # Integration tests only
 cargo insta test              # Snapshot tests
 ```
 
-**Test categories**: Unit (405), Integration (50+), Snapshot (17), Property-based (15)
+**Test categories**: Unit (413), Integration (50+), Snapshot (17), Property-based (15)
 
 ## Acknowledgments
 

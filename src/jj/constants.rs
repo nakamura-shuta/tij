@@ -79,7 +79,12 @@ pub mod flags {
     pub const TO: &str = "--to";
     /// Open editor for interactive editing (e.g., jj describe --edit)
     pub const EDIT_FLAG: &str = "--edit";
+    /// Limit number of results
+    pub const LIMIT: &str = "--limit";
 }
+
+/// Default limit for log output (no revset)
+pub const DEFAULT_LOG_LIMIT: &str = "200";
 
 /// Special jj values
 pub mod special {
