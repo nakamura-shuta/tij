@@ -1555,7 +1555,7 @@ mod tests {
     #[test]
     fn test_multiline_detection_single_line() {
         let desc = "single line description";
-        assert!(!desc.lines().nth(1).is_some());
+        assert!(desc.lines().nth(1).is_none());
     }
 
     #[test]
@@ -1567,14 +1567,14 @@ mod tests {
     #[test]
     fn test_multiline_detection_empty_string() {
         let desc = "";
-        assert!(!desc.lines().nth(1).is_some());
+        assert!(desc.lines().nth(1).is_none());
     }
 
     #[test]
     fn test_multiline_detection_trailing_newline_only() {
         // After trim_end_matches('\n'), a single-line desc with trailing \n becomes single-line
         let desc = "single line\n".trim_end_matches('\n');
-        assert!(!desc.lines().nth(1).is_some());
+        assert!(desc.lines().nth(1).is_none());
     }
 
     #[test]
