@@ -1,0 +1,63 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "ff9f4cc7f41f",
+  "strategy": "manual-commit",
+  "checkpoints_count": 27,
+  "files_touched": [
+    ".github/workflows/homebrew.yml",
+    ".github/workflows/release.yml",
+    ".work/docs/plan.md",
+    ".work/docs/spec-detail/log-reversed.md",
+    ".work/docs/spec-detail/phase15-bookmark-ext-basic-commands.md",
+    ".work/docs/spec-detail/phase16-1-push-change.md",
+    ".work/docs/spec-detail/phase16-2-duplicate.md",
+    ".work/docs/spec-detail/phase16-3-push-remote.md",
+    ".work/docs/spec-detail/phase17-1-push-bulk-options.md",
+    ".work/docs/spec-detail/phase17-2-bookmark-move.md",
+    "Cargo.toml",
+    "README.md",
+    "src/app/actions.rs",
+    "src/app/input.rs",
+    "src/app/refresh.rs",
+    "src/app/render.rs",
+    "src/app/state.rs",
+    "src/jj/constants.rs",
+    "src/jj/executor.rs",
+    "src/jj/mod.rs",
+    "src/keys.rs",
+    "src/ui/components/dialog/mod.rs",
+    "src/ui/views/bookmark/input.rs",
+    "src/ui/views/bookmark/mod.rs",
+    "src/ui/views/bookmark/render.rs",
+    "src/ui/views/log/input.rs",
+    "src/ui/views/log/mod.rs",
+    "src/ui/views/log/tests.rs",
+    "src/ui/views/mod.rs",
+    "src/ui/widgets/help_panel.rs",
+    "tests/integration_phase15.rs",
+    "tests/integration_phase16.rs",
+    "tests/scenario_absorb_workflow.rs",
+    "tests/scenario_code_review.rs",
+    "tests/scenario_collaboration.rs",
+    "tests/scenario_conflict_resolution.rs",
+    "tests/scenario_daily_workflow.rs",
+    "tests/scenario_mistake_recovery.rs",
+    "tests/ui/test_help.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ff/9f4cc7f41f/0/metadata.json",
+      "transcript": "/ff/9f4cc7f41f/0/full.jsonl",
+      "context": "/ff/9f4cc7f41f/0/context.md",
+      "content_hash": "/ff/9f4cc7f41f/0/content_hash.txt",
+      "prompt": "/ff/9f4cc7f41f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2940,
+    "cache_creation_tokens": 1539023,
+    "cache_read_tokens": 81728909,
+    "output_tokens": 50353,
+    "api_call_count": 670
+  }
+}
