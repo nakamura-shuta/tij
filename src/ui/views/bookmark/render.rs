@@ -61,6 +61,39 @@ impl BookmarkView {
 
         let paragraph = Paragraph::new(lines).block(block);
         frame.render_widget(paragraph, area);
+
+        // Render rename input bar at the bottom if active
+        if let Some(ref state) = self.rename_state {
+            let input_area = Rect {
+                x: area.x,
+                y: area.y + area.height.saturating_sub(3),
+                width: area.width,
+                height: 3.min(area.height),
+            };
+            let input_text = format!("Rename bookmark: {}", state.input_buffer);
+            let input_line = Line::from(vec![
+                Span::styled("Rename bookmark: ", Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    state.input_buffer.clone(),
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("█", Style::default().fg(Color::White)),
+            ]);
+            let hint_line = Line::from(vec![
+                Span::styled("[Enter]", Style::default().fg(Color::Green)),
+                Span::raw(" Confirm  "),
+                Span::styled("[Esc]", Style::default().fg(Color::Red)),
+                Span::raw(" Cancel"),
+            ]);
+            let input_block = ratatui::widgets::Block::default()
+                .borders(ratatui::widgets::Borders::TOP)
+                .border_style(Style::default().fg(Color::DarkGray));
+            let _ = input_text; // suppress unused warning
+            let input_paragraph = Paragraph::new(vec![input_line, hint_line]).block(input_block);
+            frame.render_widget(input_paragraph, input_area);
+        }
     }
 }
 

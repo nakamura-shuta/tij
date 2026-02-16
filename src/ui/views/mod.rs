@@ -11,7 +11,7 @@ mod resolve;
 mod status;
 
 pub use blame::{BlameAction, BlameView};
-pub use bookmark::{BookmarkAction, BookmarkView};
+pub use bookmark::{BookmarkAction, BookmarkView, RenameState};
 pub use diff::{DiffAction, DiffView};
 pub use log::{InputMode, LogAction, LogView, RebaseMode};
 pub use operation::{OperationAction, OperationView};

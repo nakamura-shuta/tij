@@ -610,12 +610,68 @@ impl JjExecutor {
         self.run(&args)
     }
 
-    /// Run `jj git fetch` to fetch from all tracked remotes
+    /// Rename a local bookmark
+    ///
+    /// Runs `jj bookmark rename <old> <new>`.
+    /// Only works for local bookmarks. Remote bookmarks cannot be renamed.
+    pub fn bookmark_rename(&self, old_name: &str, new_name: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::BOOKMARK,
+            commands::BOOKMARK_RENAME,
+            old_name,
+            new_name,
+        ])
+    }
+
+    /// Forget bookmarks (removes local and remote tracking info)
+    ///
+    /// Unlike `bookmark delete`, forget removes remote tracking information.
+    /// The bookmark will NOT be re-created on the next `jj git fetch`.
+    pub fn bookmark_forget(&self, names: &[&str]) -> Result<String, JjError> {
+        let mut args = vec![commands::BOOKMARK, commands::BOOKMARK_FORGET];
+        args.extend(names);
+        self.run(&args)
+    }
+
+    /// Run `jj next --edit` to move @ to the next child
+    pub fn next(&self) -> Result<String, JjError> {
+        self.run(&[commands::NEXT, flags::EDIT_FLAG])
+    }
+
+    /// Run `jj prev --edit` to move @ to the previous parent
+    pub fn prev(&self) -> Result<String, JjError> {
+        self.run(&[commands::PREV, flags::EDIT_FLAG])
+    }
+
+    /// Run `jj git fetch` to fetch from default remotes
     ///
     /// Returns the command output describing what was fetched.
     /// Empty output typically means "already up to date".
     pub fn git_fetch(&self) -> Result<String, JjError> {
         self.run(&[commands::GIT, commands::GIT_FETCH])
+    }
+
+    /// Run `jj git fetch --all-remotes`
+    pub fn git_fetch_all_remotes(&self) -> Result<String, JjError> {
+        self.run(&[commands::GIT, commands::GIT_FETCH, flags::ALL_REMOTES])
+    }
+
+    /// Run `jj git fetch --remote <name>`
+    pub fn git_fetch_remote(&self, remote: &str) -> Result<String, JjError> {
+        self.run(&[commands::GIT, commands::GIT_FETCH, "--remote", remote])
+    }
+
+    /// Run `jj git remote list` to get all remote names
+    pub fn git_remote_list(&self) -> Result<Vec<String>, JjError> {
+        let output = self.run(&[
+            commands::GIT,
+            commands::GIT_REMOTE,
+            commands::GIT_REMOTE_LIST,
+        ])?;
+        Ok(output
+            .lines()
+            .filter_map(|line| line.split_whitespace().next().map(|s| s.to_string()))
+            .collect())
     }
 
     /// Run `jj git push --bookmark <name>` to push a bookmark to remote

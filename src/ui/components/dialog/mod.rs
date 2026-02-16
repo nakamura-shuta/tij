@@ -41,6 +41,10 @@ pub enum DialogCallback {
     Track,
     /// Jump to bookmark (Select dialog, single_select)
     BookmarkJump,
+    /// Forget bookmark (Confirm dialog)
+    BookmarkForget,
+    /// Git fetch remote selection (Select dialog, single_select)
+    GitFetch,
 }
 
 /// Selection item for Select dialog

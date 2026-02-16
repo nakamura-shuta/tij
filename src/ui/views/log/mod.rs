@@ -129,6 +129,10 @@ pub enum LogAction {
     CompareSameRevision,
     /// Open Bookmark View
     OpenBookmarkView,
+    /// Move @ to next child (jj next --edit)
+    NextChange,
+    /// Move @ to previous parent (jj prev --edit)
+    PrevChange,
 }
 
 /// Log View state
@@ -383,6 +387,24 @@ impl LogView {
     /// Get the current selection cursor position (index into selectable_indices)
     pub fn selected_selectable_index(&self) -> usize {
         self.selection_cursor
+    }
+
+    /// Select the working copy (@) change
+    ///
+    /// Searches for the change with `is_working_copy == true` and moves
+    /// the cursor to it. Used after `jj next`/`jj prev` to follow @.
+    /// Returns true if working copy was found and selected.
+    pub fn select_working_copy(&mut self) -> bool {
+        for (cursor, &idx) in self.selectable_indices.iter().enumerate() {
+            if let Some(change) = self.changes.get(idx)
+                && change.is_working_copy
+            {
+                self.selection_cursor = cursor;
+                self.selected_index = idx;
+                return true;
+            }
+        }
+        false
     }
 
     /// Select a change by prefix match on change_id

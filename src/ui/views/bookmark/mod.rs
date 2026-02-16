@@ -19,6 +19,67 @@ pub enum BookmarkAction {
     Untrack(String),
     /// Delete selected local bookmark (name)
     Delete(String),
+    /// Start rename input mode (old_name)
+    StartRename(String),
+    /// Confirm rename (old_name, new_name)
+    ConfirmRename { old_name: String, new_name: String },
+    /// Cancel rename
+    CancelRename,
+    /// Forget bookmark (name) - removes remote tracking info
+    Forget(String),
+}
+
+/// Bookmark rename inline edit state
+#[derive(Debug, Clone)]
+pub struct RenameState {
+    /// Original bookmark name
+    pub old_name: String,
+    /// Current input buffer
+    pub input_buffer: String,
+    /// Cursor position in char count (NOT byte offset)
+    pub cursor: usize,
+}
+
+impl RenameState {
+    pub fn new(old_name: String) -> Self {
+        let cursor = old_name.chars().count();
+        Self {
+            input_buffer: old_name.clone(),
+            old_name,
+            cursor,
+        }
+    }
+
+    /// Get byte offset for current cursor position (char-based → byte-based)
+    fn cursor_byte_offset(&self) -> usize {
+        self.input_buffer
+            .char_indices()
+            .nth(self.cursor)
+            .map(|(i, _)| i)
+            .unwrap_or(self.input_buffer.len())
+    }
+
+    /// Remove the character before the cursor (backspace)
+    pub fn backspace(&mut self) {
+        if self.cursor > 0 {
+            // Find the byte range of the char before cursor
+            let byte_offset = self
+                .input_buffer
+                .char_indices()
+                .nth(self.cursor - 1)
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            self.input_buffer.remove(byte_offset);
+            self.cursor -= 1;
+        }
+    }
+
+    /// Insert a character at the cursor position
+    pub fn insert_char(&mut self, c: char) {
+        let byte_offset = self.cursor_byte_offset();
+        self.input_buffer.insert(byte_offset, c);
+        self.cursor += 1;
+    }
 }
 
 /// Display row type for rendering
@@ -41,6 +102,8 @@ pub struct BookmarkView {
     selected: usize,
     /// Scroll offset
     scroll_offset: usize,
+    /// Rename input state (Some = rename mode active)
+    pub(crate) rename_state: Option<RenameState>,
 }
 
 impl Default for BookmarkView {
@@ -57,6 +120,7 @@ impl BookmarkView {
             display_rows: Vec::new(),
             selected: 0,
             scroll_offset: 0,
+            rename_state: None,
         }
     }
 
@@ -422,6 +486,144 @@ mod tests {
         ]);
         assert_eq!(view.display_rows.len(), 3);
         assert_eq!(view.bookmark_count(), 2);
+    }
+
+    // --- Rename action tests ---
+
+    #[test]
+    fn test_rename_action_local_only() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(create_test_bookmarks());
+        // First selection is a local bookmark (feature-x)
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('r')));
+        assert!(matches!(action, BookmarkAction::StartRename(name) if name == "feature-x"));
+    }
+
+    #[test]
+    fn test_rename_action_remote_ignored() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(create_test_bookmarks());
+        // Navigate to tracked remote
+        view.select_next();
+        view.select_next(); // tracked remote
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('r')));
+        assert!(matches!(action, BookmarkAction::None));
+    }
+
+    #[test]
+    fn test_rename_input_confirm() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(create_test_bookmarks());
+        // Start rename
+        view.rename_state = Some(RenameState::new("feature-x".to_string()));
+        // Type backspace to delete last char
+        view.handle_key(KeyEvent::from(KeyCode::Backspace));
+        // Type 'y'
+        view.handle_key(KeyEvent::from(KeyCode::Char('y')));
+        // Confirm
+        let action = view.handle_key(KeyEvent::from(KeyCode::Enter));
+        assert!(
+            matches!(action, BookmarkAction::ConfirmRename { old_name, new_name }
+                if old_name == "feature-x" && new_name == "feature-y")
+        );
+        assert!(view.rename_state.is_none());
+    }
+
+    #[test]
+    fn test_rename_input_cancel() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(create_test_bookmarks());
+        view.rename_state = Some(RenameState::new("feature-x".to_string()));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Esc));
+        assert!(matches!(action, BookmarkAction::CancelRename));
+        assert!(view.rename_state.is_none());
+    }
+
+    // --- Forget action tests ---
+
+    #[test]
+    fn test_forget_action_local_only() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(create_test_bookmarks());
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('f')));
+        assert!(matches!(action, BookmarkAction::Forget(name) if name == "feature-x"));
+    }
+
+    #[test]
+    fn test_forget_action_remote_ignored() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(create_test_bookmarks());
+        // Navigate to tracked remote
+        view.select_next();
+        view.select_next();
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('f')));
+        assert!(matches!(action, BookmarkAction::None));
+    }
+
+    #[test]
+    fn test_forget_action_untracked_remote_ignored() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(create_test_bookmarks());
+        view.select_last(); // untracked remote
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('f')));
+        assert!(matches!(action, BookmarkAction::None));
+    }
+
+    // --- Non-ASCII rename safety tests ---
+
+    #[test]
+    fn test_rename_non_ascii_backspace_no_panic() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(vec![make_local(
+            "機能ブランチ",
+            Some("abc12345"),
+            Some("desc"),
+        )]);
+        // Start rename with Japanese name (6 chars, 18 bytes)
+        view.rename_state = Some(RenameState::new("機能ブランチ".to_string()));
+        // Backspace should remove last *char*, not last byte
+        view.handle_key(KeyEvent::from(KeyCode::Backspace));
+        let state = view.rename_state.as_ref().unwrap();
+        assert_eq!(state.input_buffer, "機能ブラン");
+        assert_eq!(state.cursor, 5);
+
+        // Another backspace
+        view.handle_key(KeyEvent::from(KeyCode::Backspace));
+        let state = view.rename_state.as_ref().unwrap();
+        assert_eq!(state.input_buffer, "機能ブラ");
+        assert_eq!(state.cursor, 4);
+    }
+
+    #[test]
+    fn test_rename_non_ascii_insert_char() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(vec![make_local("テスト", Some("abc12345"), Some("desc"))]);
+        view.rename_state = Some(RenameState::new("テスト".to_string()));
+        // Insert ASCII char at end
+        view.handle_key(KeyEvent::from(KeyCode::Char('2')));
+        let state = view.rename_state.as_ref().unwrap();
+        assert_eq!(state.input_buffer, "テスト2");
+        assert_eq!(state.cursor, 4);
+    }
+
+    #[test]
+    fn test_rename_emoji_backspace() {
+        let mut view = BookmarkView::new();
+        view.set_bookmarks(vec![make_local("feat-🚀", Some("abc12345"), Some("desc"))]);
+        view.rename_state = Some(RenameState::new("feat-🚀".to_string()));
+        // Backspace should remove the emoji (4 bytes), not just 1 byte
+        view.handle_key(KeyEvent::from(KeyCode::Backspace));
+        let state = view.rename_state.as_ref().unwrap();
+        assert_eq!(state.input_buffer, "feat-");
+        assert_eq!(state.cursor, 5);
+    }
+
+    #[test]
+    fn test_rename_state_cursor_char_count() {
+        // Verify cursor is char count, not byte length
+        let state = RenameState::new("日本語".to_string());
+        assert_eq!(state.cursor, 3); // 3 chars, not 9 bytes
+        assert_eq!(state.input_buffer.len(), 9); // 9 bytes
     }
 
     #[test]

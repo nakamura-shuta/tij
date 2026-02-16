@@ -148,6 +148,18 @@ pub const PREVIEW: KeyCode = KeyCode::Char('p');
 /// Untrack remote bookmark (Bookmark View)
 pub const BOOKMARK_UNTRACK: KeyCode = KeyCode::Char('U');
 
+/// Rename bookmark (Bookmark View)
+pub const BOOKMARK_RENAME: KeyCode = KeyCode::Char('r');
+
+/// Forget bookmark (Bookmark View)
+pub const BOOKMARK_FORGET: KeyCode = KeyCode::Char('f');
+
+/// Move @ to next child (Log View)
+pub const NEXT_CHANGE: KeyCode = KeyCode::Char(']');
+
+/// Move @ to previous parent (Log View)
+pub const PREV_CHANGE: KeyCode = KeyCode::Char('[');
+
 /// Jump to change in Log View (Blame View)
 pub const JUMP_TO_LOG: KeyCode = KeyCode::Char('J');
 
@@ -360,6 +372,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "p",
         description: "Toggle preview pane",
+    },
+    KeyBindEntry {
+        key: "]/[",
+        description: "Move @ to next/prev",
     },
 ];
 
@@ -649,6 +665,16 @@ pub const HINT_PREVIEW: KeyHint = KeyHint {
     label: "Preview",
     color: Color::Blue,
 };
+pub const HINT_RENAME: KeyHint = KeyHint {
+    key: "r",
+    label: "Rename",
+    color: Color::Yellow,
+};
+pub const HINT_FORGET: KeyHint = KeyHint {
+    key: "f",
+    label: "Forget",
+    color: Color::Red,
+};
 
 // =============================================================================
 // HintContext + DialogHintKind
@@ -793,9 +819,13 @@ fn bookmark_view_hints(ctx: &HintContext) -> Vec<KeyHint> {
         Some(BookmarkKind::LocalJumpable) => {
             h.push(HINT_JUMP_ENTER);
             h.push(HINT_DEL_BKM);
+            h.push(HINT_RENAME);
+            h.push(HINT_FORGET);
         }
         Some(BookmarkKind::LocalNoChange) => {
             h.push(HINT_DEL_BKM);
+            h.push(HINT_RENAME);
+            h.push(HINT_FORGET);
         }
         Some(BookmarkKind::TrackedRemote) => {
             h.push(HINT_UNTRACK);
@@ -1030,6 +1060,14 @@ pub const BOOKMARK_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "D",
         description: "Delete local bookmark",
+    },
+    KeyBindEntry {
+        key: "r",
+        description: "Rename bookmark",
+    },
+    KeyBindEntry {
+        key: "f",
+        description: "Forget bookmark (remove tracking)",
     },
     KeyBindEntry {
         key: "u",

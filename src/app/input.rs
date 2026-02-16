@@ -6,8 +6,8 @@ use super::state::{App, View};
 use crate::keys;
 use crate::model::Notification;
 use crate::ui::views::{
-    BlameAction, BookmarkAction, DiffAction, InputMode, LogAction, OperationAction, ResolveAction,
-    StatusAction, StatusInputMode,
+    BlameAction, BookmarkAction, DiffAction, InputMode, LogAction, OperationAction, RenameState,
+    ResolveAction, StatusAction, StatusInputMode,
 };
 
 impl App {
@@ -91,6 +91,11 @@ impl App {
                 true
             }
             keys::ESC => {
+                // Don't intercept Esc when bookmark rename is active
+                if self.current_view == View::Bookmark && self.bookmark_view.rename_state.is_some()
+                {
+                    return false;
+                }
                 self.handle_back();
                 true
             }
@@ -275,7 +280,7 @@ impl App {
                 self.open_resolve_view(&change_id, is_working_copy);
             }
             LogAction::Fetch => {
-                self.execute_fetch();
+                self.start_fetch();
             }
             LogAction::StartPush => {
                 self.start_push();
@@ -306,6 +311,12 @@ impl App {
             LogAction::OpenBookmarkView => {
                 self.open_bookmark_view();
             }
+            LogAction::NextChange => {
+                self.execute_next();
+            }
+            LogAction::PrevChange => {
+                self.execute_prev();
+            }
         }
     }
 
@@ -327,6 +338,31 @@ impl App {
             BookmarkAction::Delete(name) => {
                 self.execute_bookmark_delete(&[name]);
                 self.refresh_bookmark_view();
+            }
+            BookmarkAction::StartRename(old_name) => {
+                self.bookmark_view.rename_state = Some(RenameState::new(old_name));
+            }
+            BookmarkAction::ConfirmRename { old_name, new_name } => {
+                self.execute_bookmark_rename(&old_name, &new_name);
+            }
+            BookmarkAction::CancelRename => {
+                // rename_state already cleared by BookmarkView
+            }
+            BookmarkAction::Forget(name) => {
+                use crate::ui::components::{Dialog, DialogCallback};
+                self.active_dialog = Some(Dialog::confirm(
+                    "Forget Bookmark",
+                    format!(
+                        "Forget bookmark '{}'?\n\n\
+                         This removes remote tracking.\n\
+                         Use 'D' for local delete only.\n\
+                         Undo with 'u' if needed.",
+                        name
+                    ),
+                    None,
+                    DialogCallback::BookmarkForget,
+                ));
+                self.pending_forget_bookmark = Some(name);
             }
         }
     }

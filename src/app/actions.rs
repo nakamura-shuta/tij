@@ -565,6 +565,123 @@ impl App {
         }
     }
 
+    /// Execute bookmark rename
+    pub(crate) fn execute_bookmark_rename(&mut self, old_name: &str, new_name: &str) {
+        if old_name == new_name {
+            self.notification = Some(Notification::info("Name unchanged"));
+            return;
+        }
+        if new_name.trim().is_empty() {
+            self.notification = Some(Notification::warning("Bookmark name cannot be empty"));
+            return;
+        }
+        match self.jj.bookmark_rename(old_name, new_name) {
+            Ok(_) => {
+                self.notification = Some(Notification::success(format!(
+                    "Renamed bookmark: {} → {}",
+                    old_name, new_name
+                )));
+                self.refresh_bookmark_view();
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Rename failed: {}", e));
+            }
+        }
+    }
+
+    /// Execute bookmark forget
+    pub(crate) fn execute_bookmark_forget(&mut self) {
+        if let Some(name) = self.pending_forget_bookmark.take() {
+            match self.jj.bookmark_forget(&[&name]) {
+                Ok(_) => {
+                    self.notification = Some(Notification::success(format!(
+                        "Forgot bookmark: {} (remote tracking removed)",
+                        name
+                    )));
+                    self.refresh_bookmark_view();
+                }
+                Err(e) => {
+                    self.error_message = Some(format!("Forget failed: {}", e));
+                }
+            }
+        }
+    }
+
+    /// Execute `jj next --edit` and refresh
+    pub(crate) fn execute_next(&mut self) {
+        match self.jj.next() {
+            Ok(output) => {
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.refresh_status();
+
+                // Move cursor to @ position
+                self.log_view.select_working_copy();
+
+                let msg = Self::parse_next_prev_message(&output, "next");
+                self.notification = Some(Notification::success(msg));
+            }
+            Err(e) => {
+                let msg = Self::format_next_prev_error(&e, "next");
+                self.notification = Some(Notification::warning(msg));
+            }
+        }
+    }
+
+    /// Execute `jj prev --edit` and refresh
+    pub(crate) fn execute_prev(&mut self) {
+        match self.jj.prev() {
+            Ok(output) => {
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.refresh_status();
+
+                // Move cursor to @ position
+                self.log_view.select_working_copy();
+
+                let msg = Self::parse_next_prev_message(&output, "prev");
+                self.notification = Some(Notification::success(msg));
+            }
+            Err(e) => {
+                let msg = Self::format_next_prev_error(&e, "prev");
+                self.notification = Some(Notification::warning(msg));
+            }
+        }
+    }
+
+    /// Parse jj next/prev success output to notification message
+    fn parse_next_prev_message(output: &str, direction: &str) -> String {
+        let trimmed = output.trim();
+        if trimmed.is_empty() {
+            format!("Moved {} successfully", direction)
+        } else {
+            let first_line = trimmed.lines().next().unwrap_or(trimmed);
+            format!("Moved {}: {}", direction, first_line)
+        }
+    }
+
+    /// Format next/prev error message for user
+    fn format_next_prev_error(error: &crate::jj::JjError, direction: &str) -> String {
+        let err_str = error.to_string();
+        if err_str.contains("more than one child") || err_str.contains("more than one parent") {
+            format!(
+                "Cannot move {}: multiple {}. Use 'e' to edit a specific revision.",
+                direction,
+                if direction == "next" {
+                    "children"
+                } else {
+                    "parents"
+                }
+            )
+        } else if err_str.contains("No descendant") || err_str.contains("no child") {
+            "Already at the newest change".to_string()
+        } else if err_str.contains("No ancestor") || err_str.contains("no parent") {
+            "Already at the root".to_string()
+        } else {
+            format!("Move {} failed: {}", direction, err_str)
+        }
+    }
+
     /// Execute absorb: move working copy changes into ancestor commits
     ///
     /// Each hunk is moved to the closest mutable ancestor where the
@@ -593,7 +710,7 @@ impl App {
         }
     }
 
-    /// Execute git fetch
+    /// Execute git fetch (default behavior)
     pub(crate) fn execute_fetch(&mut self) {
         match self.jj.git_fetch() {
             Ok(output) => {
@@ -606,6 +723,81 @@ impl App {
                     Notification::info("Already up to date")
                 } else {
                     Notification::success("Fetched from remote")
+                };
+                self.notification = Some(notification);
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Fetch failed: {}", e));
+            }
+        }
+    }
+
+    /// Start fetch flow: check remotes and show dialog if multiple
+    pub(crate) fn start_fetch(&mut self) {
+        match self.jj.git_remote_list() {
+            Ok(remotes) => {
+                if remotes.len() <= 1 {
+                    // Single remote (or none): execute immediately
+                    self.execute_fetch();
+                } else {
+                    // Multiple remotes: show selection dialog
+                    let mut items = vec![
+                        SelectItem {
+                            label: "Default fetch (jj config)".to_string(),
+                            value: "__default__".to_string(),
+                            selected: false,
+                        },
+                        SelectItem {
+                            label: "All remotes (including untracked)".to_string(),
+                            value: "__all_remotes__".to_string(),
+                            selected: false,
+                        },
+                    ];
+                    for remote in &remotes {
+                        items.push(SelectItem {
+                            label: remote.clone(),
+                            value: remote.clone(),
+                            selected: false,
+                        });
+                    }
+                    self.active_dialog = Some(Dialog::select_single(
+                        "Git Fetch",
+                        "Select remote to fetch from:",
+                        items,
+                        None,
+                        DialogCallback::GitFetch,
+                    ));
+                }
+            }
+            Err(_) => {
+                // Fallback to default fetch on remote list failure
+                self.execute_fetch();
+            }
+        }
+    }
+
+    /// Execute fetch with specific remote option
+    pub(crate) fn execute_fetch_with_option(&mut self, option: &str) {
+        let result = match option {
+            "__default__" => self.jj.git_fetch(),
+            "__all_remotes__" => self.jj.git_fetch_all_remotes(),
+            remote => self.jj.git_fetch_remote(remote),
+        };
+        match result {
+            Ok(output) => {
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.refresh_status();
+
+                let notification = if output.trim().is_empty() {
+                    Notification::info("Already up to date")
+                } else {
+                    let source = match option {
+                        "__default__" => "default remotes",
+                        "__all_remotes__" => "all remotes",
+                        remote => remote,
+                    };
+                    Notification::success(format!("Fetched from {}", source))
                 };
                 self.notification = Some(notification);
             }
@@ -1025,6 +1217,17 @@ impl App {
                 // Single-select dialog - change_ids contains exactly one change_id
                 if let Some(change_id) = change_ids.first() {
                     self.execute_bookmark_jump(change_id);
+                }
+            }
+            (Some(DialogCallback::BookmarkForget), DialogResult::Confirmed(_)) => {
+                self.execute_bookmark_forget();
+            }
+            (Some(DialogCallback::BookmarkForget), DialogResult::Cancelled) => {
+                self.pending_forget_bookmark = None;
+            }
+            (Some(DialogCallback::GitFetch), DialogResult::Confirmed(selected)) => {
+                if let Some(value) = selected.first() {
+                    self.execute_fetch_with_option(value);
                 }
             }
             (_, DialogResult::Cancelled) => {

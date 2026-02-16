@@ -28,6 +28,10 @@ pub mod commands {
     pub const BOOKMARK_LIST: &str = "list";
     pub const BOOKMARK_TRACK: &str = "track";
     pub const BOOKMARK_UNTRACK: &str = "untrack";
+    pub const BOOKMARK_RENAME: &str = "rename";
+    pub const BOOKMARK_FORGET: &str = "forget";
+    pub const NEXT: &str = "next";
+    pub const PREV: &str = "prev";
     pub const REBASE: &str = "rebase";
     pub const ABSORB: &str = "absorb";
     pub const FILE: &str = "file";
@@ -37,6 +41,8 @@ pub mod commands {
     pub const GIT_FETCH: &str = "fetch";
     pub const GIT_PUSH: &str = "push";
     pub const DIFF: &str = "diff";
+    pub const GIT_REMOTE: &str = "remote";
+    pub const GIT_REMOTE_LIST: &str = "list";
 }
 
 /// jj resolve flags

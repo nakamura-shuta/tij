@@ -1448,3 +1448,158 @@ fn test_select_change_by_prefix_empty() {
     let found = view.select_change_by_prefix("abc");
     assert!(!found);
 }
+
+// =============================================================================
+// Next / Prev tests (] / [ keys)
+// =============================================================================
+
+#[test]
+fn test_next_change_key_returns_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    let action = press_key(&mut view, keys::NEXT_CHANGE);
+    assert_eq!(action, LogAction::NextChange);
+}
+
+#[test]
+fn test_prev_change_key_returns_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    let action = press_key(&mut view, keys::PREV_CHANGE);
+    assert_eq!(action, LogAction::PrevChange);
+}
+
+#[test]
+fn test_next_change_no_selection() {
+    let mut view = LogView::new();
+    // Empty changes list - key still returns action (App handles validation)
+    let action = press_key(&mut view, keys::NEXT_CHANGE);
+    assert_eq!(action, LogAction::NextChange);
+}
+
+#[test]
+fn test_prev_change_no_selection() {
+    let mut view = LogView::new();
+    let action = press_key(&mut view, keys::PREV_CHANGE);
+    assert_eq!(action, LogAction::PrevChange);
+}
+
+#[test]
+fn test_next_prev_ignored_in_squash_select_mode() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter squash mode
+    press_key(&mut view, keys::SQUASH);
+    assert_eq!(view.input_mode, InputMode::SquashSelect);
+
+    // ] and [ should be ignored in SquashSelect mode
+    let action = press_key(&mut view, keys::NEXT_CHANGE);
+    assert_eq!(action, LogAction::None);
+
+    let action = press_key(&mut view, keys::PREV_CHANGE);
+    assert_eq!(action, LogAction::None);
+}
+
+#[test]
+fn test_next_prev_ignored_in_rebase_select_mode() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode -> select Revision
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+
+    let action = press_key(&mut view, keys::NEXT_CHANGE);
+    assert_eq!(action, LogAction::None);
+
+    let action = press_key(&mut view, keys::PREV_CHANGE);
+    assert_eq!(action, LogAction::None);
+}
+
+// =============================================================================
+// select_working_copy tests
+// =============================================================================
+
+#[test]
+fn test_select_working_copy_found() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Move away from working copy
+    view.move_down();
+    assert_eq!(view.selected_index, 1);
+
+    // select_working_copy should move back to index 0 (is_working_copy=true)
+    let found = view.select_working_copy();
+    assert!(found);
+    assert_eq!(view.selected_index, 0);
+    assert!(view.selected_change().unwrap().is_working_copy);
+}
+
+#[test]
+fn test_select_working_copy_not_found() {
+    let mut view = LogView::new();
+    // Create changes with no working copy
+    let changes = vec![
+        Change {
+            change_id: "abc12345".to_string(),
+            commit_id: "def67890".to_string(),
+            author: "user@example.com".to_string(),
+            timestamp: "2024-01-29".to_string(),
+            description: "First commit".to_string(),
+            is_working_copy: false,
+            is_empty: false,
+            bookmarks: vec![],
+            graph_prefix: "○  ".to_string(),
+            is_graph_only: false,
+            has_conflict: false,
+        },
+        Change {
+            change_id: "xyz98765".to_string(),
+            commit_id: "uvw43210".to_string(),
+            author: "user@example.com".to_string(),
+            timestamp: "2024-01-28".to_string(),
+            description: "Second commit".to_string(),
+            is_working_copy: false,
+            is_empty: false,
+            bookmarks: vec![],
+            graph_prefix: "○  ".to_string(),
+            is_graph_only: false,
+            has_conflict: false,
+        },
+    ];
+    view.set_changes(changes);
+    view.move_down();
+
+    let found = view.select_working_copy();
+    assert!(!found);
+    // Selection should remain unchanged
+    assert_eq!(view.selected_index, 1);
+}
+
+#[test]
+fn test_select_working_copy_already_selected() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Already on working copy at index 0
+    assert_eq!(view.selected_index, 0);
+    assert!(view.selected_change().unwrap().is_working_copy);
+
+    let found = view.select_working_copy();
+    assert!(found);
+    assert_eq!(view.selected_index, 0);
+}
+
+#[test]
+fn test_select_working_copy_empty_changes() {
+    let mut view = LogView::new();
+    view.set_changes(vec![]);
+
+    let found = view.select_working_copy();
+    assert!(!found);
+}
