@@ -1,7 +1,6 @@
 //! Application state and view management
 
 use std::cell::Cell;
-use std::time::Instant;
 
 use crate::jj::JjExecutor;
 use crate::model::{DiffContent, Notification};
@@ -76,9 +75,7 @@ pub struct App {
     pub(crate) preview_auto_disabled: bool,
     /// Cached preview content (change_id → DiffContent + bookmarks)
     pub(crate) preview_cache: Option<PreviewCache>,
-    /// Last fetch timestamp for debounce
-    pub(crate) preview_last_fetch: Option<Instant>,
-    /// Pending preview fetch (deferred by debounce)
+    /// Pending preview fetch (deferred to idle tick)
     pub(crate) preview_pending_id: Option<String>,
 }
 
@@ -112,7 +109,6 @@ impl App {
             preview_enabled: true,
             preview_auto_disabled: false,
             preview_cache: None,
-            preview_last_fetch: None,
             preview_pending_id: None,
         };
 

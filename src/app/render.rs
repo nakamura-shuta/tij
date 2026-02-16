@@ -166,8 +166,12 @@ impl App {
         match &self.preview_cache {
             Some(cache) => {
                 let inner = block.inner(area);
-                let lines =
-                    build_preview_lines(&cache.content, &cache.bookmarks, inner.height as usize);
+                let lines = build_preview_lines(
+                    &cache.content,
+                    &cache.bookmarks,
+                    inner.height as usize,
+                    inner.width as usize,
+                );
                 let paragraph = Paragraph::new(lines).block(block);
                 frame.render_widget(paragraph, area);
             }
@@ -372,13 +376,82 @@ impl App {
     }
 }
 
+/// Per-file summary extracted from diff lines (approximate: see SoW phase14-4)
+struct FileSummaryEntry {
+    path: String,
+    op: char, // 'M', 'A', 'D'
+    insertions: usize,
+    deletions: usize,
+}
+
+/// Extract per-file summaries from diff lines.
+///
+/// Operation type is inferred (approximate):
+/// - Added only (no deletions) → 'A'
+/// - Deleted only (no additions) → 'D'
+/// - Otherwise → 'M'
+fn extract_file_summaries(lines: &[crate::model::DiffLine]) -> Vec<FileSummaryEntry> {
+    let mut summaries = Vec::new();
+    let mut current_path: Option<String> = None;
+    let mut insertions = 0usize;
+    let mut deletions = 0usize;
+
+    for line in lines {
+        match line.kind {
+            DiffLineKind::FileHeader => {
+                // Flush previous file
+                if let Some(path) = current_path.take() {
+                    let op = infer_file_op(insertions, deletions);
+                    summaries.push(FileSummaryEntry {
+                        path,
+                        op,
+                        insertions,
+                        deletions,
+                    });
+                }
+                current_path = Some(line.content.clone());
+                insertions = 0;
+                deletions = 0;
+            }
+            DiffLineKind::Added => insertions += 1,
+            DiffLineKind::Deleted => deletions += 1,
+            _ => {}
+        }
+    }
+    // Flush last file
+    if let Some(path) = current_path {
+        let op = infer_file_op(insertions, deletions);
+        summaries.push(FileSummaryEntry {
+            path,
+            op,
+            insertions,
+            deletions,
+        });
+    }
+
+    summaries
+}
+
+/// Infer file operation from line counts (approximate).
+fn infer_file_op(insertions: usize, deletions: usize) -> char {
+    if deletions == 0 && insertions > 0 {
+        'A'
+    } else if insertions == 0 && deletions > 0 {
+        'D'
+    } else {
+        'M'
+    }
+}
+
 /// Build preview lines from DiffContent, limited to max_lines.
 ///
-/// Shows: Author, Bookmarks (if any), Description, file stats, then diff lines.
+/// Shows: Author, Bookmarks (if any), Description, file stats summary,
+/// then file change list (M/A/D + path + per-file stats).
 fn build_preview_lines(
     content: &DiffContent,
     bookmarks: &[String],
     max_lines: usize,
+    max_width: usize,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
 
@@ -406,15 +479,19 @@ fn build_preview_lines(
         )));
     }
 
-    // File change statistics
-    let (files, insertions, deletions) = count_diff_stats(&content.lines);
-    if files > 0 {
+    // File change statistics (total)
+    let summaries = extract_file_summaries(&content.lines);
+    let total_files = summaries.len();
+    let total_insertions: usize = summaries.iter().map(|s| s.insertions).sum();
+    let total_deletions: usize = summaries.iter().map(|s| s.deletions).sum();
+
+    if total_files > 0 {
         let stats_text = format!(
             "{} file{} changed, +{}, -{}",
-            files,
-            if files == 1 { "" } else { "s" },
-            insertions,
-            deletions,
+            total_files,
+            if total_files == 1 { "" } else { "s" },
+            total_insertions,
+            total_deletions,
         );
         lines.push(Line::from(Span::styled(
             stats_text,
@@ -427,50 +504,124 @@ fn build_preview_lines(
         lines.push(Line::default());
     }
 
-    // Diff lines
-    for diff_line in &content.lines {
-        if lines.len() >= max_lines {
-            break;
+    // File summary list
+    if summaries.is_empty() && content.description.is_empty() && content.author.is_empty() {
+        // Truly empty content — no lines at all
+        return lines;
+    }
+
+    if summaries.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "(no changes)",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        let mut remaining = max_lines.saturating_sub(lines.len());
+
+        // If no room but files exist, sacrifice blank separator for overflow indicator
+        if remaining == 0 && !lines.is_empty() {
+            lines.pop(); // remove blank separator
+            remaining = 1;
         }
-        let line = match diff_line.kind {
-            DiffLineKind::FileHeader => Line::from(Span::styled(
-                format!("  {}", diff_line.content),
-                Style::default().fg(Color::Cyan).bold(),
-            )),
-            DiffLineKind::Added => Line::from(Span::styled(
-                format!("  + {}", diff_line.content),
-                Style::default().fg(Color::Green),
-            )),
-            DiffLineKind::Deleted => Line::from(Span::styled(
-                format!("  - {}", diff_line.content),
-                Style::default().fg(Color::Red),
-            )),
-            DiffLineKind::Context => Line::from(Span::raw(format!("    {}", diff_line.content))),
-            DiffLineKind::Separator => Line::default(),
+
+        let need_overflow = summaries.len() > remaining && remaining > 0;
+        let display_count = if need_overflow {
+            remaining.saturating_sub(1) // reserve 1 line for "… and N more"
+        } else {
+            summaries.len().min(remaining)
         };
-        lines.push(line);
+
+        for entry in summaries.iter().take(display_count) {
+            lines.push(format_file_summary_line(entry, max_width));
+        }
+
+        if need_overflow {
+            let more = summaries.len() - display_count;
+            lines.push(Line::from(Span::styled(
+                format!(
+                    "… and {} more file{}",
+                    more,
+                    if more == 1 { "" } else { "s" }
+                ),
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
     }
 
     lines.truncate(max_lines);
     lines
 }
 
-/// Count file changes, insertions, and deletions from diff lines
-fn count_diff_stats(lines: &[crate::model::DiffLine]) -> (usize, usize, usize) {
-    let mut files = 0;
-    let mut insertions = 0;
-    let mut deletions = 0;
+/// Format a single file summary line with path truncation and right-aligned stats.
+fn format_file_summary_line(entry: &FileSummaryEntry, max_width: usize) -> Line<'static> {
+    let (op_color, op_char) = match entry.op {
+        'A' => (Color::Green, 'A'),
+        'D' => (Color::Red, 'D'),
+        _ => (Color::Yellow, 'M'),
+    };
 
-    for line in lines {
-        match line.kind {
-            DiffLineKind::FileHeader => files += 1,
-            DiffLineKind::Added => insertions += 1,
-            DiffLineKind::Deleted => deletions += 1,
-            _ => {}
-        }
+    // Build stats string: "+N -N", "+N", or "-N" (omit zero side)
+    let stats = match (entry.insertions, entry.deletions) {
+        (0, 0) => String::new(),
+        (ins, 0) => format!("+{}", ins),
+        (0, del) => format!("-{}", del),
+        (ins, del) => format!("+{} -{}", ins, del),
+    };
+
+    // Layout: " {op} {path} {pad} {stats}"
+    // op_prefix = " M " = 3 chars
+    let op_prefix = format!(" {} ", op_char);
+    let op_width = 3;
+
+    // If pane is extremely narrow (< 20), skip stats
+    let stats_width = if !stats.is_empty() && max_width >= 20 {
+        stats.chars().count() + 1 // +1 for leading space
+    } else {
+        0
+    };
+
+    let path_budget = max_width
+        .saturating_sub(op_width)
+        .saturating_sub(stats_width);
+
+    let display_path = truncate_path(&entry.path, path_budget);
+    let display_path_width = display_path.chars().count();
+
+    let mut spans = vec![
+        Span::styled(op_prefix, Style::default().fg(op_color)),
+        Span::styled(display_path, Style::default().fg(op_color)),
+    ];
+
+    if stats_width > 0 {
+        // Right-align: pad between path and stats
+        let used = op_width + display_path_width + stats_width;
+        let pad = max_width.saturating_sub(used);
+        let padded_stats = format!("{:>width$}", stats, width = pad + stats.chars().count());
+        spans.push(Span::styled(
+            padded_stats,
+            Style::default().fg(Color::DarkGray),
+        ));
     }
 
-    (files, insertions, deletions)
+    Line::from(spans)
+}
+
+/// Truncate a path to fit within budget (char count), using ".." suffix.
+fn truncate_path(path: &str, budget: usize) -> String {
+    if budget == 0 {
+        return String::new();
+    }
+    let char_count = path.chars().count();
+    if char_count <= budget {
+        return path.to_string();
+    }
+    if budget <= 2 {
+        return "..".chars().take(budget).collect();
+    }
+    // Keep first (budget - 2) chars + ".."
+    let keep = budget - 2;
+    let truncated: String = path.chars().take(keep).collect();
+    format!("{}..", truncated)
 }
 
 #[cfg(test)]
@@ -478,10 +629,12 @@ mod tests {
     use super::*;
     use crate::model::{DiffContent, DiffLine};
 
+    const TEST_WIDTH: usize = 40;
+
     #[test]
     fn test_build_preview_lines_empty_content() {
         let content = DiffContent::default();
-        let lines = build_preview_lines(&content, &[], 10);
+        let lines = build_preview_lines(&content, &[], 10, TEST_WIDTH);
         assert!(lines.is_empty());
     }
 
@@ -493,9 +646,9 @@ mod tests {
             description: "Fix login bug".to_string(),
             ..DiffContent::default()
         };
-        let lines = build_preview_lines(&content, &[], 10);
-        // Author line + description + blank separator = 3 lines
-        assert_eq!(lines.len(), 3);
+        let lines = build_preview_lines(&content, &[], 10, TEST_WIDTH);
+        // Author + description + blank + (no changes) = 4 lines
+        assert_eq!(lines.len(), 4);
     }
 
     #[test]
@@ -507,13 +660,13 @@ mod tests {
             ..DiffContent::default()
         };
         let bookmarks = vec!["main".to_string(), "feature/login".to_string()];
-        let lines = build_preview_lines(&content, &bookmarks, 10);
-        // Author + bookmarks + description + blank separator = 4 lines
-        assert_eq!(lines.len(), 4);
+        let lines = build_preview_lines(&content, &bookmarks, 10, TEST_WIDTH);
+        // Author + bookmarks + description + blank + (no changes) = 5 lines
+        assert_eq!(lines.len(), 5);
     }
 
     #[test]
-    fn test_build_preview_lines_with_diff() {
+    fn test_build_preview_lines_file_summary() {
         let content = DiffContent {
             author: "alice@example.com".to_string(),
             timestamp: "2025-01-15".to_string(),
@@ -528,33 +681,273 @@ mod tests {
             ],
             ..DiffContent::default()
         };
-        let lines = build_preview_lines(&content, &[], 20);
-        // Author + desc + stats("1 file changed, +1, -0") + blank + file_header + added = 6
-        assert_eq!(lines.len(), 6);
-    }
-
-    #[test]
-    fn test_build_preview_lines_truncated() {
-        let content = DiffContent {
-            author: "alice@example.com".to_string(),
-            timestamp: "2025-01-15".to_string(),
-            description: "Long diff".to_string(),
-            lines: (0..20)
-                .map(|i| DiffLine {
-                    kind: DiffLineKind::Context,
-                    line_numbers: Some((Some(i), Some(i))),
-                    content: format!("line {}", i),
-                })
-                .collect(),
-            ..DiffContent::default()
-        };
-        // Max 5 lines
-        let lines = build_preview_lines(&content, &[], 5);
+        let lines = build_preview_lines(&content, &[], 20, TEST_WIDTH);
+        // Author + desc + stats("1 file changed, +1, -0") + blank + "A src/main.rs" = 5
         assert_eq!(lines.len(), 5);
     }
 
     #[test]
-    fn test_count_diff_stats() {
+    fn test_build_preview_lines_overflow() {
+        // Create 10 files, each with 1 added line
+        let mut diff_lines = Vec::new();
+        for i in 0..10 {
+            if i > 0 {
+                diff_lines.push(DiffLine::separator());
+            }
+            diff_lines.push(DiffLine::file_header(format!("file{}.rs", i)));
+            diff_lines.push(DiffLine {
+                kind: DiffLineKind::Added,
+                line_numbers: Some((None, Some(1))),
+                content: "content".to_string(),
+            });
+        }
+        let content = DiffContent {
+            author: "alice".to_string(),
+            timestamp: "2025-01-15".to_string(),
+            description: "Many files".to_string(),
+            lines: diff_lines,
+            ..DiffContent::default()
+        };
+        // max_lines=8: header uses 4 (author + desc + stats + blank), leaving 4 for files
+        // 10 files > 4 → show 3 files + "… and 7 more files"
+        let lines = build_preview_lines(&content, &[], 8, TEST_WIDTH);
+        assert_eq!(lines.len(), 8);
+        // Last line should be the overflow indicator
+        let last_line_text: String = lines
+            .last()
+            .unwrap()
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            last_line_text.contains("7 more file"),
+            "Expected overflow indicator, got: {}",
+            last_line_text
+        );
+    }
+
+    #[test]
+    fn test_build_preview_lines_zero_remaining_sacrifices_blank() {
+        // When max_lines == header lines, blank separator is sacrificed to show files
+        let content = DiffContent {
+            author: "alice".to_string(),
+            timestamp: "2025-01-15".to_string(),
+            description: "Tight".to_string(),
+            lines: vec![
+                DiffLine::file_header("src/main.rs"),
+                DiffLine {
+                    kind: DiffLineKind::Added,
+                    line_numbers: Some((None, Some(1))),
+                    content: "new".to_string(),
+                },
+            ],
+            ..DiffContent::default()
+        };
+        // max_lines=4: author + desc + stats = 3 header lines, blank = 4th → remaining = 0
+        // Fix: blank is sacrificed, file summary shown in its place
+        let lines = build_preview_lines(&content, &[], 4, TEST_WIDTH);
+        assert_eq!(lines.len(), 4);
+        // Last line should be the file summary (not blank, not missing)
+        let last_line_text: String = lines
+            .last()
+            .unwrap()
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            last_line_text.contains("src/main.rs"),
+            "Expected file summary, got: {}",
+            last_line_text
+        );
+    }
+
+    #[test]
+    fn test_build_preview_lines_zero_remaining_overflow() {
+        // When max_lines == header lines and multiple files, blank is sacrificed for overflow
+        let content = DiffContent {
+            author: "alice".to_string(),
+            timestamp: "2025-01-15".to_string(),
+            description: "Tight".to_string(),
+            lines: vec![
+                DiffLine::file_header("src/a.rs"),
+                DiffLine {
+                    kind: DiffLineKind::Added,
+                    line_numbers: Some((None, Some(1))),
+                    content: "new".to_string(),
+                },
+                DiffLine::separator(),
+                DiffLine::file_header("src/b.rs"),
+                DiffLine {
+                    kind: DiffLineKind::Added,
+                    line_numbers: Some((None, Some(1))),
+                    content: "new".to_string(),
+                },
+            ],
+            ..DiffContent::default()
+        };
+        // max_lines=4: header=3, blank=4th → remaining=0 → sacrifice blank → remaining=1
+        // 2 files > 1 remaining → overflow: 0 files shown + "… and 2 more files"
+        let lines = build_preview_lines(&content, &[], 4, TEST_WIDTH);
+        assert_eq!(lines.len(), 4);
+        let last_line_text: String = lines
+            .last()
+            .unwrap()
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            last_line_text.contains("2 more file"),
+            "Expected overflow indicator, got: {}",
+            last_line_text
+        );
+    }
+
+    #[test]
+    fn test_build_preview_lines_no_changes() {
+        let content = DiffContent {
+            author: "alice".to_string(),
+            timestamp: "2025-01-15".to_string(),
+            description: "Empty commit".to_string(),
+            ..DiffContent::default()
+        };
+        let lines = build_preview_lines(&content, &[], 10, TEST_WIDTH);
+        // Author + desc + blank + "(no changes)" = 4
+        assert_eq!(lines.len(), 4);
+        let last_line_text: String = lines
+            .last()
+            .unwrap()
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            last_line_text.contains("no changes"),
+            "Expected '(no changes)', got: {}",
+            last_line_text
+        );
+    }
+
+    #[test]
+    fn test_build_preview_lines_truncated() {
+        // Create 20 files to ensure truncation
+        let mut diff_lines = Vec::new();
+        for i in 0..20 {
+            if i > 0 {
+                diff_lines.push(DiffLine::separator());
+            }
+            diff_lines.push(DiffLine::file_header(format!("file{}.rs", i)));
+            diff_lines.push(DiffLine {
+                kind: DiffLineKind::Added,
+                line_numbers: Some((None, Some(1))),
+                content: "line".to_string(),
+            });
+        }
+        let content = DiffContent {
+            author: "alice@example.com".to_string(),
+            timestamp: "2025-01-15".to_string(),
+            description: "Long diff".to_string(),
+            lines: diff_lines,
+            ..DiffContent::default()
+        };
+        // Max 5 lines total
+        let lines = build_preview_lines(&content, &[], 5, TEST_WIDTH);
+        assert_eq!(lines.len(), 5);
+    }
+
+    #[test]
+    fn test_extract_file_summaries_basic() {
+        let lines = vec![
+            // File 1: Modified (has both added and deleted)
+            DiffLine::file_header("src/main.rs"),
+            DiffLine {
+                kind: DiffLineKind::Added,
+                line_numbers: Some((None, Some(1))),
+                content: "new".to_string(),
+            },
+            DiffLine {
+                kind: DiffLineKind::Deleted,
+                line_numbers: Some((Some(1), None)),
+                content: "old".to_string(),
+            },
+            DiffLine::separator(),
+            // File 2: Added (only added lines)
+            DiffLine::file_header("src/new.rs"),
+            DiffLine {
+                kind: DiffLineKind::Added,
+                line_numbers: Some((None, Some(1))),
+                content: "fn new()".to_string(),
+            },
+            DiffLine::separator(),
+            // File 3: Deleted (only deleted lines)
+            DiffLine::file_header("src/old.rs"),
+            DiffLine {
+                kind: DiffLineKind::Deleted,
+                line_numbers: Some((Some(1), None)),
+                content: "fn old()".to_string(),
+            },
+        ];
+
+        let summaries = extract_file_summaries(&lines);
+        assert_eq!(summaries.len(), 3);
+
+        assert_eq!(summaries[0].path, "src/main.rs");
+        assert_eq!(summaries[0].op, 'M');
+        assert_eq!(summaries[0].insertions, 1);
+        assert_eq!(summaries[0].deletions, 1);
+
+        assert_eq!(summaries[1].path, "src/new.rs");
+        assert_eq!(summaries[1].op, 'A');
+        assert_eq!(summaries[1].insertions, 1);
+        assert_eq!(summaries[1].deletions, 0);
+
+        assert_eq!(summaries[2].path, "src/old.rs");
+        assert_eq!(summaries[2].op, 'D');
+        assert_eq!(summaries[2].insertions, 0);
+        assert_eq!(summaries[2].deletions, 1);
+    }
+
+    #[test]
+    fn test_extract_file_summaries_empty() {
+        let summaries = extract_file_summaries(&[]);
+        assert!(summaries.is_empty());
+    }
+
+    #[test]
+    fn test_truncate_path_fits() {
+        assert_eq!(truncate_path("src/main.rs", 20), "src/main.rs");
+    }
+
+    #[test]
+    fn test_truncate_path_truncated() {
+        assert_eq!(
+            truncate_path("src/very/long/path/to/file.rs", 15),
+            "src/very/long.."
+        );
+    }
+
+    #[test]
+    fn test_truncate_path_budget_zero() {
+        assert_eq!(truncate_path("src/main.rs", 0), "");
+    }
+
+    #[test]
+    fn test_truncate_path_budget_two() {
+        assert_eq!(truncate_path("src/main.rs", 2), "..");
+    }
+
+    #[test]
+    fn test_infer_file_op() {
+        assert_eq!(infer_file_op(5, 0), 'A');
+        assert_eq!(infer_file_op(0, 3), 'D');
+        assert_eq!(infer_file_op(3, 2), 'M');
+        assert_eq!(infer_file_op(0, 0), 'M'); // empty file → M (fallback)
+    }
+
+    #[test]
+    fn test_extract_file_summaries_totals() {
         let lines = vec![
             DiffLine::file_header("src/main.rs"),
             DiffLine {
@@ -580,16 +973,12 @@ mod tests {
                 content: "pub fn hello()".to_string(),
             },
         ];
-        let (files, insertions, deletions) = count_diff_stats(&lines);
-        assert_eq!(files, 2);
-        assert_eq!(insertions, 3);
-        assert_eq!(deletions, 1);
-    }
-
-    #[test]
-    fn test_count_diff_stats_empty() {
-        let (files, insertions, deletions) = count_diff_stats(&[]);
-        assert_eq!((files, insertions, deletions), (0, 0, 0));
+        let summaries = extract_file_summaries(&lines);
+        assert_eq!(summaries.len(), 2);
+        let total_ins: usize = summaries.iter().map(|s| s.insertions).sum();
+        let total_del: usize = summaries.iter().map(|s| s.deletions).sum();
+        assert_eq!(total_ins, 3);
+        assert_eq!(total_del, 1);
     }
 
     #[test]
@@ -606,15 +995,10 @@ mod tests {
     }
 
     /// Verify that preview cache is invalidated by refresh_log().
-    ///
-    /// After a mutation (describe, edit, squash, rebase, etc.), the same change_id
-    /// may have different content. The cache hit check (change_id match) alone
-    /// would return stale data. refresh_log() must clear preview_cache.
     #[test]
     fn test_preview_cache_cleared_on_refresh_log() {
         use crate::app::state::PreviewCache;
 
-        // Simulate: preview_cache has content for "abc12345"
         let cache = PreviewCache {
             change_id: "abc12345".to_string(),
             content: DiffContent {
@@ -625,22 +1009,14 @@ mod tests {
             bookmarks: vec!["main".to_string()],
         };
 
-        // Verify the cache would be a hit for same change_id
         assert_eq!(cache.change_id, "abc12345");
 
-        // After a mutation, content changes but change_id stays the same.
-        // Without invalidation, update_preview_if_needed() would return stale cache.
-        // refresh_log() clears preview_cache (verified by reading refresh.rs).
-        //
-        // This test documents the contract: PreviewCache only checks change_id,
-        // so external invalidation (via refresh_log) is required after mutations.
         let new_content = DiffContent {
             author: "alice@example.com".to_string(),
             description: "Updated description".to_string(),
             ..DiffContent::default()
         };
 
-        // Same change_id, different content — cache hit would return wrong data
         assert_eq!(cache.change_id, "abc12345");
         assert_ne!(cache.content.description, new_content.description);
     }

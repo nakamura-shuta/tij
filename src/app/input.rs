@@ -145,7 +145,9 @@ impl App {
                 {
                     self.preview_enabled = !self.preview_enabled;
                     if self.preview_enabled {
+                        // Immediate fetch on toggle-ON (no 200ms wait)
                         self.update_preview_if_needed();
+                        self.resolve_pending_preview();
                     } else {
                         // Clear pending fetch and cache on disable
                         self.preview_pending_id = None;

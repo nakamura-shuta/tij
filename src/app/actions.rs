@@ -1286,28 +1286,13 @@ impl App {
             return;
         }
 
-        // Auto-disabled (small terminal): track selection but skip fetch.
-        // When terminal is resized back, resolve_pending_preview() will pick this up.
-        if self.preview_auto_disabled {
-            self.preview_pending_id = Some(current_id);
-            return;
-        }
-
-        // Debounce: skip fetch if last fetch was very recent (rapid j/k movement)
-        if let Some(ref last) = self.preview_last_fetch
-            && last.elapsed() < std::time::Duration::from_millis(100)
-        {
-            // Mark as pending — will be fetched on next idle tick
-            self.preview_pending_id = Some(current_id);
-            return;
-        }
-
-        self.fetch_preview(&current_id);
+        // Always defer to idle tick — never block key handling with jj show.
+        // resolve_pending_preview() will fetch on the next poll timeout.
+        self.preview_pending_id = Some(current_id);
     }
 
     /// Actually fetch preview content via jj show
     fn fetch_preview(&mut self, change_id: &str) {
-        self.preview_last_fetch = Some(std::time::Instant::now());
         self.preview_pending_id = None;
 
         // Capture bookmarks at fetch time from the Change model (not jj show)
