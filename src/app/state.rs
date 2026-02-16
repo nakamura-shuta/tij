@@ -84,6 +84,8 @@ pub struct App {
     /// Cleared on all exit paths: push success/error (via `take()` at top of
     /// `execute_push`), remote selection cancel, bookmark selection cancel.
     pub(crate) push_target_remote: Option<String>,
+    /// Help view scroll offset (line-based)
+    pub(crate) help_scroll: u16,
 }
 
 impl Default for App {
@@ -119,6 +121,7 @@ impl App {
             preview_cache: None,
             preview_pending_id: None,
             push_target_remote: None,
+            help_scroll: 0,
         };
 
         // Load initial log
@@ -153,10 +156,11 @@ impl App {
             self.previous_view = Some(self.current_view);
             self.current_view = view;
 
-            // Refresh data when entering certain views
+            // Refresh data / reset state when entering certain views
             match view {
                 View::Status => self.refresh_status(),
                 View::Operation => self.refresh_operation_log(),
+                View::Help => self.help_scroll = 0,
                 _ => {}
             }
         }

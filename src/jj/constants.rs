@@ -40,6 +40,7 @@ pub mod commands {
     pub const GIT: &str = "git";
     pub const GIT_FETCH: &str = "fetch";
     pub const GIT_PUSH: &str = "push";
+    pub const DUPLICATE: &str = "duplicate";
     pub const DIFF: &str = "diff";
     pub const GIT_REMOTE: &str = "remote";
     pub const GIT_REMOTE_LIST: &str = "list";

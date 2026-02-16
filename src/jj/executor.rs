@@ -651,6 +651,36 @@ impl JjExecutor {
         self.run(&[commands::PREV, flags::EDIT_FLAG])
     }
 
+    /// Run `jj duplicate <change_id>` to create a copy of the specified change
+    ///
+    /// Returns the jj stderr output containing the new change ID.
+    /// Note: `jj duplicate` writes its result to stderr, not stdout.
+    /// Output format: "Duplicated <commit_id> as <new_change_id> <new_commit_id> <description>"
+    pub fn duplicate(&self, change_id: &str) -> Result<String, JjError> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+        if let Some(ref path) = self.repo_path {
+            cmd.arg(flags::REPO_PATH).arg(path);
+        }
+        cmd.arg(flags::NO_COLOR);
+        cmd.args([commands::DUPLICATE, change_id]);
+
+        let output = cmd.output().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                JjError::JjNotFound
+            } else {
+                JjError::IoError(e)
+            }
+        })?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+            let exit_code = output.status.code().unwrap_or(-1);
+            Err(JjError::CommandFailed { stderr, exit_code })
+        }
+    }
+
     /// Run `jj git fetch` to fetch from default remotes
     ///
     /// Returns the command output describing what was fetched.

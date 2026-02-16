@@ -181,6 +181,13 @@ impl LogView {
             k if k == keys::NEXT_CHANGE => LogAction::NextChange,
             k if k == keys::PREV_CHANGE => LogAction::PrevChange,
             k if k == keys::LOG_REVERSE => LogAction::ToggleReversed,
+            k if k == keys::DUPLICATE => {
+                if let Some(change) = self.selected_change() {
+                    LogAction::Duplicate(change.change_id.clone())
+                } else {
+                    LogAction::None
+                }
+            }
             _ => LogAction::None,
         }
     }

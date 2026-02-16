@@ -308,7 +308,7 @@ impl App {
     }
 
     fn render_help_view(&self, frame: &mut Frame) {
-        render_help_panel(frame, frame.area());
+        render_help_panel(frame, frame.area(), self.help_scroll);
     }
 
     fn render_resolve_view(

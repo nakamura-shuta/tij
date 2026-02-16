@@ -682,6 +682,67 @@ impl App {
         }
     }
 
+    /// Execute `jj duplicate <change_id>` and refresh log
+    ///
+    /// Parses the output to extract the new change ID, refreshes the log,
+    /// and moves focus to the duplicated change.
+    pub(crate) fn duplicate(&mut self, change_id: &str) {
+        match self.jj.duplicate(change_id) {
+            Ok(output) => {
+                // Parse new change_id from output
+                let new_change_id = Self::parse_duplicate_output(&output);
+
+                // Refresh log first (before notification)
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+
+                // If refresh_log failed, don't show success notification
+                if self.error_message.is_some() {
+                    return;
+                }
+
+                // Move focus to duplicated change + build notification
+                match new_change_id {
+                    Some(ref new_id) => {
+                        let short = &new_id[..new_id.len().min(8)];
+                        if self.log_view.select_change_by_prefix(new_id) {
+                            self.notification =
+                                Some(Notification::success(format!("Duplicated as {}", short)));
+                        } else {
+                            self.notification = Some(Notification::success(format!(
+                                "Duplicated as {} (not in current revset)",
+                                short
+                            )));
+                        }
+                    }
+                    None => {
+                        self.notification =
+                            Some(Notification::success("Duplicated successfully".to_string()));
+                    }
+                }
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Duplicate failed: {}", e));
+            }
+        }
+    }
+
+    /// Parse the new change ID from `jj duplicate` output
+    ///
+    /// Output format: "Duplicated <commit_id> as <new_change_id> <new_commit_id> <description>"
+    fn parse_duplicate_output(output: &str) -> Option<String> {
+        for line in output.lines() {
+            if let Some(rest) = line.strip_prefix("Duplicated ") {
+                let parts: Vec<&str> = rest.splitn(4, ' ').collect();
+                // parts[0] = commit_id, parts[1] = "as", parts[2] = new_change_id
+                if parts.len() >= 3 && parts[1] == "as" {
+                    return Some(parts[2].to_string());
+                }
+            }
+        }
+        None
+    }
+
     /// Execute absorb: move working copy changes into ancestor commits
     ///
     /// Each hunk is moved to the closest mutable ancestor where the
@@ -2238,5 +2299,37 @@ mod tests {
         ));
         app.handle_dialog_result(DialogResult::Cancelled);
         assert!(app.push_target_remote.is_none());
+    }
+
+    // =========================================================================
+    // duplicate output parsing tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_duplicate_output() {
+        let output = "Duplicated 0193efbd0b2d as nyowntnw 6abd63b3 no-bookmark change (plain)";
+        let result = App::parse_duplicate_output(output);
+        assert_eq!(result, Some("nyowntnw".to_string()));
+    }
+
+    #[test]
+    fn test_parse_duplicate_output_no_match() {
+        let result = App::parse_duplicate_output("Some unrelated output");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_duplicate_output_empty() {
+        let result = App::parse_duplicate_output("");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_duplicate_output_multiline() {
+        // Warning lines before the actual duplicate output
+        let output = "Working copy changes were not restored.\n\
+                       Duplicated abc1234567890 as xyzwqrst def5678901 test description";
+        let result = App::parse_duplicate_output(output);
+        assert_eq!(result, Some("xyzwqrst".to_string()));
     }
 }

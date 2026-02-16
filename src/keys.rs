@@ -163,6 +163,9 @@ pub const PREV_CHANGE: KeyCode = KeyCode::Char('[');
 /// Toggle reversed display order (Log View)
 pub const LOG_REVERSE: KeyCode = KeyCode::Char('V');
 
+/// Duplicate change (Log View)
+pub const DUPLICATE: KeyCode = KeyCode::Char('Y');
+
 /// Jump to change in Log View (Blame View)
 pub const JUMP_TO_LOG: KeyCode = KeyCode::Char('J');
 
@@ -383,6 +386,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "V",
         description: "Toggle reversed order",
+    },
+    KeyBindEntry {
+        key: "Y",
+        description: "Duplicate change",
     },
 ];
 
@@ -677,6 +684,11 @@ pub const HINT_REVERSE: KeyHint = KeyHint {
     label: "Reverse",
     color: Color::Yellow,
 };
+pub const HINT_DUPLICATE: KeyHint = KeyHint {
+    key: "Y",
+    label: "Duplicate",
+    color: Color::Magenta,
+};
 pub const HINT_RENAME: KeyHint = KeyHint {
     key: "r",
     label: "Rename",
@@ -792,6 +804,7 @@ fn log_normal_hints(ctx: &HintContext) -> Vec<KeyHint> {
         HINT_BOOKMARK,
         HINT_REBASE,
         HINT_ABSORB,
+        HINT_DUPLICATE,
     ];
     if ctx.has_conflicts {
         h.push(HINT_RESOLVE);

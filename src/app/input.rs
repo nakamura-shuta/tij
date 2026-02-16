@@ -205,7 +205,16 @@ impl App {
                 }
             }
             View::Help => {
-                // Help view only uses global keys
+                // j/k/g/G for scrolling
+                if keys::is_move_down(key.code) {
+                    self.help_scroll = self.help_scroll.saturating_add(1);
+                } else if keys::is_move_up(key.code) {
+                    self.help_scroll = self.help_scroll.saturating_sub(1);
+                } else if key.code == keys::GO_BOTTOM {
+                    self.help_scroll = u16::MAX; // clamped during render
+                } else if key.code == keys::GO_TOP {
+                    self.help_scroll = 0;
+                }
             }
         }
     }
@@ -318,6 +327,9 @@ impl App {
             }
             LogAction::PrevChange => {
                 self.execute_prev();
+            }
+            LogAction::Duplicate(change_id) => {
+                self.duplicate(&change_id);
             }
             LogAction::ToggleReversed => {
                 // Preserve selection by change_id across toggle

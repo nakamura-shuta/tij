@@ -9,7 +9,10 @@ use ratatui::{
 use crate::keys;
 
 /// Render help content showing key bindings.
-pub fn render_help_panel(frame: &mut Frame, area: Rect) {
+///
+/// `scroll` is the vertical scroll offset (0 = top). Values beyond the
+/// content length are clamped by ratatui's Paragraph.
+pub fn render_help_panel(frame: &mut Frame, area: Rect, scroll: u16) {
     let title = Line::from(" Tij - Help ").bold().white().centered();
 
     let mut lines = vec![Line::from("Key bindings:".bold()), Line::from("")];
@@ -23,7 +26,9 @@ pub fn render_help_panel(frame: &mut Frame, area: Rect) {
     push_key_section(&mut lines, "Operation View", keys::OPERATION_KEYS);
 
     frame.render_widget(
-        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(title)),
+        Paragraph::new(lines)
+            .block(Block::default().borders(Borders::ALL).title(title))
+            .scroll((scroll, 0)),
         area,
     );
 }

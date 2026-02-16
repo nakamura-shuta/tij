@@ -135,6 +135,8 @@ pub enum LogAction {
     PrevChange,
     /// Toggle reversed display order
     ToggleReversed,
+    /// Duplicate a change (jj duplicate)
+    Duplicate(String),
 }
 
 /// Log View state
