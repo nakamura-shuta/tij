@@ -87,6 +87,12 @@ pub mod flags {
     pub const EDIT_FLAG: &str = "--edit";
     /// Limit number of results
     pub const LIMIT: &str = "--limit";
+    /// Reversed display order (oldest first)
+    pub const REVERSED: &str = "--reversed";
+    /// Push by change ID (creates automatic bookmark)
+    pub const CHANGE: &str = "--change";
+    /// Specify remote for push/fetch
+    pub const REMOTE: &str = "--remote";
 }
 
 /// Default limit for log output (no revset)

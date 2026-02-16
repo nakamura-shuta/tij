@@ -79,6 +79,11 @@ pub struct App {
     pub(crate) preview_cache: Option<PreviewCache>,
     /// Pending preview fetch (deferred to idle tick)
     pub(crate) preview_pending_id: Option<String>,
+    /// Selected remote for push (None = default remote)
+    ///
+    /// Cleared on all exit paths: push success/error (via `take()` at top of
+    /// `execute_push`), remote selection cancel, bookmark selection cancel.
+    pub(crate) push_target_remote: Option<String>,
 }
 
 impl Default for App {
@@ -113,6 +118,7 @@ impl App {
             preview_auto_disabled: false,
             preview_cache: None,
             preview_pending_id: None,
+            push_target_remote: None,
         };
 
         // Load initial log

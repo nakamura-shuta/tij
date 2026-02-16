@@ -160,7 +160,9 @@ fn story_fetch_and_merge_upstream() {
         .expect("describe should succeed");
 
     // Verify can log the history
-    let changes = executor.log(Some("::@")).expect("log should succeed");
+    let changes = executor
+        .log(Some("::@"), false)
+        .expect("log should succeed");
     assert!(
         changes.len() >= 2,
         "Should have at least 2 changes in history"

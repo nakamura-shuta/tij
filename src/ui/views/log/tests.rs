@@ -1603,3 +1603,110 @@ fn test_select_working_copy_empty_changes() {
     let found = view.select_working_copy();
     assert!(!found);
 }
+
+// =============================================================================
+// Reverse toggle tests (V key)
+// =============================================================================
+
+#[test]
+fn test_reverse_key_returns_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    let action = press_key(&mut view, keys::LOG_REVERSE);
+    assert_eq!(action, LogAction::ToggleReversed);
+}
+
+#[test]
+fn test_reverse_default_is_false() {
+    let view = LogView::new();
+    assert!(!view.reversed);
+}
+
+#[test]
+fn test_reverse_preserves_selection() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Move to second change
+    view.move_down();
+    assert_eq!(view.selected_change().unwrap().change_id, "xyz98765");
+
+    // Toggle reversed
+    view.reversed = !view.reversed;
+    assert!(view.reversed);
+
+    // Re-set changes (simulating refresh with reversed order)
+    let mut reversed_changes = create_test_changes();
+    reversed_changes.reverse();
+    view.set_changes(reversed_changes);
+
+    // select_change_by_id should find the change
+    let found = view.select_change_by_id("xyz98765");
+    assert!(found);
+    assert_eq!(view.selected_change().unwrap().change_id, "xyz98765");
+}
+
+#[test]
+fn test_reverse_falls_back_to_working_copy() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Move to root
+    view.move_to_bottom();
+    assert_eq!(
+        view.selected_change().unwrap().change_id,
+        constants::ROOT_CHANGE_ID
+    );
+
+    // Toggle reversed and set changes without root
+    view.reversed = true;
+    let changes = vec![
+        Change {
+            change_id: "new11111".to_string(),
+            commit_id: "com11111".to_string(),
+            author: "user@example.com".to_string(),
+            timestamp: "2024-01-30".to_string(),
+            description: "New change".to_string(),
+            is_working_copy: true,
+            is_empty: false,
+            bookmarks: vec![],
+            graph_prefix: "@  ".to_string(),
+            is_graph_only: false,
+            has_conflict: false,
+        },
+        Change {
+            change_id: "abc12345".to_string(),
+            commit_id: "def67890".to_string(),
+            author: "user@example.com".to_string(),
+            timestamp: "2024-01-29".to_string(),
+            description: "First commit".to_string(),
+            is_working_copy: false,
+            is_empty: false,
+            bookmarks: vec![],
+            graph_prefix: "○  ".to_string(),
+            is_graph_only: false,
+            has_conflict: false,
+        },
+    ];
+    view.set_changes(changes);
+
+    // Original change_id (root) not found → fallback to working copy
+    let found = view.select_change_by_id(constants::ROOT_CHANGE_ID);
+    assert!(!found);
+    let found = view.select_working_copy();
+    assert!(found);
+    assert!(view.selected_change().unwrap().is_working_copy);
+}
+
+#[test]
+fn test_reverse_ignored_in_special_modes() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // In SquashSelect mode, V should be ignored
+    press_key(&mut view, keys::SQUASH);
+    assert_eq!(view.input_mode, InputMode::SquashSelect);
+    let action = press_key(&mut view, keys::LOG_REVERSE);
+    assert_eq!(action, LogAction::None);
+}

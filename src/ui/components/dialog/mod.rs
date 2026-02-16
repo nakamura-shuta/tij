@@ -45,6 +45,13 @@ pub enum DialogCallback {
     BookmarkForget,
     /// Git fetch remote selection (Select dialog, single_select)
     GitFetch,
+    /// Git push by change ID (creates auto bookmark)
+    GitPushChange {
+        /// Change ID to push
+        change_id: String,
+    },
+    /// Remote selection for push (Select dialog, single_select)
+    GitPushRemoteSelect,
 }
 
 /// Selection item for Select dialog

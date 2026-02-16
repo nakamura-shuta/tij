@@ -33,7 +33,9 @@ fn story_mistake_recovery() {
         .expect("abandon should succeed");
 
     // Verify: Important work is gone
-    let changes = executor.log(Some("all()")).expect("log should succeed");
+    let changes = executor
+        .log(Some("all()"), false)
+        .expect("log should succeed");
     assert!(
         !changes.iter().any(|c| c.description == "Important feature"),
         "Important feature should be gone"
@@ -43,7 +45,9 @@ fn story_mistake_recovery() {
     executor.undo().expect("undo should succeed");
 
     // Step 3: Verify work is restored
-    let changes_after = executor.log(Some("all()")).expect("log should succeed");
+    let changes_after = executor
+        .log(Some("all()"), false)
+        .expect("log should succeed");
     assert!(
         changes_after
             .iter()

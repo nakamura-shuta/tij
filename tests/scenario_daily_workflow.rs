@@ -80,7 +80,9 @@ fn story_incremental_changes_throughout_day() {
         .expect("describe should succeed");
 
     // Verify: Both changes exist
-    let changes = executor.log(Some("all()")).expect("log should succeed");
+    let changes = executor
+        .log(Some("all()"), false)
+        .expect("log should succeed");
     assert!(changes.iter().any(|c| c.description.contains("helper")));
     assert!(changes.iter().any(|c| c.description.contains("Feature A")));
 }

@@ -46,6 +46,7 @@ expression: terminal.backend()
 "│  M         Bookmark view                                                     │"
 "│  p         Toggle preview pane                                               │"
 "│  ]/[       Move @ to next/prev                                               │"
+"│  V         Toggle reversed order                                             │"
 "│                                                                              │"
 "│Input Mode:                                                                   │"
 "│  Enter     Submit input                                                      │"
@@ -80,5 +81,4 @@ expression: terminal.backend()
 "│  r         Rename bookmark                                                   │"
 "│  f         Forget bookmark (remove tracking)                                 │"
 "│  u         Undo                                                              │"
-"│  q         Back to log                                                       │"
 "└──────────────────────────────────────────────────────────────────────────────┘"

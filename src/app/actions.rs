@@ -812,22 +812,91 @@ impl App {
     /// Runs `jj git push --dry-run` to preview what will be pushed,
     /// then shows a confirmation/selection dialog with the preview.
     /// If dry-run fails (untracked bookmark, etc.), falls back to dialog without preview.
+    ///
+    /// When multiple remotes exist and `push_target_remote` is not yet set,
+    /// shows a remote selection dialog first. After selection, this method
+    /// is re-called with `push_target_remote` populated.
     pub(crate) fn start_push(&mut self) {
         let (change_id, bookmarks) = match self.log_view.selected_change() {
             Some(change) => (change.change_id.clone(), change.bookmarks.clone()),
             None => return,
         };
 
+        // Multi-remote check: if push_target_remote is not set, check for multiple remotes
+        if self.push_target_remote.is_none() {
+            match self.jj.git_remote_list() {
+                Ok(remotes) if remotes.len() > 1 => {
+                    let items: Vec<SelectItem> = remotes
+                        .iter()
+                        .map(|r| SelectItem {
+                            label: r.clone(),
+                            value: r.clone(),
+                            selected: false,
+                        })
+                        .collect();
+                    self.active_dialog = Some(Dialog::select_single(
+                        "Push to Remote",
+                        "Select remote to push to:",
+                        items,
+                        None,
+                        DialogCallback::GitPushRemoteSelect,
+                    ));
+                    return;
+                }
+                _ => {
+                    // Single remote or error: continue with default
+                }
+            }
+        }
+
         if bookmarks.is_empty() {
-            self.notification = Some(Notification::info("No bookmarks to push on this change"));
+            // No bookmarks: offer push by change ID (--change)
+            // Use remote-aware dry-run if a remote was selected
+            let dry_run_result = if let Some(ref remote) = self.push_target_remote {
+                self.jj
+                    .git_push_change_dry_run_to_remote(&change_id, remote)
+            } else {
+                self.jj.git_push_change_dry_run(&change_id)
+            };
+            match dry_run_result {
+                Ok(output) => {
+                    let preview = output.trim();
+                    let short_id = &change_id[..change_id.len().min(8)];
+                    let body = if preview.is_empty() {
+                        format!("Push by change ID? (creates push-{})", short_id)
+                    } else {
+                        format!(
+                            "Push by change ID? (creates push-{})\n{}",
+                            short_id, preview
+                        )
+                    };
+                    self.active_dialog = Some(Dialog::confirm(
+                        "Push to Remote",
+                        body,
+                        Some("Remote changes cannot be undone with 'u'.".to_string()),
+                        DialogCallback::GitPushChange {
+                            change_id: change_id.clone(),
+                        },
+                    ));
+                }
+                Err(e) => {
+                    self.push_target_remote = None; // Clear on failure
+                    self.error_message = Some(format!("Push failed: {}", e));
+                }
+            }
             return;
         }
 
         if bookmarks.len() == 1 {
             let name = &bookmarks[0];
 
-            // Run dry-run to preview push
-            match self.jj.git_push_dry_run(name) {
+            // Run dry-run to preview push (with remote if selected)
+            let dry_run_result = if let Some(ref remote) = self.push_target_remote {
+                self.jj.git_push_dry_run_to_remote(name, remote)
+            } else {
+                self.jj.git_push_dry_run(name)
+            };
+            match dry_run_result {
                 Ok(output) => {
                     let preview = parse_push_dry_run(&output);
                     match preview {
@@ -905,7 +974,12 @@ impl App {
             // Multiple bookmarks: run dry-run for each to get status labels
             let mut items: Vec<SelectItem> = Vec::new();
             for name in &bookmarks {
-                let status = match self.jj.git_push_dry_run(name) {
+                let dry_run = if let Some(ref remote) = self.push_target_remote {
+                    self.jj.git_push_dry_run_to_remote(name, remote)
+                } else {
+                    self.jj.git_push_dry_run(name)
+                };
+                let status = match dry_run {
                     Ok(output) => {
                         let preview = parse_push_dry_run(&output);
                         format_bookmark_status(&preview, name)
@@ -941,26 +1015,43 @@ impl App {
     /// If `jj git push --bookmark` fails for an untracked/new bookmark,
     /// retries with `--allow-new` (deprecated in jj 0.37+ but functional).
     /// On success via --allow-new, adds a hint about configuring auto-track.
+    ///
+    /// Uses `push_target_remote` if set (consumed via `take()` at the top
+    /// to guarantee cleanup on all exit paths).
     pub(crate) fn execute_push(&mut self, bookmark_names: &[String]) {
         if bookmark_names.is_empty() {
+            self.push_target_remote = None;
             return;
         }
+
+        // Take remote at the top → guaranteed cleanup on success/error
+        let remote = self.push_target_remote.take();
 
         let mut successes = Vec::new();
         let mut errors = Vec::new();
         let mut used_allow_new = false;
 
         for name in bookmark_names {
-            match self.jj.git_push_bookmark(name) {
+            let result = if let Some(ref r) = remote {
+                self.jj.git_push_bookmark_to_remote(name, r)
+            } else {
+                self.jj.git_push_bookmark(name)
+            };
+
+            match result {
                 Ok(_) => {
                     successes.push(name.clone());
                 }
                 Err(e) => {
                     let err_msg = format!("{}", e);
                     // Auto-retry with --allow-new if the bookmark is new on remote.
-                    // --allow-new is deprecated in jj 0.37+ but still functional.
                     if is_untracked_bookmark_error(&err_msg) {
-                        match self.jj.git_push_bookmark_allow_new(name) {
+                        let retry = if let Some(ref r) = remote {
+                            self.jj.git_push_bookmark_allow_new_to_remote(name, r)
+                        } else {
+                            self.jj.git_push_bookmark_allow_new(name)
+                        };
+                        match retry {
                             Ok(_) => {
                                 successes.push(name.clone());
                                 used_allow_new = true;
@@ -977,14 +1068,21 @@ impl App {
             }
         }
 
-        // Show result
+        // Show result (include remote name if specified)
         if !successes.is_empty() {
             let names = successes.join(", ");
-            let msg = if used_allow_new {
-                // Hint about auto-track config when --allow-new was needed
-                format!("Pushed bookmark: {} (used deprecated --allow-new)", names)
-            } else {
-                format!("Pushed bookmark: {}", names)
+            let msg = match (used_allow_new, remote.as_deref()) {
+                (true, Some(r)) => {
+                    format!(
+                        "Pushed bookmark: {} to {} (used deprecated --allow-new)",
+                        names, r
+                    )
+                }
+                (true, None) => {
+                    format!("Pushed bookmark: {} (used deprecated --allow-new)", names)
+                }
+                (false, Some(r)) => format!("Pushed bookmark: {} to {}", names, r),
+                (false, None) => format!("Pushed bookmark: {}", names),
             };
             self.notification = Some(Notification::success(msg));
         }
@@ -1000,6 +1098,62 @@ impl App {
         let revset = self.log_view.current_revset.clone();
         self.refresh_log(revset.as_deref());
         self.refresh_status();
+    }
+
+    /// Execute `jj git push --change <change_id>` and refresh
+    ///
+    /// Creates an automatic bookmark (push-<prefix>) and pushes it.
+    /// Uses `push_target_remote` if set (consumed via `take()`).
+    pub(crate) fn execute_push_change(&mut self, change_id: &str) {
+        let remote = self.push_target_remote.take();
+        let result = if let Some(ref r) = remote {
+            self.jj.git_push_change_to_remote(change_id, r)
+        } else {
+            self.jj.git_push_change(change_id)
+        };
+        match result {
+            Ok(output) => {
+                let bookmark_name = Self::parse_push_change_bookmark(&output, change_id);
+                let short_id = &change_id[..change_id.len().min(8)];
+                let msg = match (bookmark_name, remote.as_deref()) {
+                    (Some(name), Some(r)) => {
+                        format!(
+                            "Pushed change {} to {} (created bookmark: {})",
+                            short_id, r, name
+                        )
+                    }
+                    (Some(name), None) => {
+                        format!("Pushed change {} (created bookmark: {})", short_id, name)
+                    }
+                    (None, Some(r)) => format!("Pushed change {} to {}", short_id, r),
+                    (None, None) => format!("Pushed change {}", short_id),
+                };
+                self.notification = Some(Notification::success(msg));
+
+                // Refresh after push
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.refresh_status();
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Push failed: {}", e));
+            }
+        }
+    }
+
+    /// Parse the auto-created bookmark name from `jj git push --change` output
+    ///
+    /// Output format: "Creating bookmark push-XXXXX for revision XXXXX"
+    fn parse_push_change_bookmark(output: &str, change_id: &str) -> Option<String> {
+        for line in output.lines() {
+            if let Some(rest) = line.strip_prefix("Creating bookmark ")
+                && let Some(name) = rest.split_whitespace().next()
+            {
+                return Some(name.to_string());
+            }
+        }
+        // Fallback: construct expected name
+        Some(format!("push-{}", &change_id[..change_id.len().min(8)]))
     }
 
     /// Resolve a conflict using :ours tool
@@ -1208,6 +1362,7 @@ impl App {
             (Some(DialogCallback::GitPush), DialogResult::Cancelled) => {
                 // Clear pending state on cancel to prevent stale data
                 self.pending_push_bookmarks.clear();
+                self.push_target_remote = None;
             }
             (Some(DialogCallback::Track), DialogResult::Confirmed(names)) => {
                 // Select dialog - names contains selected bookmark full names (e.g., "feature@origin")
@@ -1224,6 +1379,21 @@ impl App {
             }
             (Some(DialogCallback::BookmarkForget), DialogResult::Cancelled) => {
                 self.pending_forget_bookmark = None;
+            }
+            (Some(DialogCallback::GitPushChange { change_id }), DialogResult::Confirmed(_)) => {
+                self.execute_push_change(&change_id);
+            }
+            (Some(DialogCallback::GitPushChange { .. }), DialogResult::Cancelled) => {
+                self.push_target_remote = None;
+            }
+            (Some(DialogCallback::GitPushRemoteSelect), DialogResult::Confirmed(selected)) => {
+                if let Some(remote) = selected.first() {
+                    self.push_target_remote = Some(remote.clone());
+                    self.start_push();
+                }
+            }
+            (Some(DialogCallback::GitPushRemoteSelect), DialogResult::Cancelled) => {
+                self.push_target_remote = None;
             }
             (Some(DialogCallback::GitFetch), DialogResult::Confirmed(selected)) => {
                 if let Some(value) = selected.first() {
@@ -1958,5 +2128,115 @@ mod tests {
     #[test]
     fn test_truncate_description_max_len_3() {
         assert_eq!(truncate_description("abcdef", 3), "abc");
+    }
+
+    // =========================================================================
+    // parse_push_change_bookmark tests
+    // =========================================================================
+
+    #[test]
+    fn test_push_change_output_parsing() {
+        let output = "Creating bookmark push-ryxwqxsq for revision ryxwqxsq\n\
+                       Add bookmark push-ryxwqxsq to abc1234567890";
+        let result = App::parse_push_change_bookmark(output, "ryxwqxsq");
+        assert_eq!(result, Some("push-ryxwqxsq".to_string()));
+    }
+
+    #[test]
+    fn test_push_change_output_parsing_fallback() {
+        // No "Creating bookmark" in output → fallback to constructed name
+        let output = "Some other output";
+        let result = App::parse_push_change_bookmark(output, "abcd1234");
+        assert_eq!(result, Some("push-abcd1234".to_string()));
+    }
+
+    #[test]
+    fn test_push_change_output_parsing_empty() {
+        let result = App::parse_push_change_bookmark("", "xyz98765");
+        assert_eq!(result, Some("push-xyz98765".to_string()));
+    }
+
+    // =========================================================================
+    // push_target_remote cleanup tests
+    // =========================================================================
+
+    #[test]
+    fn test_push_target_remote_cleared_on_empty_bookmarks() {
+        // execute_push with empty bookmarks should clear push_target_remote
+        let mut app = App::new();
+        app.push_target_remote = Some("upstream".to_string());
+        app.execute_push(&[]);
+        assert!(app.push_target_remote.is_none());
+    }
+
+    #[test]
+    fn test_push_target_remote_cleared_by_execute_push() {
+        // execute_push always takes push_target_remote regardless of outcome
+        let mut app = App::new();
+        app.push_target_remote = Some("upstream".to_string());
+        // Push with a non-existent bookmark will fail, but remote should still be cleared
+        app.execute_push(&["nonexistent-bookmark-xyz".to_string()]);
+        assert!(app.push_target_remote.is_none());
+    }
+
+    #[test]
+    fn test_push_target_remote_cleared_by_execute_push_change() {
+        // execute_push_change always takes push_target_remote regardless of outcome
+        let mut app = App::new();
+        app.push_target_remote = Some("upstream".to_string());
+        // Push with invalid change_id will fail, but remote should still be cleared
+        app.execute_push_change("nonexistent_change_id");
+        assert!(app.push_target_remote.is_none());
+    }
+
+    #[test]
+    fn test_push_target_remote_cleared_on_git_push_cancel() {
+        // Simulating GitPush dialog cancel should clear push_target_remote
+        let mut app = App::new();
+        app.push_target_remote = Some("upstream".to_string());
+        app.pending_push_bookmarks = vec!["main".to_string()];
+        // Set up a dummy dialog to satisfy handle_dialog_result callback extraction
+        app.active_dialog = Some(Dialog::confirm(
+            "Push",
+            "Test",
+            None,
+            DialogCallback::GitPush,
+        ));
+        app.handle_dialog_result(DialogResult::Cancelled);
+        assert!(app.push_target_remote.is_none());
+        assert!(app.pending_push_bookmarks.is_empty());
+    }
+
+    #[test]
+    fn test_push_target_remote_cleared_on_remote_select_cancel() {
+        // Simulating GitPushRemoteSelect dialog cancel should clear push_target_remote
+        let mut app = App::new();
+        app.push_target_remote = Some("upstream".to_string());
+        app.active_dialog = Some(Dialog::select_single(
+            "Push to Remote",
+            "Select remote:",
+            vec![],
+            None,
+            DialogCallback::GitPushRemoteSelect,
+        ));
+        app.handle_dialog_result(DialogResult::Cancelled);
+        assert!(app.push_target_remote.is_none());
+    }
+
+    #[test]
+    fn test_push_target_remote_cleared_on_push_change_cancel() {
+        // Simulating GitPushChange dialog cancel should clear push_target_remote
+        let mut app = App::new();
+        app.push_target_remote = Some("upstream".to_string());
+        app.active_dialog = Some(Dialog::confirm(
+            "Push",
+            "Test",
+            None,
+            DialogCallback::GitPushChange {
+                change_id: "abc12345".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Cancelled);
+        assert!(app.push_target_remote.is_none());
     }
 }

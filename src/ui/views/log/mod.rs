@@ -133,6 +133,8 @@ pub enum LogAction {
     NextChange,
     /// Move @ to previous parent (jj prev --edit)
     PrevChange,
+    /// Toggle reversed display order
+    ToggleReversed,
 }
 
 /// Log View state
@@ -168,6 +170,8 @@ pub struct LogView {
     pub(crate) squash_source: Option<String>,
     /// "From" change ID for compare (set when entering CompareSelect mode)
     pub(crate) compare_from: Option<String>,
+    /// Whether to display log in reversed order (oldest first)
+    pub(crate) reversed: bool,
 }
 
 pub mod empty_text {

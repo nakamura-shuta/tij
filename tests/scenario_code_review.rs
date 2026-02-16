@@ -47,7 +47,9 @@ fn story_code_review_fix() {
     assert!(repo.read_file("api.rs").contains("validate"));
 
     // Verify: Subsequent commits still exist (auto-rebase)
-    let changes = executor.log(Some("all()")).expect("log should succeed");
+    let changes = executor
+        .log(Some("all()"), false)
+        .expect("log should succeed");
     assert!(changes.iter().any(|c| c.description == "Add tests"));
     assert!(changes.iter().any(|c| c.description == "Add docs"));
 }

@@ -51,8 +51,8 @@ Press `?` for help, `q` to quit.
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
 | Recovery | Undo / Redo / Operation Restore |
 | Bookmarks | Create / Move (with confirmation) / Delete (multi-select) / Rename / Forget / Track / Untrack / Jump / Bookmark View (`M`) |
-| Git Integration | Fetch (multi-remote selection) / Push (with dry-run preview, force push warnings, and protected bookmark detection) |
-| Navigation | Next/Prev (`]`/`[` to move @ through history) |
+| Git Integration | Fetch (multi-remote selection) / Push (with dry-run preview, force push warnings, protected bookmark detection, multi-remote selection, and push-by-change) |
+| Navigation | Next/Prev (`]`/`[` to move @ through history) / Reversed log order (`V`) |
 | Diff | Compare two revisions (`jj diff --from --to`) |
 | Usability | Revset filtering / Text search / Adaptive status bar / Dynamic context-aware hints / `--limit 200` default (unlimited with revset) |
 
@@ -89,7 +89,7 @@ cargo test --tests            # Integration tests only
 cargo insta test              # Snapshot tests
 ```
 
-**Test categories**: Unit (444), Integration (60+), Snapshot (17), Property-based (15)
+**Test categories**: Unit (458), Integration (75+), Snapshot (17), Property-based (15)
 
 ## Acknowledgments
 

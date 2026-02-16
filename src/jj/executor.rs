@@ -90,7 +90,7 @@ impl JjExecutor {
     ///
     /// Note: Graph output is enabled to show DAG structure.
     /// The parser handles graph prefixes in the output.
-    pub fn log_raw(&self, revset: Option<&str>) -> Result<String, JjError> {
+    pub fn log_raw(&self, revset: Option<&str>, reversed: bool) -> Result<String, JjError> {
         let template = Templates::log();
         let mut args = vec![commands::LOG, flags::TEMPLATE, template];
 
@@ -104,19 +104,27 @@ impl JjExecutor {
             args.push(constants::DEFAULT_LOG_LIMIT);
         }
 
+        if reversed {
+            args.push(flags::REVERSED);
+        }
+
         self.run(&args)
     }
 
     /// Run `jj log` and parse the output into Changes
-    pub fn log(&self, revset: Option<&str>) -> Result<Vec<Change>, JjError> {
-        let output = self.log_raw(revset)?;
+    pub fn log(&self, revset: Option<&str>, reversed: bool) -> Result<Vec<Change>, JjError> {
+        let output = self.log_raw(revset, reversed)?;
         Parser::parse_log(&output).map_err(|e| JjError::ParseError(e.to_string()))
     }
 
     /// Run `jj log` and parse output into Changes for current view.
     /// This is the preferred API for application code.
-    pub fn log_changes(&self, revset: Option<&str>) -> Result<Vec<Change>, JjError> {
-        self.log(revset)
+    pub fn log_changes(
+        &self,
+        revset: Option<&str>,
+        reversed: bool,
+    ) -> Result<Vec<Change>, JjError> {
+        self.log(revset, reversed)
     }
 
     /// Run `jj status`
@@ -658,7 +666,7 @@ impl JjExecutor {
 
     /// Run `jj git fetch --remote <name>`
     pub fn git_fetch_remote(&self, remote: &str) -> Result<String, JjError> {
-        self.run(&[commands::GIT, commands::GIT_FETCH, "--remote", remote])
+        self.run(&[commands::GIT, commands::GIT_FETCH, flags::REMOTE, remote])
     }
 
     /// Run `jj git remote list` to get all remote names
@@ -751,6 +759,175 @@ impl JjExecutor {
     pub fn git_push_named(&self, bookmark_name: &str, revision: &str) -> Result<String, JjError> {
         let named_arg = format!("{}={}", bookmark_name, revision);
         self.run(&[commands::GIT, commands::GIT_PUSH, flags::NAMED, &named_arg])
+    }
+
+    /// Run `jj git push --change <change_id>` to push by change ID
+    ///
+    /// Automatically creates a bookmark named `push-<change_id_prefix>`
+    /// and pushes it to the remote. If the bookmark already exists, it
+    /// reuses it.
+    pub fn git_push_change(&self, change_id: &str) -> Result<String, JjError> {
+        self.run(&[commands::GIT, commands::GIT_PUSH, flags::CHANGE, change_id])
+    }
+
+    /// Run `jj git push --bookmark <name> --remote <remote>` to push to specific remote
+    pub fn git_push_bookmark_to_remote(
+        &self,
+        bookmark_name: &str,
+        remote: &str,
+    ) -> Result<String, JjError> {
+        self.run(&[
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::BOOKMARK_FLAG,
+            bookmark_name,
+            flags::REMOTE,
+            remote,
+        ])
+    }
+
+    /// Run `jj git push --bookmark <name> --allow-new --remote <remote>` for new remote bookmarks
+    pub fn git_push_bookmark_allow_new_to_remote(
+        &self,
+        bookmark_name: &str,
+        remote: &str,
+    ) -> Result<String, JjError> {
+        self.run(&[
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::BOOKMARK_FLAG,
+            bookmark_name,
+            flags::ALLOW_NEW,
+            flags::REMOTE,
+            remote,
+        ])
+    }
+
+    /// Run `jj git push --dry-run --bookmark <name> --remote <remote>` to preview push to specific remote
+    pub fn git_push_dry_run_to_remote(
+        &self,
+        bookmark_name: &str,
+        remote: &str,
+    ) -> Result<String, JjError> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+        if let Some(ref path) = self.repo_path {
+            cmd.arg(flags::REPO_PATH).arg(path);
+        }
+        cmd.arg(flags::NO_COLOR);
+        cmd.args([
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::DRY_RUN,
+            flags::BOOKMARK_FLAG,
+            bookmark_name,
+            flags::REMOTE,
+            remote,
+        ]);
+
+        let output = cmd.output().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                JjError::JjNotFound
+            } else {
+                JjError::IoError(e)
+            }
+        })?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+            let exit_code = output.status.code().unwrap_or(-1);
+            Err(JjError::CommandFailed { stderr, exit_code })
+        }
+    }
+
+    /// Run `jj git push --change <change_id> --remote <remote>`
+    pub fn git_push_change_to_remote(
+        &self,
+        change_id: &str,
+        remote: &str,
+    ) -> Result<String, JjError> {
+        self.run(&[
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::CHANGE,
+            change_id,
+            flags::REMOTE,
+            remote,
+        ])
+    }
+
+    /// Run `jj git push --change <change_id> --dry-run --remote <remote>` to preview push to specific remote
+    pub fn git_push_change_dry_run_to_remote(
+        &self,
+        change_id: &str,
+        remote: &str,
+    ) -> Result<String, JjError> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+        if let Some(ref path) = self.repo_path {
+            cmd.arg(flags::REPO_PATH).arg(path);
+        }
+        cmd.arg(flags::NO_COLOR);
+        cmd.args([
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::DRY_RUN,
+            flags::CHANGE,
+            change_id,
+            flags::REMOTE,
+            remote,
+        ]);
+
+        let output = cmd.output().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                JjError::JjNotFound
+            } else {
+                JjError::IoError(e)
+            }
+        })?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+            let exit_code = output.status.code().unwrap_or(-1);
+            Err(JjError::CommandFailed { stderr, exit_code })
+        }
+    }
+
+    /// Run `jj git push --change <change_id> --dry-run` to preview push
+    ///
+    /// Returns stderr output describing what would change on the remote
+    /// if this change were pushed. Does NOT actually push anything.
+    pub fn git_push_change_dry_run(&self, change_id: &str) -> Result<String, JjError> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+        if let Some(ref path) = self.repo_path {
+            cmd.arg(flags::REPO_PATH).arg(path);
+        }
+        cmd.arg(flags::NO_COLOR);
+        cmd.args([
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::DRY_RUN,
+            flags::CHANGE,
+            change_id,
+        ]);
+
+        let output = cmd.output().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                JjError::JjNotFound
+            } else {
+                JjError::IoError(e)
+            }
+        })?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+            let exit_code = output.status.code().unwrap_or(-1);
+            Err(JjError::CommandFailed { stderr, exit_code })
+        }
     }
 
     /// Run `jj diff --from <from> --to <to>` to compare two revisions

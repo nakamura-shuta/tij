@@ -16,8 +16,10 @@ impl App {
         // Handle active dialog first (blocks other input)
         if let Some(ref mut dialog) = self.active_dialog {
             if let Some(result) = dialog.handle_key(key) {
+                // handle_dialog_result() clears active_dialog internally.
+                // Do NOT clear again here — dialog chains (e.g. remote select → push confirm)
+                // set a new active_dialog inside handle_dialog_result().
                 self.handle_dialog_result(result);
-                self.active_dialog = None;
             }
             return;
         }
@@ -316,6 +318,25 @@ impl App {
             }
             LogAction::PrevChange => {
                 self.execute_prev();
+            }
+            LogAction::ToggleReversed => {
+                // Preserve selection by change_id across toggle
+                let selected_id = self.log_view.selected_change().map(|c| c.change_id.clone());
+                self.log_view.reversed = !self.log_view.reversed;
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                // Try to restore selection; fallback to working copy
+                if let Some(ref id) = selected_id
+                    && !self.log_view.select_change_by_id(id)
+                {
+                    self.log_view.select_working_copy();
+                }
+                let label = if self.log_view.reversed {
+                    "oldest first"
+                } else {
+                    "newest first"
+                };
+                self.notification = Some(Notification::info(format!("Log order: {}", label)));
             }
         }
     }

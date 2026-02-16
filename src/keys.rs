@@ -160,6 +160,9 @@ pub const NEXT_CHANGE: KeyCode = KeyCode::Char(']');
 /// Move @ to previous parent (Log View)
 pub const PREV_CHANGE: KeyCode = KeyCode::Char('[');
 
+/// Toggle reversed display order (Log View)
+pub const LOG_REVERSE: KeyCode = KeyCode::Char('V');
+
 /// Jump to change in Log View (Blame View)
 pub const JUMP_TO_LOG: KeyCode = KeyCode::Char('J');
 
@@ -376,6 +379,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "]/[",
         description: "Move @ to next/prev",
+    },
+    KeyBindEntry {
+        key: "V",
+        description: "Toggle reversed order",
     },
 ];
 
@@ -665,6 +672,11 @@ pub const HINT_PREVIEW: KeyHint = KeyHint {
     label: "Preview",
     color: Color::Blue,
 };
+pub const HINT_REVERSE: KeyHint = KeyHint {
+    key: "V",
+    label: "Reverse",
+    color: Color::Yellow,
+};
 pub const HINT_RENAME: KeyHint = KeyHint {
     key: "r",
     label: "Rename",
@@ -795,6 +807,7 @@ fn log_normal_hints(ctx: &HintContext) -> Vec<KeyHint> {
         HINT_COMPARE,
         HINT_BOOKMARK_VIEW,
         HINT_PREVIEW,
+        HINT_REVERSE,
         HINT_OPS,
         HINT_UNDO,
         HINT_REFRESH,

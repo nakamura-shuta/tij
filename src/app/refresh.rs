@@ -15,7 +15,8 @@ impl App {
         self.preview_cache = None;
         self.preview_pending_id = None;
 
-        match self.jj.log_changes(revset) {
+        let reversed = self.log_view.reversed;
+        match self.jj.log_changes(revset, reversed) {
             Ok(changes) => {
                 self.log_view.set_changes(changes);
                 self.log_view.current_revset = revset.map(|s| s.to_string());

@@ -90,7 +90,9 @@ fn story_absorb_does_not_affect_unrelated() {
     assert!(result.is_ok(), "absorb should complete");
 
     // Verify: All commits still exist
-    let changes = executor.log(Some("all()")).expect("log should succeed");
+    let changes = executor
+        .log(Some("all()"), false)
+        .expect("log should succeed");
     assert!(
         changes.iter().any(|c| c.description == "Add independent A"),
         "Independent A should exist"

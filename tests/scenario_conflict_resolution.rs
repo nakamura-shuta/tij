@@ -118,7 +118,9 @@ fn story_conflict_then_abandon() {
     executor.abandon(&our_id).expect("abandon should succeed");
 
     // Verify the conflicting change is gone
-    let changes = executor.log(Some("all()")).expect("log should succeed");
+    let changes = executor
+        .log(Some("all()"), false)
+        .expect("log should succeed");
     assert!(
         !changes.iter().any(|c| c.description == "Our version"),
         "Conflicting change should be abandoned"
