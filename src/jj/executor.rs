@@ -81,6 +81,8 @@ impl JjExecutor {
     ///
     /// Automatically adds `--color=never` to ensure parseable output.
     pub fn run(&self, args: &[&str]) -> Result<String, JjError> {
+        use std::process::Stdio;
+
         let mut cmd = Command::new(constants::JJ_COMMAND);
 
         // Add repository path if specified
@@ -93,6 +95,12 @@ impl JjExecutor {
 
         // Add user-specified arguments
         cmd.args(args);
+
+        // Explicitly close stdin to prevent jj from waiting for input
+        // (e.g., during snapshot warnings or interactive prompts).
+        // Without this, Command::output() creates a pipe for stdin,
+        // which may not signal EOF properly under raw-mode terminals.
+        cmd.stdin(Stdio::null());
 
         let output = cmd.output().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -111,6 +119,19 @@ impl JjExecutor {
             // Check for common error patterns
             if stderr.contains(errors::NOT_A_REPO) {
                 return Err(JjError::NotARepository);
+            }
+
+            // jj exits with code 1 when snapshot warnings are present
+            // (e.g., large files exceeding snapshot.max-new-file-size)
+            // but still may produce valid stdout.
+            //
+            // Most commands require non-empty stdout to treat this as success.
+            // `jj show` is a special case: empty commits legitimately produce
+            // empty stdout (no diff lines), so allow empty stdout only for show.
+            let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+            let is_show = args.first().is_some_and(|a| *a == commands::SHOW);
+            if stderr.contains("Refused to snapshot") && (!stdout.is_empty() || is_show) {
+                return Ok(stdout);
             }
 
             Err(JjError::CommandFailed { stderr, exit_code })
@@ -248,6 +269,41 @@ impl JjExecutor {
     /// If @ is abandoned, a new empty change is created.
     pub fn abandon(&self, change_id: &str) -> Result<String, JjError> {
         self.run(&[commands::ABANDON, change_id])
+    }
+
+    /// Run `jj restore <file_path>` to restore a specific file to its parent state
+    pub fn restore_file(&self, file_path: &str) -> Result<String, JjError> {
+        self.run(&[commands::RESTORE, file_path])
+    }
+
+    /// Run `jj restore` to restore all files to their parent state
+    pub fn restore_all(&self) -> Result<String, JjError> {
+        self.run(&[commands::RESTORE])
+    }
+
+    /// Run `jj evolog -r <change_id>` with template output
+    pub fn evolog(&self, change_id: &str) -> Result<String, JjError> {
+        // evolog template context is EvolutionEntry, not Commit.
+        // Fields must be accessed via `commit.` prefix (e.g. commit.commit_id()).
+        // Uses committer timestamp (when each version was created), not author
+        // timestamp (which stays the same across all versions).
+        let template = concat!(
+            "separate(\"\\t\",",
+            "  commit.commit_id().short(),",
+            "  commit.change_id().short(),",
+            "  commit.author().email(),",
+            "  commit.committer().timestamp().format(\"%Y-%m-%d %H:%M:%S\"),",
+            "  if(commit.empty(), \"[empty]\", \"\"),",
+            "  if(commit.description(), commit.description().first_line(), \"(no description set)\")",
+            ") ++ \"\\n\""
+        );
+        self.run(&[
+            commands::EVOLOG,
+            flags::REVISION,
+            change_id,
+            flags::TEMPLATE,
+            template,
+        ])
     }
 
     /// Run `jj undo` to undo the last operation

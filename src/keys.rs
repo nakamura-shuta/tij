@@ -169,6 +169,18 @@ pub const LOG_REVERSE: KeyCode = KeyCode::Char('V');
 /// Duplicate change (Log View)
 pub const DUPLICATE: KeyCode = KeyCode::Char('Y');
 
+/// Open external diff editor (Log/Status View)
+pub const DIFFEDIT: KeyCode = KeyCode::Char('E');
+
+/// Restore file (Status View, lowercase)
+pub const RESTORE_FILE: KeyCode = KeyCode::Char('r');
+
+/// Restore all files (Status View, uppercase)
+pub const RESTORE_ALL: KeyCode = KeyCode::Char('R');
+
+/// Open evolution log (Log View)
+pub const EVOLOG: KeyCode = KeyCode::Char('L');
+
 /// Jump to change in Log View (Blame View)
 pub const JUMP_TO_LOG: KeyCode = KeyCode::Char('J');
 
@@ -393,6 +405,14 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "Y",
         description: "Duplicate change",
+    },
+    KeyBindEntry {
+        key: "E",
+        description: "Diffedit (external diff editor)",
+    },
+    KeyBindEntry {
+        key: "L",
+        description: "Evolution log (change history)",
     },
 ];
 
@@ -707,6 +727,26 @@ pub const HINT_MOVE_BKM: KeyHint = KeyHint {
     label: "Move",
     color: Color::Yellow,
 };
+pub const HINT_DIFFEDIT: KeyHint = KeyHint {
+    key: "E",
+    label: "DiffEdit",
+    color: Color::Yellow,
+};
+pub const HINT_EVOLOG: KeyHint = KeyHint {
+    key: "L",
+    label: "Evolog",
+    color: Color::Cyan,
+};
+pub const HINT_RESTORE: KeyHint = KeyHint {
+    key: "r",
+    label: "Restore",
+    color: Color::Red,
+};
+pub const HINT_RESTORE_ALL: KeyHint = KeyHint {
+    key: "R",
+    label: "RestoreAll",
+    color: Color::Red,
+};
 
 // =============================================================================
 // HintContext + DialogHintKind
@@ -813,6 +853,8 @@ fn log_normal_hints(ctx: &HintContext) -> Vec<KeyHint> {
         HINT_REBASE,
         HINT_ABSORB,
         HINT_DUPLICATE,
+        HINT_DIFFEDIT,
+        HINT_EVOLOG,
     ];
     if ctx.has_conflicts {
         h.push(HINT_RESOLVE);
@@ -999,6 +1041,21 @@ pub const STATUS_VIEW_HINTS: &[KeyHint] = &[
         color: Color::Red,
     },
     KeyHint {
+        key: "r",
+        label: "Restore",
+        color: Color::Red,
+    },
+    KeyHint {
+        key: "R",
+        label: "RestoreAll",
+        color: Color::Red,
+    },
+    KeyHint {
+        key: "E",
+        label: "DiffEdit",
+        color: Color::Yellow,
+    },
+    KeyHint {
         key: "^L",
         label: "Refresh",
         color: Color::Blue,
@@ -1040,6 +1097,18 @@ pub const STATUS_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "f",
         description: "Jump to conflict",
+    },
+    KeyBindEntry {
+        key: "r",
+        description: "Restore file",
+    },
+    KeyBindEntry {
+        key: "R",
+        description: "Restore all files",
+    },
+    KeyBindEntry {
+        key: "E",
+        description: "Diffedit (external diff editor)",
     },
     KeyBindEntry {
         key: "Tab",

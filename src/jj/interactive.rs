@@ -83,6 +83,42 @@ impl JjExecutor {
             .status()
     }
 
+    /// Run `jj diffedit -r <revision>` interactively
+    ///
+    /// Opens the configured diff editor to edit the changes in a revision.
+    /// The caller must disable raw mode before calling this method.
+    pub fn diffedit_interactive(&self, revision: &str) -> io::Result<ExitStatus> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+
+        if let Some(repo_path) = self.repo_path() {
+            cmd.arg(flags::REPO_PATH).arg(repo_path);
+        }
+
+        cmd.args([commands::DIFFEDIT, flags::REVISION, revision])
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+    }
+
+    /// Run `jj diffedit -r <revision> <file>` interactively
+    ///
+    /// Opens the configured diff editor for a specific file in a revision.
+    /// The caller must disable raw mode before calling this method.
+    pub fn diffedit_file_interactive(&self, revision: &str, file: &str) -> io::Result<ExitStatus> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+
+        if let Some(repo_path) = self.repo_path() {
+            cmd.arg(flags::REPO_PATH).arg(repo_path);
+        }
+
+        cmd.args([commands::DIFFEDIT, flags::REVISION, revision, file])
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+    }
+
     /// Resolve a conflict interactively using an external merge tool
     ///
     /// Spawns jj resolve as a child process with inherited stdio.

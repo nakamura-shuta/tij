@@ -6,7 +6,7 @@ use crate::jj::JjExecutor;
 use crate::model::{DiffContent, Notification};
 use crate::ui::components::Dialog;
 use crate::ui::views::{
-    BlameView, BookmarkView, DiffView, LogView, OperationView, ResolveView, StatusView,
+    BlameView, BookmarkView, DiffView, EvologView, LogView, OperationView, ResolveView, StatusView,
 };
 
 /// Cached preview to avoid refetching on every render
@@ -29,6 +29,7 @@ pub enum View {
     Blame,
     Resolve,
     Bookmark,
+    Evolog,
     Help,
 }
 
@@ -49,6 +50,8 @@ pub struct App {
     pub blame_view: Option<BlameView>,
     /// Resolve view state (created on demand)
     pub resolve_view: Option<ResolveView>,
+    /// Evolog view state (created on demand)
+    pub evolog_view: Option<EvologView>,
     /// Bookmark view state
     pub bookmark_view: BookmarkView,
     /// Status view state
@@ -105,6 +108,7 @@ impl App {
             diff_view: None,
             blame_view: None,
             resolve_view: None,
+            evolog_view: None,
             bookmark_view: BookmarkView::new(),
             status_view: StatusView::new(),
             operation_view: OperationView::new(),
@@ -140,6 +144,7 @@ impl App {
             View::Blame => View::Log,
             View::Resolve => View::Log,
             View::Bookmark => View::Log,
+            View::Evolog => View::Log,
             View::Help => View::Log,
         };
         self.go_to_view(next);

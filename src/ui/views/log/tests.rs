@@ -1699,6 +1699,101 @@ fn test_reverse_falls_back_to_working_copy() {
     assert!(view.selected_change().unwrap().is_working_copy);
 }
 
+// =============================================================================
+// DiffEdit tests (E key)
+// =============================================================================
+
+#[test]
+fn test_diffedit_key_returns_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    let action = press_key(&mut view, keys::DIFFEDIT);
+    assert_eq!(action, LogAction::DiffEdit("abc12345".to_string()));
+}
+
+#[test]
+fn test_diffedit_no_selection() {
+    let mut view = LogView::new();
+    // Empty changes
+    let action = press_key(&mut view, keys::DIFFEDIT);
+    assert_eq!(action, LogAction::None);
+}
+
+#[test]
+fn test_diffedit_does_not_conflict_with_edit() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // 'e' (lowercase) = Edit
+    let action = press_key(&mut view, keys::EDIT);
+    assert_eq!(action, LogAction::Edit("abc12345".to_string()));
+
+    // 'E' (uppercase) = DiffEdit — different action
+    let action = press_key(&mut view, keys::DIFFEDIT);
+    assert_eq!(action, LogAction::DiffEdit("abc12345".to_string()));
+}
+
+// =============================================================================
+// Evolog tests (L key)
+// =============================================================================
+
+#[test]
+fn test_evolog_key_returns_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    let action = press_key(&mut view, keys::EVOLOG);
+    assert_eq!(action, LogAction::OpenEvolog("abc12345".to_string()));
+}
+
+#[test]
+fn test_evolog_no_selection() {
+    let mut view = LogView::new();
+    // Empty changes
+    let action = press_key(&mut view, keys::EVOLOG);
+    assert_eq!(action, LogAction::None);
+}
+
+#[test]
+fn test_evolog_does_not_conflict_with_edit() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // 'e' (lowercase) = Edit
+    let action = press_key(&mut view, keys::EDIT);
+    assert_eq!(action, LogAction::Edit("abc12345".to_string()));
+
+    // 'L' (uppercase) = Evolog — completely different key
+    let action = press_key(&mut view, keys::EVOLOG);
+    assert_eq!(action, LogAction::OpenEvolog("abc12345".to_string()));
+}
+
+#[test]
+fn test_diffedit_ignored_in_squash_select_mode() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::SQUASH);
+    assert_eq!(view.input_mode, InputMode::SquashSelect);
+
+    let action = press_key(&mut view, keys::DIFFEDIT);
+    assert_eq!(action, LogAction::None);
+}
+
+#[test]
+fn test_evolog_ignored_in_rebase_select_mode() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+
+    let action = press_key(&mut view, keys::EVOLOG);
+    assert_eq!(action, LogAction::None);
+}
+
 #[test]
 fn test_reverse_ignored_in_special_modes() {
     let mut view = LogView::new();

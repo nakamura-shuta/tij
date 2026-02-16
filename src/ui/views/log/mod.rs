@@ -137,6 +137,10 @@ pub enum LogAction {
     ToggleReversed,
     /// Duplicate a change (jj duplicate)
     Duplicate(String),
+    /// Open external diff editor for a change (jj diffedit)
+    DiffEdit(String),
+    /// Open evolution log for a change (jj evolog)
+    OpenEvolog(String),
 }
 
 /// Log View state

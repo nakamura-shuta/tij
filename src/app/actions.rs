@@ -410,6 +410,88 @@ impl App {
         self.refresh_status();
     }
 
+    /// Execute diffedit (interactive diff editor)
+    ///
+    /// When `file` is None, opens the full diffedit for the revision.
+    /// When `file` is Some, opens diffedit scoped to that file.
+    pub(crate) fn execute_diffedit(&mut self, change_id: &str, file: Option<&str>) {
+        use crossterm::execute;
+        use crossterm::terminal::{
+            Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+            enable_raw_mode,
+        };
+        use std::io::stdout;
+
+        // 1. Exit TUI mode
+        let _ = disable_raw_mode();
+        let _ = execute!(stdout(), LeaveAlternateScreen, Clear(ClearType::All));
+
+        // 2. Scope guard to ensure terminal restoration
+        let _guard = scopeguard::guard((), |_| {
+            let _ = enable_raw_mode();
+            let _ = execute!(stdout(), EnterAlternateScreen);
+        });
+
+        // 3. Run jj diffedit (blocking)
+        let result = if let Some(f) = file {
+            self.jj.diffedit_file_interactive(change_id, f)
+        } else {
+            self.jj.diffedit_interactive(change_id)
+        };
+
+        // 4. Handle result
+        match result {
+            Ok(status) if status.success() => {
+                let short_id = &change_id[..8.min(change_id.len())];
+                self.notification = Some(Notification::success(format!(
+                    "Diffedit {} complete (undo: u)",
+                    short_id
+                )));
+            }
+            Ok(_) => {
+                self.notification = Some(Notification::info("Diffedit cancelled or failed"));
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Diffedit failed: {}", e));
+            }
+        }
+
+        // 5. Refresh views
+        let revset = self.log_view.current_revset.clone();
+        self.refresh_log(revset.as_deref());
+        self.refresh_status();
+    }
+
+    /// Execute restore for a single file
+    pub(crate) fn execute_restore_file(&mut self, file_path: &str) {
+        match self.jj.restore_file(file_path) {
+            Ok(_) => {
+                self.notification = Some(Notification::success(format!("Restored: {}", file_path)));
+                self.refresh_status();
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Restore failed: {}", e));
+            }
+        }
+    }
+
+    /// Execute restore for all files
+    pub(crate) fn execute_restore_all(&mut self) {
+        match self.jj.restore_all() {
+            Ok(_) => {
+                self.notification = Some(Notification::success("All files restored"));
+                self.refresh_status();
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Restore failed: {}", e));
+            }
+        }
+    }
+
     /// Execute bookmark creation or show move confirmation dialog
     ///
     /// First tries `jj bookmark create`. If the bookmark already exists,
@@ -1750,6 +1832,14 @@ impl App {
                 self.execute_bookmark_move_backwards(&name);
             }
             (Some(DialogCallback::BookmarkMoveBackwards { .. }), DialogResult::Cancelled) => {}
+            // --- RestoreFile ---
+            (Some(DialogCallback::RestoreFile { file_path }), DialogResult::Confirmed(_)) => {
+                self.execute_restore_file(&file_path);
+            }
+            // --- RestoreAll ---
+            (Some(DialogCallback::RestoreAll), DialogResult::Confirmed(_)) => {
+                self.execute_restore_all();
+            }
             (_, DialogResult::Cancelled) => {
                 // Cancelled - do nothing
             }

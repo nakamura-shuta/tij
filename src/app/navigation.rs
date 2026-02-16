@@ -1,8 +1,8 @@
 //! View navigation (opening views with data loading)
 
-use crate::jj::parser::Parser;
+use crate::jj::parser::{Parser, parse_evolog};
 use crate::model::{CompareInfo, CompareRevisionInfo, Notification};
-use crate::ui::views::{BlameView, DiffView, ResolveView};
+use crate::ui::views::{BlameView, DiffView, EvologView, ResolveView};
 
 use super::state::{App, View};
 
@@ -113,6 +113,25 @@ impl App {
     /// Open operation history view
     pub(crate) fn open_operation_history(&mut self) {
         self.go_to_view(View::Operation);
+    }
+
+    /// Open evolution log view for a change
+    pub(crate) fn open_evolog(&mut self, change_id: &str) {
+        match self.jj.evolog(change_id) {
+            Ok(output) => {
+                let entries = parse_evolog(&output);
+                if entries.is_empty() {
+                    self.notification =
+                        Some(Notification::info("No evolution history for this change"));
+                } else {
+                    self.evolog_view = Some(EvologView::new(change_id.to_string(), entries));
+                    self.go_to_view(View::Evolog);
+                }
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to load evolog: {}", e));
+            }
+        }
     }
 
     /// Open resolve view for a change

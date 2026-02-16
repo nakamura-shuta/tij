@@ -188,6 +188,20 @@ impl LogView {
                     LogAction::None
                 }
             }
+            k if k == keys::DIFFEDIT => {
+                if let Some(change) = self.selected_change() {
+                    LogAction::DiffEdit(change.change_id.clone())
+                } else {
+                    LogAction::None
+                }
+            }
+            k if k == keys::EVOLOG => {
+                if let Some(change) = self.selected_change() {
+                    LogAction::OpenEvolog(change.change_id.clone())
+                } else {
+                    LogAction::None
+                }
+            }
             _ => LogAction::None,
         }
     }

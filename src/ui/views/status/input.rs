@@ -72,6 +72,32 @@ impl StatusView {
                     StatusAction::None
                 }
             }
+            code if code == keys::RESTORE_FILE => {
+                if let Some(file_path) = self.selected_file_path() {
+                    StatusAction::RestoreFile {
+                        file_path: file_path.to_string(),
+                    }
+                } else {
+                    StatusAction::None
+                }
+            }
+            code if code == keys::RESTORE_ALL => {
+                // Guard: only when there are files to restore
+                if self.status.as_ref().is_some_and(|s| !s.is_clean()) {
+                    StatusAction::RestoreAll
+                } else {
+                    StatusAction::None
+                }
+            }
+            code if code == keys::DIFFEDIT => {
+                if let Some(file_path) = self.selected_file_path() {
+                    StatusAction::DiffEdit {
+                        file_path: file_path.to_string(),
+                    }
+                } else {
+                    StatusAction::None
+                }
+            }
             // Note: QUIT, TAB, ESC are handled by global key handler in input.rs
             _ => StatusAction::None,
         }

@@ -157,6 +157,17 @@ impl App {
                     self.notification = Some(Notification::info("Refreshed"));
                 }
             }
+            View::Evolog => {
+                // Refresh evolog view
+                if let Some(ref evolog_view) = self.evolog_view {
+                    let change_id = evolog_view.change_id.clone();
+                    self.open_evolog(&change_id);
+                    // Only show "Refreshed" if open_evolog didn't set an error/notification
+                    if self.error_message.is_none() && self.notification.is_none() {
+                        self.notification = Some(Notification::info("Refreshed"));
+                    }
+                }
+            }
             View::Help => {
                 // Help is static content, no refresh needed, no notification
             }

@@ -6,8 +6,8 @@ use super::state::{App, View};
 use crate::keys;
 use crate::model::Notification;
 use crate::ui::views::{
-    BlameAction, BookmarkAction, DiffAction, InputMode, LogAction, OperationAction, RenameState,
-    ResolveAction, StatusAction, StatusInputMode,
+    BlameAction, BookmarkAction, DiffAction, EvologAction, InputMode, LogAction, OperationAction,
+    RenameState, ResolveAction, StatusAction, StatusInputMode,
 };
 
 impl App {
@@ -204,6 +204,12 @@ impl App {
                     self.handle_resolve_action(action);
                 }
             }
+            View::Evolog => {
+                if let Some(ref mut evolog_view) = self.evolog_view {
+                    let action = evolog_view.handle_key(key);
+                    self.handle_evolog_action(action);
+                }
+            }
             View::Help => {
                 // j/k/g/G for scrolling
                 if keys::is_move_down(key.code) {
@@ -331,6 +337,12 @@ impl App {
             LogAction::Duplicate(change_id) => {
                 self.duplicate(&change_id);
             }
+            LogAction::DiffEdit(change_id) => {
+                self.execute_diffedit(&change_id, None);
+            }
+            LogAction::OpenEvolog(change_id) => {
+                self.open_evolog(&change_id);
+            }
             LogAction::ToggleReversed => {
                 // Preserve selection by change_id across toggle
                 let selected_id = self.log_view.selected_change().map(|c| c.change_id.clone());
@@ -443,6 +455,33 @@ impl App {
             StatusAction::JumpToConflict => {
                 // Selection already moved by StatusView; no further action needed
             }
+            StatusAction::RestoreFile { file_path } => {
+                // Show confirm dialog before restoring
+                use crate::ui::components::{Dialog, DialogCallback};
+                self.active_dialog = Some(Dialog::confirm(
+                    "Restore File",
+                    format!(
+                        "Restore '{}'?\nThis discards your changes to this file.",
+                        file_path
+                    ),
+                    Some("Undo with 'u' if needed.".to_string()),
+                    DialogCallback::RestoreFile {
+                        file_path: file_path.clone(),
+                    },
+                ));
+            }
+            StatusAction::RestoreAll => {
+                use crate::ui::components::{Dialog, DialogCallback};
+                self.active_dialog = Some(Dialog::confirm(
+                    "Restore All Files",
+                    "Restore all files?\nThis discards ALL your changes in the working copy.",
+                    Some("Undo with 'u' if needed.".to_string()),
+                    DialogCallback::RestoreAll,
+                ));
+            }
+            StatusAction::DiffEdit { file_path } => {
+                self.execute_diffedit("@", Some(&file_path));
+            }
         }
     }
 
@@ -485,6 +524,18 @@ impl App {
                     .map(|v| v.change_id.clone())
                     .unwrap_or_default();
                 self.open_diff_at_file(&change_id, &file_path);
+            }
+        }
+    }
+
+    fn handle_evolog_action(&mut self, action: EvologAction) {
+        match action {
+            EvologAction::None => {}
+            EvologAction::Back => {
+                self.go_back();
+            }
+            EvologAction::OpenDiff(change_id) => {
+                self.open_diff(&change_id);
             }
         }
     }

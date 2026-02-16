@@ -65,6 +65,10 @@ pub enum DialogCallback {
     BookmarkMoveToWc { name: String },
     /// Bookmark move with --allow-backwards confirmation
     BookmarkMoveBackwards { name: String },
+    /// Restore a single file (Confirm dialog)
+    RestoreFile { file_path: String },
+    /// Restore all files (Confirm dialog)
+    RestoreAll,
 }
 
 /// Selection item for Select dialog

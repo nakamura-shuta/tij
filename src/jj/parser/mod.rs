@@ -5,6 +5,7 @@
 mod annotation;
 mod bookmark;
 mod diff;
+mod evolog;
 mod log;
 mod operation;
 mod push;
@@ -12,6 +13,7 @@ mod resolve;
 mod status;
 
 pub use bookmark::parse_bookmark_list;
+pub use evolog::parse_evolog;
 pub use push::{PushPreviewAction, PushPreviewResult, parse_push_dry_run};
 
 #[cfg(test)]

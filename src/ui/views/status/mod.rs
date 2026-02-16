@@ -37,6 +37,12 @@ pub enum StatusAction {
     Commit { message: String },
     /// Jump to first conflict file
     JumpToConflict,
+    /// Restore a single file (jj restore <file>)
+    RestoreFile { file_path: String },
+    /// Restore all files (jj restore)
+    RestoreAll,
+    /// Open diffedit for selected file (jj diffedit -r @ <file>)
+    DiffEdit { file_path: String },
     /// No action
     None,
 }
@@ -416,6 +422,117 @@ mod tests {
         let action = view.handle_key(KeyEvent::from(KeyCode::Char('f')));
         assert_eq!(action, StatusAction::JumpToConflict);
         assert_eq!(view.selected_index, 1);
+    }
+
+    // =============================================================================
+    // Restore tests (r/R keys)
+    // =============================================================================
+
+    #[test]
+    fn test_r_key_returns_restore_file() {
+        let mut view = StatusView::new();
+        view.set_status(sample_status());
+
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('r')));
+        match action {
+            StatusAction::RestoreFile { file_path } => {
+                assert_eq!(file_path, "src/main.rs");
+            }
+            _ => panic!("Expected RestoreFile action, got {:?}", action),
+        }
+    }
+
+    #[test]
+    fn test_r_uppercase_returns_restore_all() {
+        let mut view = StatusView::new();
+        view.set_status(sample_status());
+
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('R')));
+        assert_eq!(action, StatusAction::RestoreAll);
+    }
+
+    #[test]
+    fn test_r_key_different_from_r_uppercase() {
+        let mut view = StatusView::new();
+        view.set_status(sample_status());
+
+        // Lowercase r = file restore
+        let action_file = view.handle_key(KeyEvent::from(KeyCode::Char('r')));
+        assert!(matches!(action_file, StatusAction::RestoreFile { .. }));
+
+        // Uppercase R = all restore
+        let action_all = view.handle_key(KeyEvent::from(KeyCode::Char('R')));
+        assert_eq!(action_all, StatusAction::RestoreAll);
+    }
+
+    #[test]
+    fn test_r_key_no_file_selected() {
+        let mut view = StatusView::new();
+        // No status set
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('r')));
+        assert_eq!(action, StatusAction::None);
+    }
+
+    #[test]
+    fn test_r_key_empty_status() {
+        let mut view = StatusView::new();
+        let empty_status = Status {
+            files: vec![],
+            has_conflicts: false,
+            working_copy_change_id: "abc".to_string(),
+            parent_change_id: "xyz".to_string(),
+        };
+        view.set_status(empty_status);
+
+        // r with no files → None
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('r')));
+        assert_eq!(action, StatusAction::None);
+    }
+
+    #[test]
+    fn test_restore_all_empty_status() {
+        let mut view = StatusView::new();
+        let empty_status = Status {
+            files: vec![],
+            has_conflicts: false,
+            working_copy_change_id: "abc".to_string(),
+            parent_change_id: "xyz".to_string(),
+        };
+        view.set_status(empty_status);
+
+        // R with no files → None (guarded)
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('R')));
+        assert_eq!(action, StatusAction::None);
+    }
+
+    #[test]
+    fn test_restore_keys_ignored_in_commit_input_mode() {
+        let mut view = StatusView::new();
+        view.set_status(sample_status());
+        view.start_commit_input();
+
+        // r should be treated as text input, not restore
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('r')));
+        assert_eq!(action, StatusAction::None);
+        assert_eq!(view.input_buffer, "r");
+    }
+
+    // =============================================================================
+    // DiffEdit tests (E key)
+    // =============================================================================
+
+    #[test]
+    fn test_e_uppercase_returns_diffedit() {
+        let mut view = StatusView::new();
+        view.set_status(sample_status());
+
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('E')));
+        match action {
+            StatusAction::DiffEdit { file_path } => {
+                assert_eq!(file_path, "src/main.rs");
+            }
+            _ => panic!("Expected DiffEdit action, got {:?}", action),
+        }
     }
 
     #[test]

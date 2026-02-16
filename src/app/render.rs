@@ -34,6 +34,7 @@ impl App {
             View::Blame => self.render_blame_view(frame, notification.as_ref()),
             View::Resolve => self.render_resolve_view(frame, notification.as_ref()),
             View::Bookmark => self.render_bookmark_view(frame, notification.as_ref()),
+            View::Evolog => self.render_evolog_view(frame, notification.as_ref()),
             View::Help => self.render_help_view(frame),
         }
 
@@ -67,7 +68,7 @@ impl App {
                 let hints = keys::current_hints(View::Resolve, self.log_view.input_mode, &ctx);
                 status_hints_height(&hints, width)
             }
-            View::Diff => 1,
+            View::Evolog | View::Diff => 1,
             View::Blame => status_hints_height(keys::BLAME_VIEW_HINTS, width),
             View::Help => 0,
         }
@@ -305,6 +306,23 @@ impl App {
 
         self.bookmark_view.render(frame, main_area, notification);
         render_status_hints(frame, &hints);
+    }
+
+    fn render_evolog_view(
+        &self,
+        frame: &mut Frame,
+        notification: Option<&crate::model::Notification>,
+    ) {
+        if let Some(ref evolog_view) = self.evolog_view {
+            evolog_view.render(frame, frame.area(), notification);
+        } else {
+            render_placeholder(
+                frame,
+                " Tij - Evolution Log ",
+                Color::Cyan,
+                "No evolution log loaded - Press q to go back",
+            );
+        }
     }
 
     fn render_help_view(&self, frame: &mut Frame) {
