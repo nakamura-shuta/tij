@@ -181,6 +181,9 @@ pub const RESTORE_ALL: KeyCode = KeyCode::Char('R');
 /// Open evolution log (Log View)
 pub const EVOLOG: KeyCode = KeyCode::Char('L');
 
+/// Revert a change (Log View, creates reverse-diff commit)
+pub const REVERT: KeyCode = KeyCode::Char('Z');
+
 /// Jump to change in Log View (Blame View)
 pub const JUMP_TO_LOG: KeyCode = KeyCode::Char('J');
 
@@ -413,6 +416,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "L",
         description: "Evolution log (change history)",
+    },
+    KeyBindEntry {
+        key: "Z",
+        description: "Revert change (create reverse-diff commit)",
     },
 ];
 
@@ -747,6 +754,11 @@ pub const HINT_RESTORE_ALL: KeyHint = KeyHint {
     label: "RestoreAll",
     color: Color::Red,
 };
+pub const HINT_REVERT: KeyHint = KeyHint {
+    key: "Z",
+    label: "Revert",
+    color: Color::Red,
+};
 
 // =============================================================================
 // HintContext + DialogHintKind
@@ -839,22 +851,18 @@ fn log_hints(input_mode: InputMode, ctx: &HintContext) -> Vec<KeyHint> {
 }
 
 fn log_normal_hints(ctx: &HintContext) -> Vec<KeyHint> {
+    // Show only the most essential hints here; full list is in Help (?)
     let mut h = vec![
         HINT_HELP,
         HINT_DESC,
-        HINT_EDITOR,
         HINT_EDIT,
         HINT_NEW,
-        HINT_NEW_AT,
         HINT_SQUASH,
         HINT_ABANDON,
-        HINT_SPLIT,
+        HINT_REVERT,
         HINT_BOOKMARK,
         HINT_REBASE,
-        HINT_ABSORB,
-        HINT_DUPLICATE,
-        HINT_DIFFEDIT,
-        HINT_EVOLOG,
+        HINT_FETCH,
     ];
     if ctx.has_conflicts {
         h.push(HINT_RESOLVE);
@@ -863,20 +871,7 @@ fn log_normal_hints(ctx: &HintContext) -> Vec<KeyHint> {
         h.push(HINT_DEL_BKM);
         h.push(HINT_PUSH);
     }
-    h.extend([
-        HINT_FETCH,
-        HINT_TRACK,
-        HINT_JUMP,
-        HINT_COMPARE,
-        HINT_BOOKMARK_VIEW,
-        HINT_PREVIEW,
-        HINT_REVERSE,
-        HINT_OPS,
-        HINT_UNDO,
-        HINT_REFRESH,
-        HINT_SWITCH,
-        HINT_QUIT,
-    ]);
+    h.extend([HINT_UNDO, HINT_QUIT]);
     h
 }
 

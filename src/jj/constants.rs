@@ -46,6 +46,7 @@ pub mod commands {
     pub const RESTORE: &str = "restore";
     pub const EVOLOG: &str = "evolog";
     pub const DIFF: &str = "diff";
+    pub const REVERT: &str = "revert";
     pub const GIT_REMOTE: &str = "remote";
     pub const GIT_REMOTE_LIST: &str = "list";
 }
@@ -106,6 +107,8 @@ pub mod flags {
     pub const TRACKED: &str = "--tracked";
     /// Push deleted bookmarks
     pub const DELETED: &str = "--deleted";
+    /// Revert onto target revision
+    pub const ONTO: &str = "--onto";
 }
 
 /// Default limit for log output (no revset)

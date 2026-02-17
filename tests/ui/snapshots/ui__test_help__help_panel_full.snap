@@ -50,6 +50,7 @@ expression: terminal.backend()
 "│  Y         Duplicate change                                                  │"
 "│  E         Diffedit (external diff editor)                                   │"
 "│  L         Evolution log (change history)                                    │"
+"│  Z         Revert change (create reverse-diff commit)                        │"
 "│                                                                              │"
 "│Input Mode:                                                                   │"
 "│  Enter     Submit input                                                      │"
@@ -90,5 +91,4 @@ expression: terminal.backend()
 "│  u         Undo                                                              │"
 "│  q         Back to log                                                       │"
 "│                                                                              │"
-"│Operation View:                                                               │"
 "└──────────────────────────────────────────────────────────────────────────────┘"

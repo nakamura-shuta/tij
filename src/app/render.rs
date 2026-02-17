@@ -999,19 +999,6 @@ mod tests {
         assert_eq!(total_del, 1);
     }
 
-    #[test]
-    fn test_preview_hint_in_log_normal() {
-        use crate::keys::{self, HintContext};
-        use crate::ui::views::InputMode;
-
-        let ctx = HintContext::default();
-        let hints = keys::current_hints(View::Log, InputMode::Normal, &ctx);
-        assert!(
-            hints.iter().any(|h| h.key == "p" && h.label == "Preview"),
-            "Preview hint missing from log normal hints"
-        );
-    }
-
     /// Verify that preview cache is invalidated by refresh_log().
     #[test]
     fn test_preview_cache_cleared_on_refresh_log() {

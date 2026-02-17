@@ -1794,6 +1794,65 @@ fn test_evolog_ignored_in_rebase_select_mode() {
     assert_eq!(action, LogAction::None);
 }
 
+// =============================================================================
+// Revert tests (Z key)
+// =============================================================================
+
+#[test]
+fn test_revert_key_returns_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    let action = press_key(&mut view, keys::REVERT);
+    assert_eq!(action, LogAction::Revert("abc12345".to_string()));
+}
+
+#[test]
+fn test_revert_empty_commit_returns_none() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Move to root (is_empty = true)
+    view.move_to_bottom();
+    assert!(view.selected_change().unwrap().is_empty);
+
+    let action = press_key(&mut view, keys::REVERT);
+    assert_eq!(action, LogAction::None);
+}
+
+#[test]
+fn test_revert_no_selection() {
+    let mut view = LogView::new();
+    // Empty changes
+    let action = press_key(&mut view, keys::REVERT);
+    assert_eq!(action, LogAction::None);
+}
+
+#[test]
+fn test_revert_ignored_in_squash_select_mode() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::SQUASH);
+    assert_eq!(view.input_mode, InputMode::SquashSelect);
+
+    let action = press_key(&mut view, keys::REVERT);
+    assert_eq!(action, LogAction::None);
+}
+
+#[test]
+fn test_revert_ignored_in_rebase_select_mode() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+
+    let action = press_key(&mut view, keys::REVERT);
+    assert_eq!(action, LogAction::None);
+}
+
 #[test]
 fn test_reverse_ignored_in_special_modes() {
     let mut view = LogView::new();

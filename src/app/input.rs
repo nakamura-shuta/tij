@@ -343,6 +343,19 @@ impl App {
             LogAction::OpenEvolog(change_id) => {
                 self.open_evolog(&change_id);
             }
+            LogAction::Revert(change_id) => {
+                use crate::ui::components::{Dialog, DialogCallback};
+                let short_id = &change_id[..8.min(change_id.len())];
+                self.active_dialog = Some(Dialog::confirm(
+                    "Revert Change",
+                    format!("Revert changes from {}?", short_id),
+                    Some(
+                        "Creates a new commit that undoes these changes. Undo with 'u' if needed."
+                            .to_string(),
+                    ),
+                    DialogCallback::Revert { change_id },
+                ));
+            }
             LogAction::ToggleReversed => {
                 // Preserve selection by change_id across toggle
                 let selected_id = self.log_view.selected_change().map(|c| c.change_id.clone());

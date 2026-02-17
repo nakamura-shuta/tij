@@ -202,6 +202,18 @@ impl LogView {
                     LogAction::None
                 }
             }
+            k if k == keys::REVERT => {
+                if let Some(change) = self.selected_change() {
+                    if change.is_empty {
+                        // Empty commit has nothing to revert
+                        LogAction::None
+                    } else {
+                        LogAction::Revert(change.change_id.clone())
+                    }
+                } else {
+                    LogAction::None
+                }
+            }
             _ => LogAction::None,
         }
     }

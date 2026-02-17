@@ -69,6 +69,8 @@ pub enum DialogCallback {
     RestoreFile { file_path: String },
     /// Restore all files (Confirm dialog)
     RestoreAll,
+    /// Revert a change (Confirm dialog, creates reverse-diff commit)
+    Revert { change_id: String },
 }
 
 /// Selection item for Select dialog

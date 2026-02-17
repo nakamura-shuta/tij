@@ -271,6 +271,19 @@ impl JjExecutor {
         self.run(&[commands::ABANDON, change_id])
     }
 
+    /// Run `jj revert -r <change_id> --onto @` to create a reverse-diff commit
+    ///
+    /// Creates a new commit on top of @ that undoes the changes from the specified revision.
+    pub fn revert(&self, change_id: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::REVERT,
+            flags::REVISION,
+            change_id,
+            flags::ONTO,
+            "@",
+        ])
+    }
+
     /// Run `jj restore <file_path>` to restore a specific file to its parent state
     pub fn restore_file(&self, file_path: &str) -> Result<String, JjError> {
         self.run(&[commands::RESTORE, file_path])

@@ -61,7 +61,8 @@ mod tests {
 
     #[test]
     fn test_parse_evolog_description_with_tab() {
-        let output = "abc12345\tzxsrvopz\tuser@example.com\t2025-10-03 18:10:00\t\tdesc\twith\ttabs\n";
+        let output =
+            "abc12345\tzxsrvopz\tuser@example.com\t2025-10-03 18:10:00\t\tdesc\twith\ttabs\n";
         let entries = parse_evolog(output);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].description, "desc\twith\ttabs");

@@ -141,6 +141,8 @@ pub enum LogAction {
     DiffEdit(String),
     /// Open evolution log for a change (jj evolog)
     OpenEvolog(String),
+    /// Revert a change (jj revert, creates reverse-diff commit)
+    Revert(String),
 }
 
 /// Log View state

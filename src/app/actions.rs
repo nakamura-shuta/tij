@@ -290,6 +290,24 @@ impl App {
         }
     }
 
+    /// Execute revert operation (creates reverse-diff commit)
+    pub(crate) fn execute_revert(&mut self, change_id: &str) {
+        match self.jj.revert(change_id) {
+            Ok(_) => {
+                let short_id = &change_id[..8.min(change_id.len())];
+                self.notification = Some(Notification::success(format!(
+                    "Reverted {} (undo: u)",
+                    short_id
+                )));
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Revert failed: {}", e));
+            }
+        }
+    }
+
     /// Execute redo operation
     ///
     /// Only works if the last operation was an undo.
@@ -1840,6 +1858,10 @@ impl App {
             (Some(DialogCallback::RestoreAll), DialogResult::Confirmed(_)) => {
                 self.execute_restore_all();
             }
+            // --- Revert ---
+            (Some(DialogCallback::Revert { change_id }), DialogResult::Confirmed(_)) => {
+                self.execute_revert(&change_id);
+            }
             (_, DialogResult::Cancelled) => {
                 // Cancelled - do nothing
             }
@@ -2710,5 +2732,57 @@ mod tests {
                        Duplicated abc1234567890 as xyzwqrst def5678901 test description";
         let result = App::parse_duplicate_output(output);
         assert_eq!(result, Some("xyzwqrst".to_string()));
+    }
+
+    // =========================================================================
+    // Revert dialog callback tests
+    // =========================================================================
+
+    #[test]
+    fn test_revert_dialog_confirmed_calls_execute_revert() {
+        // Verifies that handle_dialog_result routes DialogCallback::Revert
+        // to execute_revert(). Since jj is not available in test, the revert
+        // command will fail, but we verify the routing by checking that
+        // error_message is set (proving execute_revert was called).
+        let mut app = App::new();
+        app.active_dialog = Some(Dialog::confirm(
+            "Revert Change",
+            "Revert changes from abc12345?",
+            Some("Creates a new commit that undoes these changes.".to_string()),
+            DialogCallback::Revert {
+                change_id: "abc12345".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Confirmed(vec![]));
+        // execute_revert was called → jj revert fails in test env → error_message set
+        assert!(
+            app.error_message.is_some(),
+            "execute_revert should have been called (error expected in test env)"
+        );
+        assert!(
+            app.error_message
+                .as_ref()
+                .unwrap()
+                .contains("Revert failed"),
+            "Error should be from execute_revert, got: {}",
+            app.error_message.as_ref().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_revert_dialog_cancelled_does_nothing() {
+        let mut app = App::new();
+        app.active_dialog = Some(Dialog::confirm(
+            "Revert Change",
+            "Revert changes from abc12345?",
+            None,
+            DialogCallback::Revert {
+                change_id: "abc12345".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Cancelled);
+        // No action taken
+        assert!(app.error_message.is_none());
+        assert!(app.notification.is_none());
     }
 }
