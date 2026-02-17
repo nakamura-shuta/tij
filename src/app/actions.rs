@@ -2999,6 +2999,9 @@ mod tests {
     #[test]
     fn test_revert_dialog_cancelled_does_nothing() {
         let mut app = App::new();
+        // Clear any init errors (App::new() may fail in non-jj repos like CI)
+        app.error_message = None;
+        app.notification = None;
         app.active_dialog = Some(Dialog::confirm(
             "Revert Change",
             "Revert changes from abc12345?",
