@@ -104,9 +104,11 @@ impl Default for App {
 }
 
 impl App {
-    /// Construct a new instance of [`App`].
-    pub fn new() -> Self {
-        let mut app = Self {
+    /// Pure initialization without any external command execution.
+    ///
+    /// Used by both `new()` (production) and `new_for_test()` (tests).
+    fn init() -> Self {
+        Self {
             running: true,
             current_view: View::Log,
             previous_view: None,
@@ -135,25 +137,26 @@ impl App {
             help_search_query: None,
             help_search_input: false,
             help_input_buffer: String::new(),
-        };
+        }
+    }
 
-        // Load initial log
+    /// Construct a new instance of [`App`].
+    ///
+    /// Performs pure initialization via [`init()`] then loads the initial log
+    /// from jj. Production entry point.
+    pub fn new() -> Self {
+        let mut app = Self::init();
         app.refresh_log(None);
-
         app
     }
 
-    /// Create a new App for unit tests
+    /// Create a new App for unit tests.
     ///
-    /// Same as `new()`, but clears any `error_message` / `notification` that
-    /// `refresh_log()` may set when running outside a real jj repository
-    /// (e.g. in CI where the checkout is a plain git clone).
+    /// Pure initialization only — no `jj log` or other external commands.
+    /// Safe to use in CI environments without a jj repository.
     #[cfg(test)]
     pub fn new_for_test() -> Self {
-        let mut app = Self::new();
-        app.error_message = None;
-        app.notification = None;
-        app
+        Self::init()
     }
 
     /// Switch to next view (Tab key)
