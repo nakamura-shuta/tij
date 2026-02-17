@@ -21,6 +21,10 @@ pub enum DiffAction {
     },
     /// Show an info notification (e.g., feature unavailable in current mode)
     ShowNotification(String),
+    /// Copy diff to clipboard (full = jj show, !full = jj diff)
+    CopyToClipboard { full: bool },
+    /// Export diff to .patch file
+    ExportToFile,
 }
 
 /// Diff view state
@@ -652,5 +656,26 @@ mod tests {
         view.jump_to_file("src/new.rs");
         assert_eq!(view.current_file_index, 0);
         assert_eq!(view.scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_yank_key_returns_copy_full() {
+        let mut view = DiffView::new("test".to_string(), create_test_content());
+        let action = view.handle_key(KeyEvent::from(crossterm::event::KeyCode::Char('y')));
+        assert_eq!(action, DiffAction::CopyToClipboard { full: true });
+    }
+
+    #[test]
+    fn test_yank_diff_key_returns_copy_diff_only() {
+        let mut view = DiffView::new("test".to_string(), create_test_content());
+        let action = view.handle_key(KeyEvent::from(crossterm::event::KeyCode::Char('Y')));
+        assert_eq!(action, DiffAction::CopyToClipboard { full: false });
+    }
+
+    #[test]
+    fn test_write_key_returns_export() {
+        let mut view = DiffView::new("test".to_string(), create_test_content());
+        let action = view.handle_key(KeyEvent::from(crossterm::event::KeyCode::Char('w')));
+        assert_eq!(action, DiffAction::ExportToFile);
     }
 }

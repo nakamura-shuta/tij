@@ -65,6 +65,9 @@ impl DiffView {
                     DiffAction::None
                 }
             }
+            keys::YANK => DiffAction::CopyToClipboard { full: true },
+            keys::YANK_DIFF => DiffAction::CopyToClipboard { full: false },
+            keys::WRITE_FILE => DiffAction::ExportToFile,
             keys::QUIT | keys::ESC => DiffAction::Back,
             _ => DiffAction::None,
         }

@@ -512,6 +512,12 @@ impl App {
             DiffAction::ShowNotification(message) => {
                 self.notification = Some(Notification::info(&message));
             }
+            DiffAction::CopyToClipboard { full } => {
+                self.copy_diff_to_clipboard(full);
+            }
+            DiffAction::ExportToFile => {
+                self.export_diff_to_file();
+            }
         }
     }
 

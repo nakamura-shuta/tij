@@ -1240,6 +1240,13 @@ impl JjExecutor {
         ])
     }
 
+    /// Run `jj diff -r <change_id>` for a specific change (raw output, no parse)
+    ///
+    /// Returns diff-only output without the commit header (unlike `jj show`).
+    pub fn diff_raw(&self, change_id: &str) -> Result<String, JjError> {
+        self.run(&[commands::DIFF, flags::REVISION, change_id])
+    }
+
     /// Run `jj diff --from <from> --to <to>` to compare two revisions
     ///
     /// Returns the raw diff output between the two revisions.

@@ -218,6 +218,15 @@ pub const HALF_PAGE_DOWN: KeyCode = KeyCode::Char('d');
 /// Half page up
 pub const HALF_PAGE_UP: KeyCode = KeyCode::Char('u');
 
+/// Copy diff to clipboard (full: jj show output)
+pub const YANK: KeyCode = KeyCode::Char('y');
+
+/// Copy diff to clipboard (diff only: jj diff output)
+pub const YANK_DIFF: KeyCode = KeyCode::Char('Y');
+
+/// Export diff to file
+pub const WRITE_FILE: KeyCode = KeyCode::Char('w');
+
 // =============================================================================
 // Undo/Redo keys
 // =============================================================================
@@ -460,6 +469,18 @@ pub const DIFF_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "a",
         description: "Show file blame",
+    },
+    KeyBindEntry {
+        key: "y",
+        description: "Copy to clipboard (full: jj show)",
+    },
+    KeyBindEntry {
+        key: "Y",
+        description: "Copy to clipboard (diff only: jj diff)",
+    },
+    KeyBindEntry {
+        key: "w",
+        description: "Export to .patch file",
     },
     KeyBindEntry {
         key: "q",
@@ -995,6 +1016,16 @@ pub const DIFF_VIEW_HINTS: &[KeyHint] = &[
         key: "a",
         label: "Blame",
         color: Color::Magenta,
+    },
+    KeyHint {
+        key: "y/Y",
+        label: "Copy",
+        color: Color::Yellow,
+    },
+    KeyHint {
+        key: "w",
+        label: "Export",
+        color: Color::Yellow,
     },
     KeyHint {
         key: "^L",

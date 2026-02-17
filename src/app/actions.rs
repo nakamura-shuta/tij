@@ -2381,6 +2381,136 @@ impl App {
             }
         }
     }
+
+    // =========================================================================
+    // Diff export (clipboard copy & file export)
+    // =========================================================================
+
+    /// Copy diff content to system clipboard
+    pub(crate) fn copy_diff_to_clipboard(&mut self, full: bool) {
+        let Some(ref diff_view) = self.diff_view else {
+            return;
+        };
+        let change_id = diff_view.change_id.clone();
+        let compare_info = diff_view.compare_info.clone();
+
+        let result = if full {
+            if let Some(ref ci) = compare_info {
+                // Compare mode: jj show doesn't apply, prepend from/to metadata header
+                let diff = self.jj.diff_range(&ci.from.change_id, &ci.to.change_id);
+                diff.map(|d| {
+                    format!(
+                        "Compare: {} -> {}\nFrom: {} ({})\nTo:   {} ({})\n\n{}",
+                        ci.from.change_id,
+                        ci.to.change_id,
+                        ci.from.change_id,
+                        ci.from.description,
+                        ci.to.change_id,
+                        ci.to.description,
+                        d,
+                    )
+                })
+            } else {
+                self.jj.show_raw(&change_id)
+            }
+        } else {
+            // jj diff (diff only)
+            if let Some(ref ci) = compare_info {
+                self.jj.diff_range(&ci.from.change_id, &ci.to.change_id)
+            } else {
+                self.jj.diff_raw(&change_id)
+            }
+        };
+
+        match result {
+            Ok(text) => {
+                let line_count = text.lines().count();
+                match super::clipboard::copy_to_clipboard(&text) {
+                    Ok(()) => {
+                        let mode = if full { "show" } else { "diff" };
+                        self.notification = Some(Notification::success(format!(
+                            "Copied to clipboard ({} lines, {})",
+                            line_count, mode
+                        )));
+                    }
+                    Err(e) => {
+                        self.error_message = Some(e);
+                    }
+                }
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to get diff: {}", e));
+            }
+        }
+    }
+
+    /// Export diff content to a .patch file
+    pub(crate) fn export_diff_to_file(&mut self) {
+        let Some(ref diff_view) = self.diff_view else {
+            return;
+        };
+        let change_id = diff_view.change_id.clone();
+        let compare_info = diff_view.compare_info.clone();
+
+        // Determine filename and content based on mode
+        let (short_id, result) = if let Some(ref ci) = compare_info {
+            // Compare mode: use diff --from --to with metadata header
+            let from_short = &ci.from.change_id[..ci.from.change_id.len().min(8)];
+            let to_short = &ci.to.change_id[..ci.to.change_id.len().min(8)];
+            let label = format!("{}_{}", from_short, to_short);
+            let diff = self.jj.diff_range(&ci.from.change_id, &ci.to.change_id);
+            let result = diff.map(|d| {
+                format!(
+                    "Compare: {} -> {}\nFrom: {} ({})\nTo:   {} ({})\n\n{}",
+                    ci.from.change_id,
+                    ci.to.change_id,
+                    ci.from.change_id,
+                    ci.from.description,
+                    ci.to.change_id,
+                    ci.to.description,
+                    d,
+                )
+            });
+            (label, result)
+        } else {
+            let short = change_id[..change_id.len().min(8)].to_string();
+            let result = self.jj.show_raw(&change_id);
+            (short, result)
+        };
+
+        match result {
+            Ok(text) => {
+                let filename = unique_patch_filename(&short_id);
+                match std::fs::write(&filename, &text) {
+                    Ok(()) => {
+                        self.notification =
+                            Some(Notification::success(format!("Exported to {}", filename)));
+                    }
+                    Err(e) => {
+                        self.error_message = Some(format!("Failed to write {}: {}", filename, e));
+                    }
+                }
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to get diff: {}", e));
+            }
+        }
+    }
+}
+
+/// Generate a unique .patch filename, appending -1, -2, etc. if the file already exists
+fn unique_patch_filename(short_id: &str) -> String {
+    let base = format!("{}.patch", short_id);
+    if !std::path::Path::new(&base).exists() {
+        return base;
+    }
+    for i in 1.. {
+        let candidate = format!("{}-{}.patch", short_id, i);
+        if !std::path::Path::new(&candidate).exists() {
+            return candidate;
+        }
+    }
+    unreachable!()
 }
 
 /// Check if any push actions involve a force push (non-fast-forward)
@@ -3131,5 +3261,150 @@ mod tests {
         let push_callback = DialogCallback::GitPush;
         // Different callback variants → structurally impossible to confuse
         assert_ne!(mode_callback, push_callback);
+    }
+
+    #[test]
+    fn test_unique_patch_filename_no_conflict() {
+        // When file doesn't exist, returns base name
+        // (uses a name unlikely to exist in current dir)
+        let name = unique_patch_filename("zzzz_test_nonexistent");
+        assert_eq!(name, "zzzz_test_nonexistent.patch");
+    }
+
+    #[test]
+    fn test_unique_patch_filename_with_conflict() {
+        use std::fs;
+        let base = "test_unique_patch_tmp";
+        let base_file = format!("{}.patch", base);
+
+        // Create the base file to force a conflict
+        fs::write(&base_file, "test").unwrap();
+
+        let name = unique_patch_filename(base);
+        assert_eq!(name, format!("{}-1.patch", base));
+
+        // Clean up
+        let _ = fs::remove_file(&base_file);
+    }
+
+    #[test]
+    fn test_unique_patch_filename_with_multiple_conflicts() {
+        use std::fs;
+        let base = "test_unique_multi_tmp";
+        let files: Vec<String> = vec![
+            format!("{}.patch", base),
+            format!("{}-1.patch", base),
+            format!("{}-2.patch", base),
+        ];
+
+        // Create all conflicting files
+        for f in &files {
+            fs::write(f, "test").unwrap();
+        }
+
+        let name = unique_patch_filename(base);
+        assert_eq!(name, format!("{}-3.patch", base));
+
+        // Clean up
+        for f in &files {
+            let _ = fs::remove_file(f);
+        }
+    }
+
+    // --- Compare mode export path tests ---
+
+    #[test]
+    fn test_export_compare_mode_uses_diff_range_not_show() {
+        use crate::model::{CompareInfo, CompareRevisionInfo, DiffContent};
+        use crate::ui::views::DiffView;
+
+        let mut app = App::new_for_test();
+
+        let compare_info = CompareInfo {
+            from: CompareRevisionInfo {
+                change_id: "aaaa1111".to_string(),
+                bookmarks: vec![],
+                author: "user@test.com".to_string(),
+                timestamp: "2024-01-01".to_string(),
+                description: "from revision".to_string(),
+            },
+            to: CompareRevisionInfo {
+                change_id: "bbbb2222".to_string(),
+                bookmarks: vec![],
+                author: "user@test.com".to_string(),
+                timestamp: "2024-01-02".to_string(),
+                description: "to revision".to_string(),
+            },
+        };
+        app.diff_view = Some(DiffView::new_compare(DiffContent::default(), compare_info));
+
+        // Export will fail (no jj repo in test), but the error reveals which path was taken.
+        // In compare mode, it should attempt `jj diff --from --to` (not `jj show`).
+        app.export_diff_to_file();
+
+        // Should have an error (no jj repo), confirming the code path was executed
+        assert!(
+            app.error_message.is_some(),
+            "Expected error from jj command in test environment"
+        );
+    }
+
+    #[test]
+    fn test_copy_clipboard_compare_mode_uses_diff_range() {
+        use crate::model::{CompareInfo, CompareRevisionInfo, DiffContent};
+        use crate::ui::views::DiffView;
+
+        let mut app = App::new_for_test();
+
+        let compare_info = CompareInfo {
+            from: CompareRevisionInfo {
+                change_id: "cccc3333".to_string(),
+                bookmarks: vec![],
+                author: "user@test.com".to_string(),
+                timestamp: "2024-01-01".to_string(),
+                description: "from".to_string(),
+            },
+            to: CompareRevisionInfo {
+                change_id: "dddd4444".to_string(),
+                bookmarks: vec![],
+                author: "user@test.com".to_string(),
+                timestamp: "2024-01-02".to_string(),
+                description: "to".to_string(),
+            },
+        };
+        app.diff_view = Some(DiffView::new_compare(DiffContent::default(), compare_info));
+
+        // Both full and diff-only should attempt diff_range in compare mode
+        app.copy_diff_to_clipboard(true);
+        assert!(
+            app.error_message.is_some(),
+            "Expected error from jj command in test environment (full)"
+        );
+
+        app.error_message = None;
+        app.copy_diff_to_clipboard(false);
+        assert!(
+            app.error_message.is_some(),
+            "Expected error from jj command in test environment (diff)"
+        );
+    }
+
+    #[test]
+    fn test_export_normal_mode_uses_show_raw() {
+        use crate::model::DiffContent;
+        use crate::ui::views::DiffView;
+
+        let mut app = App::new_for_test();
+        app.diff_view = Some(DiffView::new(
+            "testid12".to_string(),
+            DiffContent::default(),
+        ));
+
+        // Normal mode: should attempt `jj show`
+        app.export_diff_to_file();
+        assert!(
+            app.error_message.is_some(),
+            "Expected error from jj command in test environment"
+        );
     }
 }

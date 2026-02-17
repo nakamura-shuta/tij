@@ -9,6 +9,7 @@
 //! - `render`: UI rendering
 
 mod actions;
+pub(crate) mod clipboard;
 mod input;
 mod navigation;
 mod refresh;
