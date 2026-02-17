@@ -658,7 +658,7 @@ mod tests {
 
     #[test]
     fn help_search_esc_cancels_search_not_back() {
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         enter_help_search(&mut app);
 
         press(&mut app, KeyCode::Esc);
@@ -671,7 +671,7 @@ mod tests {
 
     #[test]
     fn help_search_q_types_character_not_quit() {
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         enter_help_search(&mut app);
 
         press(&mut app, KeyCode::Char('q'));
@@ -687,7 +687,7 @@ mod tests {
 
     #[test]
     fn help_search_tab_stays_in_help_not_switch() {
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         enter_help_search(&mut app);
 
         press(&mut app, KeyCode::Tab);
@@ -700,7 +700,7 @@ mod tests {
 
     #[test]
     fn help_search_question_mark_stays_in_search() {
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         enter_help_search(&mut app);
 
         press(&mut app, KeyCode::Char('?'));
@@ -714,7 +714,7 @@ mod tests {
 
     #[test]
     fn help_search_enter_confirms_and_exits_input() {
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         enter_help_search(&mut app);
         app.help_input_buffer = "quit".to_string();
 
@@ -730,7 +730,7 @@ mod tests {
 
     #[test]
     fn help_search_typing_multiple_chars() {
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         enter_help_search(&mut app);
 
         press(&mut app, KeyCode::Char('h'));
@@ -744,7 +744,7 @@ mod tests {
 
     #[test]
     fn help_search_backspace_removes_char() {
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         enter_help_search(&mut app);
         app.help_input_buffer = "test".to_string();
 
@@ -756,7 +756,7 @@ mod tests {
 
     #[test]
     fn help_search_ctrl_l_suppressed() {
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         enter_help_search(&mut app);
 
         // Ctrl+L should NOT trigger refresh while in search input mode
@@ -769,7 +769,7 @@ mod tests {
 
     #[test]
     fn help_normal_mode_esc_goes_back() {
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         app.go_to_view(View::Help); // sets previous_view to Log
         assert!(!app.help_search_input);
 
@@ -781,7 +781,7 @@ mod tests {
 
     #[test]
     fn help_normal_mode_q_goes_back() {
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         app.go_to_view(View::Help);
         assert!(!app.help_search_input);
 

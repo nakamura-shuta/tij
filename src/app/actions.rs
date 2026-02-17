@@ -2852,7 +2852,7 @@ mod tests {
     #[test]
     fn test_push_target_remote_cleared_on_empty_bookmarks() {
         // execute_push with empty bookmarks should clear push_target_remote
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         app.push_target_remote = Some("upstream".to_string());
         app.execute_push(&[]);
         assert!(app.push_target_remote.is_none());
@@ -2861,7 +2861,7 @@ mod tests {
     #[test]
     fn test_push_target_remote_cleared_by_execute_push() {
         // execute_push always takes push_target_remote regardless of outcome
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         app.push_target_remote = Some("upstream".to_string());
         // Push with a non-existent bookmark will fail, but remote should still be cleared
         app.execute_push(&["nonexistent-bookmark-xyz".to_string()]);
@@ -2871,7 +2871,7 @@ mod tests {
     #[test]
     fn test_push_target_remote_cleared_by_execute_push_change() {
         // execute_push_change always takes push_target_remote regardless of outcome
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         app.push_target_remote = Some("upstream".to_string());
         // Push with invalid change_id will fail, but remote should still be cleared
         app.execute_push_change("nonexistent_change_id");
@@ -2881,7 +2881,7 @@ mod tests {
     #[test]
     fn test_push_target_remote_cleared_on_git_push_cancel() {
         // Simulating GitPush dialog cancel should clear push_target_remote
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         app.push_target_remote = Some("upstream".to_string());
         app.pending_push_bookmarks = vec!["main".to_string()];
         // Set up a dummy dialog to satisfy handle_dialog_result callback extraction
@@ -2899,7 +2899,7 @@ mod tests {
     #[test]
     fn test_push_target_remote_cleared_on_remote_select_cancel() {
         // Simulating GitPushRemoteSelect dialog cancel should clear push_target_remote
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         app.push_target_remote = Some("upstream".to_string());
         app.active_dialog = Some(Dialog::select_single(
             "Push to Remote",
@@ -2915,7 +2915,7 @@ mod tests {
     #[test]
     fn test_push_target_remote_cleared_on_push_change_cancel() {
         // Simulating GitPushChange dialog cancel should clear push_target_remote
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         app.push_target_remote = Some("upstream".to_string());
         app.active_dialog = Some(Dialog::confirm(
             "Push",
@@ -2971,7 +2971,7 @@ mod tests {
         // to execute_revert(). Since jj is not available in test, the revert
         // command will fail, but we verify the routing by checking that
         // error_message is set (proving execute_revert was called).
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         app.active_dialog = Some(Dialog::confirm(
             "Revert Change",
             "Revert changes from abc12345?",
@@ -2998,10 +2998,7 @@ mod tests {
 
     #[test]
     fn test_revert_dialog_cancelled_does_nothing() {
-        let mut app = App::new();
-        // Clear any init errors (App::new() may fail in non-jj repos like CI)
-        app.error_message = None;
-        app.notification = None;
+        let mut app = App::new_for_test();
         app.active_dialog = Some(Dialog::confirm(
             "Revert Change",
             "Revert changes from abc12345?",
@@ -3063,7 +3060,7 @@ mod tests {
 
     #[test]
     fn test_push_revisions_cancelled_clears_remote() {
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         app.push_target_remote = Some("upstream".to_string());
         app.active_dialog = Some(Dialog::confirm(
             "Push to Remote",
@@ -3081,7 +3078,7 @@ mod tests {
     #[test]
     fn test_push_revisions_confirmed_calls_execute() {
         // Verifies routing: confirmed GitPushRevisions calls execute_push_revisions
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         app.active_dialog = Some(Dialog::confirm(
             "Push to Remote",
             "Push all bookmarks?",
@@ -3105,7 +3102,7 @@ mod tests {
 
     #[test]
     fn test_multi_bookmark_mode_cancelled_clears_remote() {
-        let mut app = App::new();
+        let mut app = App::new_for_test();
         app.push_target_remote = Some("upstream".to_string());
         app.active_dialog = Some(Dialog::select_single(
             "Push to Remote",

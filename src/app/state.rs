@@ -143,6 +143,19 @@ impl App {
         app
     }
 
+    /// Create a new App for unit tests
+    ///
+    /// Same as `new()`, but clears any `error_message` / `notification` that
+    /// `refresh_log()` may set when running outside a real jj repository
+    /// (e.g. in CI where the checkout is a plain git clone).
+    #[cfg(test)]
+    pub fn new_for_test() -> Self {
+        let mut app = Self::new();
+        app.error_message = None;
+        app.notification = None;
+        app
+    }
+
     /// Switch to next view (Tab key)
     pub(crate) fn next_view(&mut self) {
         let next = match self.current_view {
