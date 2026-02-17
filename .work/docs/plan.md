@@ -44,6 +44,7 @@
 - [x] Phase 19: Revert（v0.3.32）
 - [x] ステータスバーヒント整理（2行以内に収まるよう厳選）（v0.3.32）
 - [x] Phase 20: Help パネル検索（`/` 検索、`n`/`N` ナビゲーション、ハイライト）（v0.3.33）
+- [x] Phase 21: `jj git push --revisions` サポート（v0.3.34）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング
@@ -96,9 +97,10 @@
 ## 5. コマンド/オプション拡張バックログ
 
 ### High
-- [ ] `jj git push`: `--revisions`, `--allow-private`, `--allow-empty-description`
+- [ ] `jj git push`: `--allow-private`, `--allow-empty-description`
   - [x] `--remote`（Phase 16.3 完了）, [x] `--change`（Phase 16.1 完了）
   - [x] `--all`, `--tracked`, `--deleted`（v0.3.30 完了）
+  - [x] `--revisions`（Phase 21 完了）
 - [ ] `jj git fetch`: `--tracked`, `--branch`
   - [x] `--remote`（Phase 15.3 完了）
 - [x] `jj bookmark`: `move`（v0.3.30 完了）

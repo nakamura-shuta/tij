@@ -1130,41 +1130,33 @@ impl App {
                 }
             }
         } else {
-            // Multiple bookmarks: run dry-run for each to get status labels
-            let mut items: Vec<SelectItem> = Vec::new();
-            for name in &bookmarks {
-                let dry_run = if let Some(ref remote) = self.push_target_remote {
-                    self.jj.git_push_dry_run_to_remote(name, remote)
-                } else {
-                    self.jj.git_push_dry_run(name)
-                };
-                let status = match dry_run {
-                    Ok(output) => {
-                        let preview = parse_push_dry_run(&output);
-                        format_bookmark_status(&preview, name)
-                    }
-                    Err(_) => String::new(), // dry-run failed → no label
-                };
-
-                let label = if status.is_empty() {
-                    name.clone()
-                } else {
-                    format!("{} ({})", name, status)
-                };
-
-                items.push(SelectItem {
-                    label,
-                    value: name.clone(),
+            // Multiple bookmarks: first ask user to choose push mode
+            let short_id = &change_id[..change_id.len().min(8)];
+            let items = vec![
+                SelectItem {
+                    label: "All bookmarks on this revision (--revisions)".to_string(),
+                    value: "revisions".to_string(),
                     selected: false,
-                });
-            }
-
-            self.active_dialog = Some(Dialog::select(
+                },
+                SelectItem {
+                    label: "Select individual bookmarks...".to_string(),
+                    value: "individual".to_string(),
+                    selected: false,
+                },
+            ];
+            self.active_dialog = Some(Dialog::select_single(
                 "Push to Remote",
-                format!("Select bookmarks to push from {}:", &change_id[..8]),
+                format!(
+                    "{} bookmarks on {}. Choose push mode:",
+                    bookmarks.len(),
+                    short_id
+                ),
                 items,
-                Some("Remote changes cannot be undone with 'u'.".to_string()),
-                DialogCallback::GitPush,
+                None,
+                DialogCallback::GitPushMultiBookmarkMode {
+                    change_id: change_id.clone(),
+                    bookmarks: bookmarks.clone(),
+                },
             ));
         }
     }
@@ -1456,6 +1448,192 @@ impl App {
             }
             Err(e) => {
                 self.error_message = Some(format!("Push failed: {}", e));
+            }
+        }
+    }
+
+    /// Show individual bookmark multi-select dialog (phase 2 of multi-bookmark push)
+    ///
+    /// Shows a checkbox-style select dialog with per-bookmark dry-run status labels.
+    fn show_individual_bookmark_select(&mut self, change_id: &str, bookmarks: &[String]) {
+        let mut items: Vec<SelectItem> = Vec::new();
+        for name in bookmarks {
+            let dry_run = if let Some(ref remote) = self.push_target_remote {
+                self.jj.git_push_dry_run_to_remote(name, remote)
+            } else {
+                self.jj.git_push_dry_run(name)
+            };
+            let status = match dry_run {
+                Ok(output) => {
+                    let preview = parse_push_dry_run(&output);
+                    format_bookmark_status(&preview, name)
+                }
+                Err(_) => String::new(),
+            };
+
+            let label = if status.is_empty() {
+                name.clone()
+            } else {
+                format!("{} ({})", name, status)
+            };
+
+            items.push(SelectItem {
+                label,
+                value: name.clone(),
+                selected: false,
+            });
+        }
+
+        self.active_dialog = Some(Dialog::select(
+            "Push to Remote",
+            format!(
+                "Select bookmarks to push from {}:",
+                &change_id[..change_id.len().min(8)]
+            ),
+            items,
+            Some("Remote changes cannot be undone with 'u'.".to_string()),
+            DialogCallback::GitPush,
+        ));
+    }
+
+    /// Start push-by-revisions flow (dry-run → confirm)
+    ///
+    /// Pushes all bookmarks on the specified revision via `--revisions`.
+    /// If the jj version doesn't support `--revisions`, falls back to
+    /// per-bookmark push using the provided bookmarks list.
+    fn start_push_revisions(&mut self, change_id: &str, bookmarks: &[String]) {
+        let dry_run_result = if let Some(ref remote) = self.push_target_remote {
+            self.jj
+                .git_push_revisions_dry_run_to_remote(change_id, remote)
+        } else {
+            self.jj.git_push_revisions_dry_run(change_id)
+        };
+        match dry_run_result {
+            Ok(output) => {
+                let parsed = parse_push_dry_run(&output);
+                match parsed {
+                    PushPreviewResult::NothingChanged => {
+                        self.push_target_remote = None;
+                        self.notification = Some(Notification::info(
+                            "Nothing to push: all bookmarks are already up to date".to_string(),
+                        ));
+                    }
+                    PushPreviewResult::Changes(actions) => {
+                        let preview_text = format_preview_actions(&actions);
+                        let is_force = has_force_push(&actions);
+                        let has_protected = actions.iter().any(|a| {
+                            let name = match a {
+                                crate::jj::PushPreviewAction::MoveForward { bookmark, .. }
+                                | crate::jj::PushPreviewAction::MoveSideways { bookmark, .. }
+                                | crate::jj::PushPreviewAction::MoveBackward { bookmark, .. }
+                                | crate::jj::PushPreviewAction::Add { bookmark, .. }
+                                | crate::jj::PushPreviewAction::Delete { bookmark, .. } => bookmark,
+                            };
+                            is_immutable_bookmark(name)
+                        });
+
+                        let short_id = &change_id[..change_id.len().min(8)];
+                        let (body, detail) = if is_force && has_protected {
+                            (
+                                format!(
+                                    "\u{26A0} FORCE PUSH all bookmarks on {} (includes protected)!\n{}",
+                                    short_id, preview_text
+                                ),
+                                "WARNING: Force pushing to protected bookmarks rewrites shared history!"
+                                    .to_string(),
+                            )
+                        } else if is_force {
+                            (
+                                format!(
+                                    "\u{26A0} FORCE PUSH all bookmarks on {}?\n{}",
+                                    short_id, preview_text
+                                ),
+                                "This will rewrite remote history! Cannot be undone with 'u'."
+                                    .to_string(),
+                            )
+                        } else {
+                            (
+                                format!("Push all bookmarks on {}?\n{}", short_id, preview_text),
+                                "Remote changes cannot be undone with 'u'.".to_string(),
+                            )
+                        };
+
+                        self.active_dialog = Some(Dialog::confirm(
+                            "Push to Remote",
+                            body,
+                            Some(detail),
+                            DialogCallback::GitPushRevisions {
+                                change_id: change_id.to_string(),
+                                bookmarks: bookmarks.to_vec(),
+                            },
+                        ));
+                    }
+                    PushPreviewResult::Unparsed => {
+                        // Fallback: show confirm without parsed preview
+                        let short_id = &change_id[..change_id.len().min(8)];
+                        self.active_dialog = Some(Dialog::confirm(
+                            "Push to Remote",
+                            format!("Push all bookmarks on {}?", short_id),
+                            Some("Remote changes cannot be undone with 'u'.".to_string()),
+                            DialogCallback::GitPushRevisions {
+                                change_id: change_id.to_string(),
+                                bookmarks: bookmarks.to_vec(),
+                            },
+                        ));
+                    }
+                }
+            }
+            Err(e) => {
+                let err_msg = format!("{}", e);
+                if is_revisions_unsupported_error(&err_msg) {
+                    // --revisions not supported: fallback to per-bookmark push
+                    self.notification = Some(Notification::info(
+                        "--revisions not supported, pushing bookmarks individually".to_string(),
+                    ));
+                    self.execute_push(bookmarks);
+                } else {
+                    self.push_target_remote = None;
+                    self.error_message = Some(format!("Push failed: {}", e));
+                }
+            }
+        }
+    }
+
+    /// Execute push by revisions (called after confirmation)
+    ///
+    /// Falls back to per-bookmark push if --revisions is not supported.
+    fn execute_push_revisions(&mut self, change_id: &str, bookmarks: &[String]) {
+        let remote = self.push_target_remote.take();
+        let result = if let Some(ref r) = remote {
+            self.jj.git_push_revisions_to_remote(change_id, r)
+        } else {
+            self.jj.git_push_revisions(change_id)
+        };
+        match result {
+            Ok(_) => {
+                let short_id = &change_id[..change_id.len().min(8)];
+                let msg = if let Some(r) = remote.as_deref() {
+                    format!("Pushed all bookmarks on {} to {}", short_id, r)
+                } else {
+                    format!("Pushed all bookmarks on {}", short_id)
+                };
+                self.notification = Some(Notification::success(msg));
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.refresh_status();
+            }
+            Err(e) => {
+                let err_msg = format!("{}", e);
+                if is_revisions_unsupported_error(&err_msg) {
+                    // Restore remote for fallback
+                    self.push_target_remote = remote;
+                    self.notification = Some(Notification::info(
+                        "--revisions not supported, pushing bookmarks individually".to_string(),
+                    ));
+                    self.execute_push(bookmarks);
+                } else {
+                    self.error_message = Some(format!("Push failed: {}", e));
+                }
             }
         }
     }
@@ -1770,6 +1948,38 @@ impl App {
             (Some(DialogCallback::GitPush), DialogResult::Cancelled) => {
                 // Clear pending state on cancel to prevent stale data
                 self.pending_push_bookmarks.clear();
+                self.push_target_remote = None;
+            }
+            // --- GitPushRevisions ---
+            (
+                Some(DialogCallback::GitPushRevisions {
+                    change_id,
+                    bookmarks,
+                }),
+                DialogResult::Confirmed(_),
+            ) => {
+                self.execute_push_revisions(&change_id, &bookmarks);
+            }
+            (Some(DialogCallback::GitPushRevisions { .. }), DialogResult::Cancelled) => {
+                self.push_target_remote = None;
+            }
+            // --- GitPushMultiBookmarkMode ---
+            (
+                Some(DialogCallback::GitPushMultiBookmarkMode {
+                    change_id,
+                    bookmarks,
+                }),
+                DialogResult::Confirmed(selected),
+            ) => match selected.first().map(|s| s.as_str()) {
+                Some("revisions") => {
+                    self.start_push_revisions(&change_id, &bookmarks);
+                }
+                Some("individual") => {
+                    self.show_individual_bookmark_select(&change_id, &bookmarks);
+                }
+                _ => {}
+            },
+            (Some(DialogCallback::GitPushMultiBookmarkMode { .. }), DialogResult::Cancelled) => {
                 self.push_target_remote = None;
             }
             (Some(DialogCallback::Track), DialogResult::Confirmed(names)) => {
@@ -2305,6 +2515,23 @@ fn is_untracked_bookmark_error(err_msg: &str) -> bool {
         || lower.contains("untracked")
 }
 
+/// Check if a push error indicates that `--revisions` is not supported
+///
+/// Older jj versions don't have the `--revisions` flag. When detected,
+/// the caller falls back to per-bookmark push.
+/// Requires the error message to reference "--revisions" to avoid false positives
+/// from unrelated errors that contain generic "unexpected argument" text.
+fn is_revisions_unsupported_error(err_msg: &str) -> bool {
+    let lower = err_msg.to_lowercase();
+    // Must mention --revisions in context to avoid false positives
+    let mentions_revisions = lower.contains("--revisions") || lower.contains("revisions");
+    let is_unknown_flag = lower.contains("unexpected argument")
+        || lower.contains("unrecognized")
+        || lower.contains("unknown flag")
+        || lower.contains("unknown option");
+    mentions_revisions && is_unknown_flag
+}
+
 /// Truncate a description string to max_len characters (UTF-8 safe)
 ///
 /// Uses `chars()` to avoid panic on multibyte boundaries.
@@ -2784,5 +3011,125 @@ mod tests {
         // No action taken
         assert!(app.error_message.is_none());
         assert!(app.notification.is_none());
+    }
+
+    // =========================================================================
+    // is_revisions_unsupported_error tests
+    // =========================================================================
+
+    #[test]
+    fn test_revisions_unsupported_unexpected_argument() {
+        assert!(is_revisions_unsupported_error(
+            "error: unexpected argument '--revisions' found"
+        ));
+    }
+
+    #[test]
+    fn test_revisions_unsupported_unrecognized() {
+        assert!(is_revisions_unsupported_error(
+            "error: unrecognized option '--revisions'"
+        ));
+    }
+
+    #[test]
+    fn test_revisions_unsupported_unknown_flag() {
+        assert!(is_revisions_unsupported_error(
+            "error: unknown flag --revisions"
+        ));
+    }
+
+    #[test]
+    fn test_revisions_unsupported_unrelated_error() {
+        // Error that doesn't mention --revisions should NOT match
+        assert!(!is_revisions_unsupported_error(
+            "error: unexpected argument '--foobar' found"
+        ));
+    }
+
+    #[test]
+    fn test_revisions_unsupported_generic_push_error() {
+        // Push error without flag-related keywords should NOT match
+        assert!(!is_revisions_unsupported_error(
+            "error: Refusing to create new remote bookmark for --revisions"
+        ));
+    }
+
+    // =========================================================================
+    // GitPushRevisions dialog callback tests
+    // =========================================================================
+
+    #[test]
+    fn test_push_revisions_cancelled_clears_remote() {
+        let mut app = App::new();
+        app.push_target_remote = Some("upstream".to_string());
+        app.active_dialog = Some(Dialog::confirm(
+            "Push to Remote",
+            "Push all bookmarks?",
+            None,
+            DialogCallback::GitPushRevisions {
+                change_id: "abc12345".to_string(),
+                bookmarks: vec!["main".to_string()],
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Cancelled);
+        assert!(app.push_target_remote.is_none());
+    }
+
+    #[test]
+    fn test_push_revisions_confirmed_calls_execute() {
+        // Verifies routing: confirmed GitPushRevisions calls execute_push_revisions
+        let mut app = App::new();
+        app.active_dialog = Some(Dialog::confirm(
+            "Push to Remote",
+            "Push all bookmarks?",
+            None,
+            DialogCallback::GitPushRevisions {
+                change_id: "abc12345".to_string(),
+                bookmarks: vec!["main".to_string()],
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Confirmed(vec![]));
+        // execute_push_revisions was called → jj push fails in test env → error_message set
+        assert!(
+            app.error_message.is_some(),
+            "execute_push_revisions should have been called (error expected in test env)"
+        );
+    }
+
+    // =========================================================================
+    // GitPushMultiBookmarkMode dialog callback tests
+    // =========================================================================
+
+    #[test]
+    fn test_multi_bookmark_mode_cancelled_clears_remote() {
+        let mut app = App::new();
+        app.push_target_remote = Some("upstream".to_string());
+        app.active_dialog = Some(Dialog::select_single(
+            "Push to Remote",
+            "Choose push mode:",
+            vec![],
+            None,
+            DialogCallback::GitPushMultiBookmarkMode {
+                change_id: "abc12345".to_string(),
+                bookmarks: vec!["main".to_string(), "dev".to_string()],
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Cancelled);
+        assert!(app.push_target_remote.is_none());
+    }
+
+    #[test]
+    fn test_multi_bookmark_mode_no_sentinel_collision() {
+        // Structural guarantee: mode selection uses DialogCallback dispatch,
+        // not string matching. Even if a bookmark is named "revisions",
+        // it cannot collide because the mode dialog and per-bookmark dialog
+        // use different DialogCallback variants.
+        let mode_callback = DialogCallback::GitPushMultiBookmarkMode {
+            change_id: "abc12345".to_string(),
+            bookmarks: vec!["revisions".to_string()],
+        };
+        let push_callback = DialogCallback::GitPush;
+        // Different callback variants → structurally impossible to confuse
+        assert_ne!(mode_callback, push_callback);
     }
 }

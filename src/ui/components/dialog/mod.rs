@@ -71,6 +71,18 @@ pub enum DialogCallback {
     RestoreAll,
     /// Revert a change (Confirm dialog, creates reverse-diff commit)
     Revert { change_id: String },
+    /// Git push by revision (all bookmarks on a change via --revisions)
+    GitPushRevisions {
+        change_id: String,
+        /// Bookmarks for fallback if --revisions is unsupported
+        bookmarks: Vec<String>,
+    },
+    /// Mode selection for multi-bookmark push (Single Select)
+    /// User chooses between --revisions (all) or individual bookmark selection
+    GitPushMultiBookmarkMode {
+        change_id: String,
+        bookmarks: Vec<String>,
+    },
 }
 
 /// Selection item for Select dialog

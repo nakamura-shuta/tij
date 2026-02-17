@@ -1114,6 +1114,104 @@ impl JjExecutor {
         }
     }
 
+    /// Run `jj git push --revisions <change_id>` to push all bookmarks on a revision
+    pub fn git_push_revisions(&self, change_id: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::REVISIONS,
+            change_id,
+        ])
+    }
+
+    /// Run `jj git push --revisions <change_id> --remote <remote>`
+    pub fn git_push_revisions_to_remote(
+        &self,
+        change_id: &str,
+        remote: &str,
+    ) -> Result<String, JjError> {
+        self.run(&[
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::REVISIONS,
+            change_id,
+            flags::REMOTE,
+            remote,
+        ])
+    }
+
+    /// Run `jj git push --dry-run --revisions <change_id>` to preview push
+    ///
+    /// Returns stderr output (jj git push --dry-run outputs to stderr).
+    pub fn git_push_revisions_dry_run(&self, change_id: &str) -> Result<String, JjError> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+        if let Some(ref path) = self.repo_path {
+            cmd.arg(flags::REPO_PATH).arg(path);
+        }
+        cmd.arg(flags::NO_COLOR);
+        cmd.args([
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::DRY_RUN,
+            flags::REVISIONS,
+            change_id,
+        ]);
+
+        let output = cmd.output().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                JjError::JjNotFound
+            } else {
+                JjError::IoError(e)
+            }
+        })?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+            let exit_code = output.status.code().unwrap_or(-1);
+            Err(JjError::CommandFailed { stderr, exit_code })
+        }
+    }
+
+    /// Run `jj git push --dry-run --revisions <change_id> --remote <remote>`
+    pub fn git_push_revisions_dry_run_to_remote(
+        &self,
+        change_id: &str,
+        remote: &str,
+    ) -> Result<String, JjError> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+        if let Some(ref path) = self.repo_path {
+            cmd.arg(flags::REPO_PATH).arg(path);
+        }
+        cmd.arg(flags::NO_COLOR);
+        cmd.args([
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::DRY_RUN,
+            flags::REVISIONS,
+            change_id,
+            flags::REMOTE,
+            remote,
+        ]);
+
+        let output = cmd.output().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                JjError::JjNotFound
+            } else {
+                JjError::IoError(e)
+            }
+        })?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+            let exit_code = output.status.code().unwrap_or(-1);
+            Err(JjError::CommandFailed { stderr, exit_code })
+        }
+    }
+
     /// Move a bookmark to a revision
     ///
     /// Runs `jj bookmark move <name> --to <to>`.

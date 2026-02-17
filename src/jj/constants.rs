@@ -109,6 +109,8 @@ pub mod flags {
     pub const DELETED: &str = "--deleted";
     /// Revert onto target revision
     pub const ONTO: &str = "--onto";
+    /// Push all bookmarks on specified revisions
+    pub const REVISIONS: &str = "--revisions";
 }
 
 /// Default limit for log output (no revset)
