@@ -326,7 +326,19 @@ impl App {
     }
 
     fn render_help_view(&self, frame: &mut Frame) {
-        render_help_panel(frame, frame.area(), self.help_scroll);
+        let search_query = self.help_search_query.as_deref();
+        let search_input = if self.help_search_input {
+            Some(self.help_input_buffer.as_str())
+        } else {
+            None
+        };
+        render_help_panel(
+            frame,
+            frame.area(),
+            self.help_scroll,
+            search_query,
+            search_input,
+        );
     }
 
     fn render_resolve_view(

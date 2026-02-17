@@ -89,6 +89,12 @@ pub struct App {
     pub(crate) push_target_remote: Option<String>,
     /// Help view scroll offset (line-based)
     pub(crate) help_scroll: u16,
+    /// Help view: active search query (for highlighting and n/N navigation)
+    pub(crate) help_search_query: Option<String>,
+    /// Help view: search input mode active
+    pub(crate) help_search_input: bool,
+    /// Help view: search input buffer
+    pub(crate) help_input_buffer: String,
 }
 
 impl Default for App {
@@ -126,6 +132,9 @@ impl App {
             preview_pending_id: None,
             push_target_remote: None,
             help_scroll: 0,
+            help_search_query: None,
+            help_search_input: false,
+            help_input_buffer: String::new(),
         };
 
         // Load initial log
@@ -165,7 +174,12 @@ impl App {
             match view {
                 View::Status => self.refresh_status(),
                 View::Operation => self.refresh_operation_log(),
-                View::Help => self.help_scroll = 0,
+                View::Help => {
+                    self.help_scroll = 0;
+                    self.help_search_query = None;
+                    self.help_search_input = false;
+                    self.help_input_buffer.clear();
+                }
                 _ => {}
             }
         }

@@ -46,7 +46,7 @@ Press `?` for help, `q` to quit.
 
 | Area | Features |
 |------|----------|
-| Views | Log (with split-pane preview) / Diff / Status / Help / Operation History / Blame (with Log jump) / Bookmark / Evolog (evolution history) |
+| Views | Log (with split-pane preview) / Diff / Status / Help (with `/` search) / Operation History / Blame (with Log jump) / Bookmark / Evolog (evolution history) |
 | History Editing | Describe (`d` quick edit / `Ctrl+E` external editor) / Edit / New / New from selected / Commit / Squash / Abandon / Split / Diffedit / Rebase (revision/source/insert-after/insert-before) / Absorb / Duplicate / Revert |
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
 | Recovery | Undo / Redo / Operation Restore / Restore file / Restore all |

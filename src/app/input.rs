@@ -54,6 +54,7 @@ impl App {
             let in_special_mode = match self.current_view {
                 View::Log => !matches!(self.log_view.input_mode, InputMode::Normal),
                 View::Status => self.status_view.input_mode != StatusInputMode::Normal,
+                View::Help => self.help_search_input,
                 _ => false,
             };
             if !in_special_mode {
@@ -76,6 +77,12 @@ impl App {
         {
             let action = self.status_view.handle_key(key);
             self.handle_status_action(action);
+            return;
+        }
+
+        // Handle Help search input mode (skip global keys so Esc/q/Tab stay in search)
+        if self.current_view == View::Help && self.help_search_input {
+            self.handle_view_key(key);
             return;
         }
 
@@ -211,15 +218,73 @@ impl App {
                 }
             }
             View::Help => {
-                // j/k/g/G for scrolling
-                if keys::is_move_down(key.code) {
-                    self.help_scroll = self.help_scroll.saturating_add(1);
-                } else if keys::is_move_up(key.code) {
-                    self.help_scroll = self.help_scroll.saturating_sub(1);
-                } else if key.code == keys::GO_BOTTOM {
-                    self.help_scroll = u16::MAX; // clamped during render
-                } else if key.code == keys::GO_TOP {
-                    self.help_scroll = 0;
+                if self.help_search_input {
+                    // Search input mode: capture text
+                    match key.code {
+                        KeyCode::Esc => {
+                            self.help_search_input = false;
+                            self.help_input_buffer.clear();
+                        }
+                        KeyCode::Enter => {
+                            let query = std::mem::take(&mut self.help_input_buffer);
+                            self.help_search_input = false;
+                            if query.is_empty() {
+                                self.help_search_query = None;
+                            } else {
+                                self.help_search_query = Some(query.clone());
+                                // Jump to first match
+                                let indices = crate::ui::widgets::matching_line_indices(&query);
+                                if let Some(&first) = indices.first() {
+                                    self.help_scroll = first;
+                                }
+                            }
+                        }
+                        KeyCode::Char(c)
+                            if !key
+                                .modifiers
+                                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                        {
+                            self.help_input_buffer.push(c);
+                        }
+                        KeyCode::Backspace => {
+                            self.help_input_buffer.pop();
+                        }
+                        _ => {}
+                    }
+                } else {
+                    // Normal mode: scrolling + search start + n/N navigation
+                    if keys::is_move_down(key.code) {
+                        self.help_scroll = self.help_scroll.saturating_add(1);
+                    } else if keys::is_move_up(key.code) {
+                        self.help_scroll = self.help_scroll.saturating_sub(1);
+                    } else if key.code == keys::GO_BOTTOM {
+                        self.help_scroll = u16::MAX; // clamped during render
+                    } else if key.code == keys::GO_TOP {
+                        self.help_scroll = 0;
+                    } else if key.code == keys::SEARCH_INPUT {
+                        self.help_search_input = true;
+                        self.help_input_buffer.clear();
+                    } else if key.code == keys::SEARCH_NEXT {
+                        if let Some(ref query) = self.help_search_query {
+                            let indices = crate::ui::widgets::matching_line_indices(query);
+                            if let Some(next) = indices.iter().find(|&&i| i > self.help_scroll) {
+                                self.help_scroll = *next;
+                            } else if let Some(&first) = indices.first() {
+                                // Wrap to top
+                                self.help_scroll = first;
+                            }
+                        }
+                    } else if key.code == keys::SEARCH_PREV
+                        && let Some(ref query) = self.help_search_query
+                    {
+                        let indices = crate::ui::widgets::matching_line_indices(query);
+                        if let Some(prev) = indices.iter().rev().find(|&&i| i < self.help_scroll) {
+                            self.help_scroll = *prev;
+                        } else if let Some(&last) = indices.last() {
+                            // Wrap to bottom
+                            self.help_scroll = last;
+                        }
+                    }
                 }
             }
         }
@@ -566,5 +631,163 @@ impl App {
                 self.jump_to_log(&change_id);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyEvent;
+
+    /// Simulate a key press on the App (through on_key_event, which runs
+    /// handle_global_key before handle_view_key).
+    fn press(app: &mut App, code: KeyCode) {
+        app.on_key_event(KeyEvent::from(code));
+    }
+
+    /// Put App into Help view with search input active.
+    fn enter_help_search(app: &mut App) {
+        app.current_view = View::Help;
+        app.help_search_input = true;
+        app.help_input_buffer.clear();
+    }
+
+    // =========================================================================
+    // Help search input: global key conflict tests
+    // =========================================================================
+
+    #[test]
+    fn help_search_esc_cancels_search_not_back() {
+        let mut app = App::new();
+        enter_help_search(&mut app);
+
+        press(&mut app, KeyCode::Esc);
+
+        // Search input should be cancelled
+        assert!(!app.help_search_input);
+        // Should still be on Help view (not navigated back)
+        assert_eq!(app.current_view, View::Help);
+    }
+
+    #[test]
+    fn help_search_q_types_character_not_quit() {
+        let mut app = App::new();
+        enter_help_search(&mut app);
+
+        press(&mut app, KeyCode::Char('q'));
+
+        // 'q' should be added to input buffer
+        assert_eq!(app.help_input_buffer, "q");
+        // Should still be in search input mode
+        assert!(app.help_search_input);
+        // Should still be on Help view and running
+        assert_eq!(app.current_view, View::Help);
+        assert!(app.running);
+    }
+
+    #[test]
+    fn help_search_tab_stays_in_help_not_switch() {
+        let mut app = App::new();
+        enter_help_search(&mut app);
+
+        press(&mut app, KeyCode::Tab);
+
+        // Should still be on Help view (not switched to next view)
+        assert_eq!(app.current_view, View::Help);
+        // Should still be in search input mode
+        assert!(app.help_search_input);
+    }
+
+    #[test]
+    fn help_search_question_mark_stays_in_search() {
+        let mut app = App::new();
+        enter_help_search(&mut app);
+
+        press(&mut app, KeyCode::Char('?'));
+
+        // '?' should be added to input buffer (it's a Char)
+        assert_eq!(app.help_input_buffer, "?");
+        // Should still be in search input mode on Help view
+        assert!(app.help_search_input);
+        assert_eq!(app.current_view, View::Help);
+    }
+
+    #[test]
+    fn help_search_enter_confirms_and_exits_input() {
+        let mut app = App::new();
+        enter_help_search(&mut app);
+        app.help_input_buffer = "quit".to_string();
+
+        press(&mut app, KeyCode::Enter);
+
+        // Search input should be deactivated
+        assert!(!app.help_search_input);
+        // Query should be stored
+        assert_eq!(app.help_search_query, Some("quit".to_string()));
+        // Should still be on Help view
+        assert_eq!(app.current_view, View::Help);
+    }
+
+    #[test]
+    fn help_search_typing_multiple_chars() {
+        let mut app = App::new();
+        enter_help_search(&mut app);
+
+        press(&mut app, KeyCode::Char('h'));
+        press(&mut app, KeyCode::Char('e'));
+        press(&mut app, KeyCode::Char('l'));
+        press(&mut app, KeyCode::Char('p'));
+
+        assert_eq!(app.help_input_buffer, "help");
+        assert!(app.help_search_input);
+    }
+
+    #[test]
+    fn help_search_backspace_removes_char() {
+        let mut app = App::new();
+        enter_help_search(&mut app);
+        app.help_input_buffer = "test".to_string();
+
+        press(&mut app, KeyCode::Backspace);
+
+        assert_eq!(app.help_input_buffer, "tes");
+        assert!(app.help_search_input);
+    }
+
+    #[test]
+    fn help_search_ctrl_l_suppressed() {
+        let mut app = App::new();
+        enter_help_search(&mut app);
+
+        // Ctrl+L should NOT trigger refresh while in search input mode
+        app.on_key_event(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL));
+
+        // Should still be in search input mode on Help view
+        assert!(app.help_search_input);
+        assert_eq!(app.current_view, View::Help);
+    }
+
+    #[test]
+    fn help_normal_mode_esc_goes_back() {
+        let mut app = App::new();
+        app.go_to_view(View::Help); // sets previous_view to Log
+        assert!(!app.help_search_input);
+
+        press(&mut app, KeyCode::Esc);
+
+        // Should navigate back (not Help anymore)
+        assert_ne!(app.current_view, View::Help);
+    }
+
+    #[test]
+    fn help_normal_mode_q_goes_back() {
+        let mut app = App::new();
+        app.go_to_view(View::Help);
+        assert!(!app.help_search_input);
+
+        press(&mut app, KeyCode::Char('q'));
+
+        // Should go back from Help view
+        assert_ne!(app.current_view, View::Help);
     }
 }

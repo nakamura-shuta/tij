@@ -13,7 +13,7 @@ fn test_help_panel_full() {
     let mut terminal = Terminal::new(TestBackend::new(80, 90)).unwrap();
     terminal
         .draw(|frame| {
-            render_help_panel(frame, frame.area(), 0);
+            render_help_panel(frame, frame.area(), 0, None, None);
         })
         .unwrap();
 
@@ -26,7 +26,7 @@ fn test_help_panel_narrow() {
     let mut terminal = Terminal::new(TestBackend::new(50, 30)).unwrap();
     terminal
         .draw(|frame| {
-            render_help_panel(frame, frame.area(), 0);
+            render_help_panel(frame, frame.area(), 0, None, None);
         })
         .unwrap();
 
