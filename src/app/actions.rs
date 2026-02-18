@@ -5,7 +5,7 @@ use crate::model::Notification;
 use crate::ui::components::{Dialog, DialogCallback, DialogResult, SelectItem};
 use crate::ui::views::RebaseMode;
 
-use super::state::{App, View};
+use super::state::{App, DirtyFlags, View};
 
 impl App {
     /// Execute undo operation
@@ -13,9 +13,7 @@ impl App {
         match self.jj.undo() {
             Ok(_) => {
                 self.notification = Some(Notification::success("Undo complete"));
-                // Refresh log to show updated state
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags::all());
             }
             Err(e) => {
                 self.error_message = Some(format!("Undo failed: {}", e));
@@ -111,9 +109,7 @@ impl App {
         }
 
         // 5. Refresh views
-        let revset = self.log_view.current_revset.clone();
-        self.refresh_log(revset.as_deref());
-        self.refresh_status();
+        self.mark_dirty_and_refresh_current(DirtyFlags::log());
     }
 
     /// Execute describe operation
@@ -121,10 +117,7 @@ impl App {
         match self.jj.describe(change_id, message) {
             Ok(_) => {
                 self.notification = Some(Notification::success("Description updated"));
-                // Refresh log and status to show updated description
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags::log());
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to update description: {}", e));
@@ -139,9 +132,7 @@ impl App {
                 let short_id = &change_id[..8.min(change_id.len())];
                 self.notification =
                     Some(Notification::success(format!("Now editing: {}", short_id)));
-                // Refresh log to show @ marker moved
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to edit: {}", e));
@@ -154,10 +145,7 @@ impl App {
         match self.jj.new_change() {
             Ok(_) => {
                 self.notification = Some(Notification::success("Created new change"));
-                // Refresh log to show new change
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to create change: {}", e));
@@ -173,10 +161,7 @@ impl App {
                     "Created new change from {}",
                     display_name
                 )));
-                // Refresh log to show new change
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to create change: {}", e));
@@ -189,11 +174,7 @@ impl App {
         match self.jj.commit(message) {
             Ok(_) => {
                 self.notification = Some(Notification::success("Changes committed"));
-                // Refresh status view to show clean state
-                self.refresh_status();
-                // Also refresh log view
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
             }
             Err(e) => {
                 self.error_message = Some(format!("Commit failed: {}", e));
@@ -256,9 +237,7 @@ impl App {
         }
 
         // 5. Refresh views
-        let revset = self.log_view.current_revset.clone();
-        self.refresh_log(revset.as_deref());
-        self.refresh_status();
+        self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
     }
 
     /// Execute abandon operation (abandon a change)
@@ -278,11 +257,7 @@ impl App {
                     "Abandoned {} (undo: u)",
                     short_id
                 )));
-                // Refresh log to show updated state
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                // Also refresh status view (abandon may affect working copy)
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
             }
             Err(e) => {
                 self.error_message = Some(format!("Abandon failed: {}", e));
@@ -299,8 +274,7 @@ impl App {
                     "Reverted {} (undo: u)",
                     short_id
                 )));
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags::log());
             }
             Err(e) => {
                 self.error_message = Some(format!("Revert failed: {}", e));
@@ -314,19 +288,15 @@ impl App {
     pub(crate) fn execute_redo(&mut self) {
         // First, check if last operation was an undo and get the target
         match self.jj.get_redo_target() {
-            Ok(Some(op_id)) => {
-                match self.jj.redo(&op_id) {
-                    Ok(_) => {
-                        self.notification = Some(Notification::success("Redo complete"));
-                        // Refresh log to show updated state
-                        let revset = self.log_view.current_revset.clone();
-                        self.refresh_log(revset.as_deref());
-                    }
-                    Err(e) => {
-                        self.error_message = Some(format!("Redo failed: {}", e));
-                    }
+            Ok(Some(op_id)) => match self.jj.redo(&op_id) {
+                Ok(_) => {
+                    self.notification = Some(Notification::success("Redo complete"));
+                    self.mark_dirty_and_refresh_current(DirtyFlags::all());
                 }
-            }
+                Err(e) => {
+                    self.error_message = Some(format!("Redo failed: {}", e));
+                }
+            },
             Ok(None) => {
                 // Not in an undo/redo chain, or multiple consecutive undos
                 // Note: After multiple undos, use 'o' (Operation History) to restore
@@ -353,10 +323,7 @@ impl App {
                     "Restored to {} (undo: u)",
                     short_id
                 )));
-                // Refresh log and status after restore
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags::all());
                 // Go back to log view
                 self.go_to_view(View::Log);
             }
@@ -423,9 +390,7 @@ impl App {
         }
 
         // 5. Refresh views
-        let revset = self.log_view.current_revset.clone();
-        self.refresh_log(revset.as_deref());
-        self.refresh_status();
+        self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
     }
 
     /// Execute diffedit (interactive diff editor)
@@ -475,9 +440,7 @@ impl App {
         }
 
         // 5. Refresh views
-        let revset = self.log_view.current_revset.clone();
-        self.refresh_log(revset.as_deref());
-        self.refresh_status();
+        self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
     }
 
     /// Execute restore for a single file
@@ -485,9 +448,7 @@ impl App {
         match self.jj.restore_file(file_path) {
             Ok(_) => {
                 self.notification = Some(Notification::success(format!("Restored: {}", file_path)));
-                self.refresh_status();
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
             }
             Err(e) => {
                 self.error_message = Some(format!("Restore failed: {}", e));
@@ -500,9 +461,7 @@ impl App {
         match self.jj.restore_all() {
             Ok(_) => {
                 self.notification = Some(Notification::success("All files restored"));
-                self.refresh_status();
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
             }
             Err(e) => {
                 self.error_message = Some(format!("Restore failed: {}", e));
@@ -519,9 +478,7 @@ impl App {
             Ok(_) => {
                 self.notification =
                     Some(Notification::success(format!("Created bookmark: {}", name)));
-                // Refresh log to show bookmark
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_bookmarks());
             }
             Err(e) => {
                 // Check if bookmark already exists - show confirmation dialog
@@ -595,8 +552,7 @@ impl App {
             Ok(_) => {
                 self.notification =
                     Some(Notification::success(format!("Moved bookmark: {}", name)));
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_bookmarks());
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to move bookmark: {}", e));
@@ -655,9 +611,7 @@ impl App {
                     "Deleted bookmarks: {}",
                     names_str
                 )));
-                // Refresh log
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_bookmarks());
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to delete bookmarks: {}", e));
@@ -681,7 +635,7 @@ impl App {
                     "Renamed bookmark: {} → {}",
                     old_name, new_name
                 )));
-                self.refresh_bookmark_view();
+                self.mark_dirty_and_refresh_current(DirtyFlags::bookmarks_only());
             }
             Err(e) => {
                 self.error_message = Some(format!("Rename failed: {}", e));
@@ -698,7 +652,7 @@ impl App {
                         "Forgot bookmark: {} (remote tracking removed)",
                         name
                     )));
-                    self.refresh_bookmark_view();
+                    self.mark_dirty_and_refresh_current(DirtyFlags::log_and_bookmarks());
                 }
                 Err(e) => {
                     self.error_message = Some(format!("Forget failed: {}", e));
@@ -711,9 +665,7 @@ impl App {
     pub(crate) fn execute_next(&mut self) {
         match self.jj.next() {
             Ok(output) => {
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
                 // Move cursor to @ position
                 self.log_view.select_working_copy();
@@ -732,9 +684,7 @@ impl App {
     pub(crate) fn execute_prev(&mut self) {
         match self.jj.prev() {
             Ok(output) => {
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
                 // Move cursor to @ position
                 self.log_view.select_working_copy();
@@ -793,8 +743,7 @@ impl App {
                 let new_change_id = Self::parse_duplicate_output(&output);
 
                 // Refresh log first (before notification)
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags::log());
 
                 // If refresh_log failed, don't show success notification
                 if self.error_message.is_some() {
@@ -850,10 +799,7 @@ impl App {
     pub(crate) fn execute_absorb(&mut self) {
         match self.jj.absorb() {
             Ok(output) => {
-                // Refresh both log and status
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
                 // Simple notification: check if output is empty or contains "nothing"
                 // Avoid detailed parsing due to jj version differences
@@ -875,10 +821,7 @@ impl App {
     pub(crate) fn execute_fetch(&mut self) {
         match self.jj.git_fetch() {
             Ok(output) => {
-                // Refresh all views after fetch
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags::all());
 
                 let notification = if output.trim().is_empty() {
                     Notification::info("Already up to date")
@@ -946,9 +889,7 @@ impl App {
         };
         match result {
             Ok(output) => {
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags::all());
 
                 let notification = if output.trim().is_empty() {
                     Notification::info("Already up to date")
@@ -1245,10 +1186,8 @@ impl App {
         // Always clear pending state after execution (prevent stale data)
         self.pending_push_bookmarks.clear();
 
-        // Refresh after push (log + status)
-        let revset = self.log_view.current_revset.clone();
-        self.refresh_log(revset.as_deref());
-        self.refresh_status();
+        // Refresh after push
+        self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
     }
 
     /// Execute `jj git push --change <change_id>` and refresh
@@ -1281,10 +1220,7 @@ impl App {
                 };
                 self.notification = Some(Notification::success(msg));
 
-                // Refresh after push
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
             }
             Err(e) => {
                 self.error_message = Some(format!("Push failed: {}", e));
@@ -1443,8 +1379,7 @@ impl App {
         match self.jj.git_push_bulk(mode, remote) {
             Ok(_) => {
                 self.notification = Some(Notification::success(format!("Pushed {}", mode.label())));
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
             }
             Err(e) => {
                 self.error_message = Some(format!("Push failed: {}", e));
@@ -1618,9 +1553,7 @@ impl App {
                     format!("Pushed all bookmarks on {}", short_id)
                 };
                 self.notification = Some(Notification::success(msg));
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
             }
             Err(e) => {
                 let err_msg = format!("{}", e);
@@ -1695,9 +1628,7 @@ impl App {
                     "Moved bookmark '{}' to @",
                     name
                 )));
-                self.refresh_bookmark_view();
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_bookmarks());
             }
             Err(e) => {
                 let err_msg = format!("{}", e);
@@ -1732,9 +1663,7 @@ impl App {
                     "Moved bookmark '{}' to @ (backwards)",
                     name
                 )));
-                self.refresh_bookmark_view();
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_bookmarks());
             }
             Err(e) => {
                 self.error_message = Some(format!("Move failed: {}", e));
@@ -1866,10 +1795,7 @@ impl App {
 
         match result {
             Ok(output) => {
-                // Refresh both log and status
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
                 // Unified conflict detection from jj output
                 let has_conflict = output.to_lowercase().contains("conflict");
@@ -2261,8 +2187,12 @@ impl App {
                     "Stopped tracking: {}",
                     display
                 )));
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
+                self.mark_dirty_and_refresh_current(DirtyFlags {
+                    log: true,
+                    status: true,
+                    op_log: true,
+                    bookmarks: true,
+                });
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to untrack: {}", e));
@@ -2289,9 +2219,12 @@ impl App {
                     "Started tracking: {}",
                     display
                 )));
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
-                self.refresh_status();
+                self.mark_dirty_and_refresh_current(DirtyFlags {
+                    log: true,
+                    status: true,
+                    op_log: true,
+                    bookmarks: true,
+                });
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to track: {}", e));

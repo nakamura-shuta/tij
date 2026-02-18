@@ -9,6 +9,68 @@ use crate::ui::views::{
     BlameView, BookmarkView, DiffView, EvologView, LogView, OperationView, ResolveView, StatusView,
 };
 
+/// Tracks which data needs refreshing after a jj operation.
+///
+/// All write operations set `op_log: true` since they create a new jj operation.
+/// Use the convenience constructors to create flags for specific operations.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct DirtyFlags {
+    pub log: bool,
+    pub status: bool,
+    pub op_log: bool,
+    pub bookmarks: bool,
+}
+
+impl DirtyFlags {
+    /// Log and operation log (metadata-only changes like describe)
+    pub fn log() -> Self {
+        Self {
+            log: true,
+            op_log: true,
+            ..Default::default()
+        }
+    }
+
+    /// Log and status (most write operations)
+    pub fn log_and_status() -> Self {
+        Self {
+            log: true,
+            status: true,
+            op_log: true,
+            ..Default::default()
+        }
+    }
+
+    /// Log and bookmarks (bookmark create/delete/move)
+    pub fn log_and_bookmarks() -> Self {
+        Self {
+            log: true,
+            bookmarks: true,
+            op_log: true,
+            ..Default::default()
+        }
+    }
+
+    /// Bookmarks only (bookmark rename)
+    pub fn bookmarks_only() -> Self {
+        Self {
+            bookmarks: true,
+            op_log: true,
+            ..Default::default()
+        }
+    }
+
+    /// All flags dirty (fetch, undo, redo, op_restore)
+    pub fn all() -> Self {
+        Self {
+            log: true,
+            status: true,
+            op_log: true,
+            bookmarks: true,
+        }
+    }
+}
+
 /// Cached preview to avoid refetching on every render
 #[derive(Debug)]
 pub(crate) struct PreviewCache {
@@ -95,6 +157,8 @@ pub struct App {
     pub(crate) help_search_input: bool,
     /// Help view: search input buffer
     pub(crate) help_input_buffer: String,
+    /// Dirty flags for lazy refresh
+    pub(crate) dirty: DirtyFlags,
 }
 
 impl Default for App {
@@ -137,6 +201,12 @@ impl App {
             help_search_query: None,
             help_search_input: false,
             help_input_buffer: String::new(),
+            dirty: DirtyFlags {
+                log: false, // Log is loaded in new()
+                status: true,
+                op_log: true,
+                bookmarks: true,
+            },
         }
     }
 
@@ -176,6 +246,9 @@ impl App {
     }
 
     /// Navigate to a specific view
+    ///
+    /// Refreshes view data only when the corresponding dirty flag is set.
+    /// This avoids unnecessary jj subprocess spawns on Tab switching.
     pub(crate) fn go_to_view(&mut self, view: View) {
         if self.current_view != view {
             // Cancel pending preview when leaving Log view
@@ -186,10 +259,25 @@ impl App {
             self.previous_view = Some(self.current_view);
             self.current_view = view;
 
-            // Refresh data / reset state when entering certain views
+            // Refresh data only when dirty, reset state when entering certain views
             match view {
-                View::Status => self.refresh_status(),
-                View::Operation => self.refresh_operation_log(),
+                View::Log if self.dirty.log => {
+                    let revset = self.log_view.current_revset.clone();
+                    self.refresh_log(revset.as_deref());
+                    self.dirty.log = false;
+                }
+                View::Status if self.dirty.status => {
+                    self.refresh_status();
+                    self.dirty.status = false;
+                }
+                View::Operation if self.dirty.op_log => {
+                    self.refresh_operation_log();
+                    self.dirty.op_log = false;
+                }
+                View::Bookmark if self.dirty.bookmarks => {
+                    self.refresh_bookmark_view();
+                    self.dirty.bookmarks = false;
+                }
                 View::Help => {
                     self.help_scroll = 0;
                     self.help_search_query = None;
@@ -202,12 +290,11 @@ impl App {
     }
 
     /// Go back to previous view
+    ///
+    /// Routes through `go_to_view()` to ensure dirty flags are checked.
     pub(crate) fn go_back(&mut self) {
-        if let Some(prev) = self.previous_view.take() {
-            self.current_view = prev;
-        } else {
-            self.current_view = View::Log;
-        }
+        let target = self.previous_view.take().unwrap_or(View::Log);
+        self.go_to_view(target);
     }
 
     /// Set running to false to quit the application.
@@ -222,5 +309,130 @@ impl App {
         {
             self.notification = None;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // =========================================================================
+    // DirtyFlags constructor tests
+    // =========================================================================
+
+    #[test]
+    fn dirty_flags_log_includes_op_log() {
+        let flags = DirtyFlags::log();
+        assert!(flags.log);
+        assert!(flags.op_log);
+        assert!(!flags.status);
+        assert!(!flags.bookmarks);
+    }
+
+    #[test]
+    fn dirty_flags_log_and_status_includes_op_log() {
+        let flags = DirtyFlags::log_and_status();
+        assert!(flags.log);
+        assert!(flags.status);
+        assert!(flags.op_log);
+        assert!(!flags.bookmarks);
+    }
+
+    #[test]
+    fn dirty_flags_log_and_bookmarks_includes_op_log() {
+        let flags = DirtyFlags::log_and_bookmarks();
+        assert!(flags.log);
+        assert!(!flags.status);
+        assert!(flags.op_log);
+        assert!(flags.bookmarks);
+    }
+
+    #[test]
+    fn dirty_flags_bookmarks_only_includes_op_log() {
+        let flags = DirtyFlags::bookmarks_only();
+        assert!(!flags.log);
+        assert!(!flags.status);
+        assert!(flags.op_log);
+        assert!(flags.bookmarks);
+    }
+
+    #[test]
+    fn dirty_flags_all_sets_everything() {
+        let flags = DirtyFlags::all();
+        assert!(flags.log);
+        assert!(flags.status);
+        assert!(flags.op_log);
+        assert!(flags.bookmarks);
+    }
+
+    #[test]
+    fn dirty_flags_default_is_all_false() {
+        let flags = DirtyFlags::default();
+        assert!(!flags.log);
+        assert!(!flags.status);
+        assert!(!flags.op_log);
+        assert!(!flags.bookmarks);
+    }
+
+    // =========================================================================
+    // go_to_view dirty flag tests
+    // =========================================================================
+
+    #[test]
+    fn go_to_view_status_skips_refresh_when_not_dirty() {
+        let mut app = App::new_for_test();
+        app.dirty.status = false;
+        app.go_to_view(View::Status);
+        // Should reach Status view without error (no jj command needed)
+        assert_eq!(app.current_view, View::Status);
+    }
+
+    #[test]
+    fn go_to_view_operation_skips_refresh_when_not_dirty() {
+        let mut app = App::new_for_test();
+        app.dirty.op_log = false;
+        app.go_to_view(View::Operation);
+        assert_eq!(app.current_view, View::Operation);
+    }
+
+    // =========================================================================
+    // go_back routes through go_to_view
+    // =========================================================================
+
+    #[test]
+    fn go_back_sets_previous_view() {
+        let mut app = App::new_for_test();
+        // Simulate: Log → Help (so previous = Log)
+        app.go_to_view(View::Help);
+        assert_eq!(app.current_view, View::Help);
+        assert_eq!(app.previous_view, Some(View::Log));
+
+        // go_back: Help → Log (via go_to_view, so previous = Help)
+        app.go_back();
+        assert_eq!(app.current_view, View::Log);
+        assert_eq!(app.previous_view, Some(View::Help));
+    }
+
+    #[test]
+    fn go_back_defaults_to_log_when_no_previous() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff;
+        app.previous_view = None;
+        app.go_back();
+        assert_eq!(app.current_view, View::Log);
+    }
+
+    // =========================================================================
+    // App::init dirty flag initialization
+    // =========================================================================
+
+    #[test]
+    fn init_dirty_flags() {
+        let app = App::new_for_test();
+        // Log is false because new() loads it; status/op_log/bookmarks are true
+        assert!(!app.dirty.log);
+        assert!(app.dirty.status);
+        assert!(app.dirty.op_log);
+        assert!(app.dirty.bookmarks);
     }
 }

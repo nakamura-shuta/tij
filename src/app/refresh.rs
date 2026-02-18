@@ -3,9 +3,43 @@
 use crate::model::Notification;
 use crate::ui::views::ResolveView;
 
-use super::state::{App, View};
+use super::state::{App, DirtyFlags, View};
 
 impl App {
+    /// Set dirty flags and immediately refresh only the current view if affected.
+    ///
+    /// Other views will be refreshed lazily when navigated to (via `go_to_view()`).
+    /// This avoids spawning unnecessary jj subprocesses for views that aren't visible.
+    pub(crate) fn mark_dirty_and_refresh_current(&mut self, affected: DirtyFlags) {
+        // Merge affected flags into current dirty state
+        self.dirty.log |= affected.log;
+        self.dirty.status |= affected.status;
+        self.dirty.op_log |= affected.op_log;
+        self.dirty.bookmarks |= affected.bookmarks;
+
+        // Refresh only the currently visible view if it's dirty
+        match self.current_view {
+            View::Log if self.dirty.log => {
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.dirty.log = false;
+            }
+            View::Status if self.dirty.status => {
+                self.refresh_status();
+                self.dirty.status = false;
+            }
+            View::Operation if self.dirty.op_log => {
+                self.refresh_operation_log();
+                self.dirty.op_log = false;
+            }
+            View::Bookmark if self.dirty.bookmarks => {
+                self.refresh_bookmark_view();
+                self.dirty.bookmarks = false;
+            }
+            _ => {}
+        }
+    }
+
     /// Refresh the log view with optional revset
     ///
     /// Also invalidates the preview cache, since repository state may have changed
@@ -95,12 +129,9 @@ impl App {
 
     /// Execute refresh for current view (Ctrl+L)
     ///
-    /// Refreshes the data for the current view:
-    /// - Log View: reloads commit log (preserves revset filter)
-    /// - Status View: reloads file status
-    /// - Operation View: reloads operation history
-    /// - Diff View: reloads diff for current change (if loaded)
-    /// - Help View: no-op (static content)
+    /// Force-refreshes the data for the current view and clears only that
+    /// view's dirty flag. Other views' dirty flags are preserved so they
+    /// still refresh when navigated to.
     ///
     /// Note: Selection position is NOT preserved after refresh.
     pub(crate) fn execute_refresh(&mut self) {
@@ -108,14 +139,17 @@ impl App {
             View::Log => {
                 let revset = self.log_view.current_revset.clone();
                 self.refresh_log(revset.as_deref());
+                self.dirty.log = false;
                 self.notification = Some(Notification::info("Refreshed"));
             }
             View::Status => {
                 self.refresh_status();
+                self.dirty.status = false;
                 self.notification = Some(Notification::info("Refreshed"));
             }
             View::Operation => {
                 self.refresh_operation_log();
+                self.dirty.op_log = false;
                 self.notification = Some(Notification::info("Refreshed"));
             }
             View::Diff => {
@@ -146,6 +180,7 @@ impl App {
             }
             View::Bookmark => {
                 self.refresh_bookmark_view();
+                self.dirty.bookmarks = false;
                 self.notification = Some(Notification::info("Refreshed"));
             }
             View::Blame => {

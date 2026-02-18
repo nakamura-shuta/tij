@@ -46,9 +46,10 @@
 - [x] Phase 20: Help パネル検索（`/` 検索、`n`/`N` ナビゲーション、ハイライト）（v0.3.33）
 - [x] Phase 21: `jj git push --revisions` サポート（v0.3.34）
 - [x] Phase 23: Diff Export — クリップボードコピー (`y`/`Y`) & ファイルエクスポート (`w`, git unified patch)（v0.3.35）
+- [x] Phase 17.1: Dirty Flag による遅延リフレッシュ（v0.3.36）
 
 ### 現在アクティブ
-- [ ] Phase 17: パフォーマンスチューニング
+- [ ] Phase 17: パフォーマンスチューニング（17.2〜17.4 残り）
 - [ ] Phase 13: ワークフローエンジン（後段）
 
 ## 4. 次の実装順（推奨）
@@ -74,9 +75,13 @@
 - [x] `push_target_remote` の全パスクリア保証
 
 ### Phase 17（性能）
-#### 17.1 不要再実行削減
-- [ ] View切替時の無条件 refresh 見直し
-- [ ] 操作後 refresh の最小化（log/status/diff）
+#### 17.1 不要再実行削減 ✅
+- [x] DirtyFlags パターンで操作→ビュー別に最適な dirty flag を設定
+- [x] View切替時は dirty flag チェック（Tab/go_back 経由）
+- [x] Ctrl+L は現在ビューのみ強制リフレッシュ（他ビューの dirty 保持）
+- [x] describe → log のみ（status 不要）、edit → log+status（正確化）
+- [x] bookmark 系 → log+bookmarks（status 不要）
+- [x] 推定 30-40% の jj サブプロセス削減
 
 #### 17.2 キャッシュ改善
 - [ ] Preview cache の方針明確化（容量/失効条件）

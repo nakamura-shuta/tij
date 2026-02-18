@@ -123,9 +123,6 @@ impl App {
             keys::UNDO if matches!(self.current_view, View::Log | View::Bookmark) => {
                 self.notification = None; // Clear any existing notification
                 self.execute_undo();
-                if self.current_view == View::Bookmark {
-                    self.refresh_bookmark_view();
-                }
                 true
             }
             keys::OPERATION_HISTORY if self.current_view == View::Log => {
@@ -452,15 +449,12 @@ impl App {
             }
             BookmarkAction::Track(full_name) => {
                 self.execute_track(&[full_name]);
-                self.refresh_bookmark_view();
             }
             BookmarkAction::Untrack(full_name) => {
                 self.execute_untrack(&full_name);
-                self.refresh_bookmark_view();
             }
             BookmarkAction::Delete(name) => {
                 self.execute_bookmark_delete(&[name]);
-                self.refresh_bookmark_view();
             }
             BookmarkAction::StartRename(old_name) => {
                 self.bookmark_view.rename_state = Some(RenameState::new(old_name));
@@ -586,10 +580,10 @@ impl App {
             ResolveAction::None => {}
             ResolveAction::Back => {
                 self.resolve_view = None;
+                // Mark log dirty so conflict indicators update on return
+                self.dirty.log = true;
+                self.dirty.op_log = true;
                 self.go_back();
-                // Refresh log to update conflict indicators
-                let revset = self.log_view.current_revset.clone();
-                self.refresh_log(revset.as_deref());
             }
             ResolveAction::ResolveExternal(file_path) => {
                 self.execute_resolve_external(&file_path);
