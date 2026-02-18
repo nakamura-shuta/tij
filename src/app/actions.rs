@@ -635,7 +635,7 @@ impl App {
                     "Renamed bookmark: {} → {}",
                     old_name, new_name
                 )));
-                self.mark_dirty_and_refresh_current(DirtyFlags::bookmarks_only());
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_bookmarks());
             }
             Err(e) => {
                 self.error_message = Some(format!("Rename failed: {}", e));
@@ -2249,49 +2249,48 @@ impl App {
             return;
         }
 
-        let current_id = match self.log_view.selected_change() {
-            Some(c) => c.change_id.clone(),
-            None => {
-                self.preview_cache = None;
-                return;
-            }
+        let (current_change_id, current_commit_id) = match self.log_view.selected_change() {
+            Some(c) => (c.change_id.clone(), c.commit_id.clone()),
+            None => return, // No selection — keep cache intact
         };
 
-        // Cache hit — same change already fetched
-        if let Some(ref cache) = self.preview_cache
-            && cache.change_id == current_id
+        // Cache hit — same change_id with matching commit_id
+        if let Some(cached) = self.preview_cache.peek(&current_change_id)
+            && cached.commit_id == current_commit_id
         {
+            self.preview_cache.touch(&current_change_id);
             return;
         }
+        // commit_id mismatch — stale, need re-fetch
 
         // Always defer to idle tick — never block key handling with jj show.
         // resolve_pending_preview() will fetch on the next poll timeout.
-        self.preview_pending_id = Some(current_id);
+        self.preview_pending_id = Some(current_change_id);
     }
 
     /// Actually fetch preview content via jj show
     fn fetch_preview(&mut self, change_id: &str) {
         self.preview_pending_id = None;
 
-        // Capture bookmarks at fetch time from the Change model (not jj show)
-        // to ensure consistency between content and bookmarks in the cache
-        let bookmarks = self
+        // Capture bookmarks and commit_id from the Change model
+        let (commit_id, bookmarks) = self
             .log_view
             .selected_change()
             .filter(|c| c.change_id == change_id)
-            .map(|c| c.bookmarks.clone())
+            .map(|c| (c.commit_id.clone(), c.bookmarks.clone()))
             .unwrap_or_default();
 
         match self.jj.show(change_id) {
             Ok(content) => {
-                self.preview_cache = Some(super::state::PreviewCache {
+                self.preview_cache.insert(super::state::PreviewCacheEntry {
                     change_id: change_id.to_string(),
+                    commit_id,
                     content,
                     bookmarks,
                 });
             }
             Err(_) => {
-                self.preview_cache = None;
+                self.preview_cache.remove(change_id);
             }
         }
     }

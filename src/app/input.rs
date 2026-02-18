@@ -160,9 +160,8 @@ impl App {
                         self.update_preview_if_needed();
                         self.resolve_pending_preview();
                     } else {
-                        // Clear pending fetch and cache on disable
+                        // Clear pending fetch on disable (keep cache for toggle back ON)
                         self.preview_pending_id = None;
-                        self.preview_cache = None;
                     }
                     return;
                 }

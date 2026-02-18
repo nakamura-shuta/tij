@@ -1,9 +1,10 @@
 //! Application state and view management
 
 use std::cell::Cell;
+use std::collections::VecDeque;
 
 use crate::jj::JjExecutor;
-use crate::model::{DiffContent, Notification};
+use crate::model::{Change, DiffContent, Notification};
 use crate::ui::components::Dialog;
 use crate::ui::views::{
     BlameView, BookmarkView, DiffView, EvologView, LogView, OperationView, ResolveView, StatusView,
@@ -51,15 +52,6 @@ impl DirtyFlags {
         }
     }
 
-    /// Bookmarks only (bookmark rename)
-    pub fn bookmarks_only() -> Self {
-        Self {
-            bookmarks: true,
-            op_log: true,
-            ..Default::default()
-        }
-    }
-
     /// All flags dirty (fetch, undo, redo, op_restore)
     pub fn all() -> Self {
         Self {
@@ -71,13 +63,98 @@ impl DirtyFlags {
     }
 }
 
-/// Cached preview to avoid refetching on every render
+const PREVIEW_CACHE_CAPACITY: usize = 8;
+
+/// Single preview cache entry
+#[derive(Debug)]
+pub(crate) struct PreviewCacheEntry {
+    pub change_id: String,
+    pub commit_id: String,
+    pub content: DiffContent,
+    pub bookmarks: Vec<String>,
+}
+
+/// LRU preview cache (VecDeque: front=LRU, back=MRU)
 #[derive(Debug)]
 pub(crate) struct PreviewCache {
-    pub change_id: String,
-    pub content: DiffContent,
-    /// Bookmarks captured at fetch time (from Change model, not jj show)
-    pub bookmarks: Vec<String>,
+    entries: VecDeque<PreviewCacheEntry>,
+    capacity: usize,
+}
+
+impl PreviewCache {
+    pub fn new() -> Self {
+        Self {
+            entries: VecDeque::new(),
+            capacity: PREVIEW_CACHE_CAPACITY,
+        }
+    }
+
+    /// Search for an entry by change_id (read-only, no MRU promotion)
+    pub fn peek(&self, change_id: &str) -> Option<&PreviewCacheEntry> {
+        self.entries.iter().find(|e| e.change_id == change_id)
+    }
+
+    /// Promote entry to MRU position (back of deque)
+    pub fn touch(&mut self, change_id: &str) {
+        if let Some(pos) = self.entries.iter().position(|e| e.change_id == change_id) {
+            let entry = self.entries.remove(pos).unwrap();
+            self.entries.push_back(entry);
+        }
+    }
+
+    /// Insert or replace an entry. Evicts LRU if at capacity.
+    pub fn insert(&mut self, entry: PreviewCacheEntry) {
+        // Remove existing entry with same change_id
+        self.entries.retain(|e| e.change_id != entry.change_id);
+        // Evict LRU if at capacity
+        if self.entries.len() >= self.capacity {
+            self.entries.pop_front();
+        }
+        self.entries.push_back(entry);
+    }
+
+    /// Remove a specific entry by change_id
+    pub fn remove(&mut self, change_id: &str) {
+        self.entries.retain(|e| e.change_id != change_id);
+    }
+
+    /// Validate cache entries against the current Change list.
+    ///
+    /// Entries whose commit_id no longer matches (or are absent from the list)
+    /// are evicted. Entries that match get their bookmarks updated.
+    pub fn validate(&mut self, changes: &[Change]) {
+        self.entries.retain_mut(|entry| {
+            // Find matching change (skip graph-only lines)
+            if let Some(change) = changes
+                .iter()
+                .filter(|c| !c.is_graph_only)
+                .find(|c| c.change_id == entry.change_id)
+            {
+                if change.commit_id == entry.commit_id {
+                    // Content unchanged — update bookmarks
+                    entry.bookmarks = change.bookmarks.clone();
+                    true
+                } else {
+                    // commit_id changed — content is stale
+                    false
+                }
+            } else {
+                // Not in current log — evict
+                false
+            }
+        });
+    }
+
+    /// Clear all entries
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    /// Number of cached entries (for tests)
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
 }
 
 /// Available views in the application
@@ -140,8 +217,8 @@ pub struct App {
     pub preview_enabled: bool,
     /// Preview auto-disabled due to small terminal (render-time flag, does not override user intent)
     pub(crate) preview_auto_disabled: bool,
-    /// Cached preview content (change_id → DiffContent + bookmarks)
-    pub(crate) preview_cache: Option<PreviewCache>,
+    /// LRU preview cache (change_id → DiffContent + commit_id + bookmarks)
+    pub(crate) preview_cache: PreviewCache,
     /// Pending preview fetch (deferred to idle tick)
     pub(crate) preview_pending_id: Option<String>,
     /// Selected remote for push (None = default remote)
@@ -194,7 +271,7 @@ impl App {
             pending_jump_change_id: None,
             preview_enabled: true,
             preview_auto_disabled: false,
-            preview_cache: None,
+            preview_cache: PreviewCache::new(),
             preview_pending_id: None,
             push_target_remote: None,
             help_scroll: 0,
@@ -348,15 +425,6 @@ mod tests {
     }
 
     #[test]
-    fn dirty_flags_bookmarks_only_includes_op_log() {
-        let flags = DirtyFlags::bookmarks_only();
-        assert!(!flags.log);
-        assert!(!flags.status);
-        assert!(flags.op_log);
-        assert!(flags.bookmarks);
-    }
-
-    #[test]
     fn dirty_flags_all_sets_everything() {
         let flags = DirtyFlags::all();
         assert!(flags.log);
@@ -434,5 +502,162 @@ mod tests {
         assert!(app.dirty.status);
         assert!(app.dirty.op_log);
         assert!(app.dirty.bookmarks);
+    }
+
+    // =========================================================================
+    // PreviewCache LRU tests
+    // =========================================================================
+
+    fn make_entry(change_id: &str, commit_id: &str) -> PreviewCacheEntry {
+        PreviewCacheEntry {
+            change_id: change_id.to_string(),
+            commit_id: commit_id.to_string(),
+            content: crate::model::DiffContent::default(),
+            bookmarks: vec![],
+        }
+    }
+
+    #[test]
+    fn preview_cache_insert_and_peek() {
+        let mut cache = PreviewCache::new();
+        assert_eq!(cache.len(), 0);
+
+        cache.insert(make_entry("aaa", "c1"));
+        assert_eq!(cache.len(), 1);
+        assert!(cache.peek("aaa").is_some());
+        assert!(cache.peek("bbb").is_none());
+    }
+
+    #[test]
+    fn preview_cache_insert_replaces_same_change_id() {
+        let mut cache = PreviewCache::new();
+        cache.insert(make_entry("aaa", "c1"));
+        cache.insert(make_entry("aaa", "c2"));
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.peek("aaa").unwrap().commit_id, "c2");
+    }
+
+    #[test]
+    fn preview_cache_evicts_lru_at_capacity() {
+        let mut cache = PreviewCache::new();
+        // Insert 8 entries (capacity)
+        for i in 0..8 {
+            cache.insert(make_entry(&format!("id{}", i), &format!("c{}", i)));
+        }
+        assert_eq!(cache.len(), 8);
+
+        // Insert 9th → evicts id0 (LRU, front)
+        cache.insert(make_entry("id8", "c8"));
+        assert_eq!(cache.len(), 8);
+        assert!(cache.peek("id0").is_none());
+        assert!(cache.peek("id8").is_some());
+    }
+
+    #[test]
+    fn preview_cache_touch_promotes_to_mru() {
+        let mut cache = PreviewCache::new();
+        for i in 0..8 {
+            cache.insert(make_entry(&format!("id{}", i), &format!("c{}", i)));
+        }
+
+        // Touch id0 (currently LRU) → promotes to MRU
+        cache.touch("id0");
+
+        // Insert 9th → should evict id1 (new LRU), not id0
+        cache.insert(make_entry("id8", "c8"));
+        assert_eq!(cache.len(), 8);
+        assert!(cache.peek("id0").is_some()); // promoted, not evicted
+        assert!(cache.peek("id1").is_none()); // new LRU, evicted
+    }
+
+    #[test]
+    fn preview_cache_remove() {
+        let mut cache = PreviewCache::new();
+        cache.insert(make_entry("aaa", "c1"));
+        cache.insert(make_entry("bbb", "c2"));
+        assert_eq!(cache.len(), 2);
+
+        cache.remove("aaa");
+        assert_eq!(cache.len(), 1);
+        assert!(cache.peek("aaa").is_none());
+        assert!(cache.peek("bbb").is_some());
+    }
+
+    #[test]
+    fn preview_cache_clear() {
+        let mut cache = PreviewCache::new();
+        cache.insert(make_entry("aaa", "c1"));
+        cache.insert(make_entry("bbb", "c2"));
+        cache.clear();
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn preview_cache_validate_keeps_matching() {
+        let mut cache = PreviewCache::new();
+        cache.insert(PreviewCacheEntry {
+            change_id: "aaa".to_string(),
+            commit_id: "c1".to_string(),
+            content: crate::model::DiffContent::default(),
+            bookmarks: vec!["old-bm".to_string()],
+        });
+
+        let changes = vec![Change {
+            change_id: "aaa".to_string(),
+            commit_id: "c1".to_string(),
+            bookmarks: vec!["new-bm".to_string()],
+            ..Change::default()
+        }];
+
+        cache.validate(&changes);
+        assert_eq!(cache.len(), 1);
+        // Bookmarks should be updated
+        assert_eq!(
+            cache.peek("aaa").unwrap().bookmarks,
+            vec!["new-bm".to_string()]
+        );
+    }
+
+    #[test]
+    fn preview_cache_validate_evicts_stale_commit() {
+        let mut cache = PreviewCache::new();
+        cache.insert(make_entry("aaa", "c1"));
+
+        let changes = vec![Change {
+            change_id: "aaa".to_string(),
+            commit_id: "c2".to_string(), // different commit_id
+            ..Change::default()
+        }];
+
+        cache.validate(&changes);
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn preview_cache_validate_evicts_absent() {
+        let mut cache = PreviewCache::new();
+        cache.insert(make_entry("aaa", "c1"));
+
+        // Empty change list → entry absent → evicted
+        cache.validate(&[]);
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn preview_cache_validate_skips_graph_only() {
+        let mut cache = PreviewCache::new();
+        cache.insert(make_entry("aaa", "c1"));
+
+        // Graph-only line with matching change_id should be ignored
+        let changes = vec![Change {
+            change_id: "aaa".to_string(),
+            commit_id: "c1".to_string(),
+            is_graph_only: true,
+            ..Change::default()
+        }];
+
+        cache.validate(&changes);
+        // Entry evicted because it only matches a graph-only line
+        assert_eq!(cache.len(), 0);
     }
 }

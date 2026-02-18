@@ -11,6 +11,12 @@ impl App {
     /// Other views will be refreshed lazily when navigated to (via `go_to_view()`).
     /// This avoids spawning unnecessary jj subprocesses for views that aren't visible.
     pub(crate) fn mark_dirty_and_refresh_current(&mut self, affected: DirtyFlags) {
+        // Clear entire preview cache when all flags are dirty (undo/redo/fetch/op_restore)
+        // since we can't know what changed
+        if affected == DirtyFlags::all() {
+            self.preview_cache.clear();
+        }
+
         // Merge affected flags into current dirty state
         self.dirty.log |= affected.log;
         self.dirty.status |= affected.status;
@@ -45,14 +51,15 @@ impl App {
     /// Also invalidates the preview cache, since repository state may have changed
     /// (e.g., after describe, edit, squash, rebase, etc.).
     pub fn refresh_log(&mut self, revset: Option<&str>) {
-        // Invalidate preview cache — same change_id may now have different content
-        self.preview_cache = None;
         self.preview_pending_id = None;
 
         let reversed = self.log_view.reversed;
         match self.jj.log_changes(revset, reversed) {
             Ok(changes) => {
                 self.log_view.set_changes(changes);
+                // Validate cache against new change list: evict stale entries,
+                // update bookmarks for entries whose commit_id still matches
+                self.preview_cache.validate(&self.log_view.changes);
                 self.log_view.current_revset = revset.map(|s| s.to_string());
                 self.error_message = None;
             }

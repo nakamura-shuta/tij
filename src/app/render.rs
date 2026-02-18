@@ -148,14 +148,21 @@ impl App {
     }
 
     fn render_preview_pane(&self, frame: &mut Frame, area: Rect) {
-        let title = match &self.preview_cache {
-            Some(cache) => {
-                let commit_short = if cache.content.commit_id.len() >= 8 {
-                    &cache.content.commit_id[..8]
+        // Look up cached entry for the currently selected change
+        let selected_change_id = self
+            .log_view
+            .selected_change()
+            .map(|c| c.change_id.as_str());
+        let cached = selected_change_id.and_then(|id| self.preview_cache.peek(id));
+
+        let title = match cached {
+            Some(entry) => {
+                let commit_short = if entry.content.commit_id.len() >= 8 {
+                    &entry.content.commit_id[..8]
                 } else {
-                    &cache.content.commit_id
+                    &entry.content.commit_id
                 };
-                format!(" Preview: {} ({}) ", &cache.change_id, commit_short)
+                format!(" Preview: {} ({}) ", &entry.change_id, commit_short)
             }
             None => " Preview ".to_string(),
         };
@@ -164,12 +171,12 @@ impl App {
             .borders(Borders::ALL)
             .title(Line::from(title).bold().cyan());
 
-        match &self.preview_cache {
-            Some(cache) => {
+        match cached {
+            Some(entry) => {
                 let inner = block.inner(area);
                 let lines = build_preview_lines(
-                    &cache.content,
-                    &cache.bookmarks,
+                    &entry.content,
+                    &entry.bookmarks,
                     inner.height as usize,
                     inner.width as usize,
                 );
@@ -1011,30 +1018,44 @@ mod tests {
         assert_eq!(total_del, 1);
     }
 
-    /// Verify that preview cache is invalidated by refresh_log().
+    /// Verify that preview cache validate evicts stale entries and keeps valid ones.
     #[test]
-    fn test_preview_cache_cleared_on_refresh_log() {
-        use crate::app::state::PreviewCache;
+    fn test_preview_cache_validated_on_refresh_log() {
+        use crate::app::state::{PreviewCache, PreviewCacheEntry};
+        use crate::model::Change;
 
-        let cache = PreviewCache {
+        let mut cache = PreviewCache::new();
+        cache.insert(PreviewCacheEntry {
             change_id: "abc12345".to_string(),
+            commit_id: "commit_aaa".to_string(),
             content: DiffContent {
                 author: "alice@example.com".to_string(),
                 description: "Old description".to_string(),
                 ..DiffContent::default()
             },
             bookmarks: vec!["main".to_string()],
-        };
+        });
 
-        assert_eq!(cache.change_id, "abc12345");
+        // Simulate refresh_log with same commit_id → entry kept
+        let changes = vec![Change {
+            change_id: "abc12345".to_string(),
+            commit_id: "commit_aaa".to_string(),
+            bookmarks: vec!["main".to_string(), "dev".to_string()],
+            ..Change::default()
+        }];
+        cache.validate(&changes);
+        assert_eq!(cache.len(), 1);
+        // Bookmarks should be updated
+        let entry = cache.peek("abc12345").unwrap();
+        assert_eq!(entry.bookmarks, vec!["main".to_string(), "dev".to_string()]);
 
-        let new_content = DiffContent {
-            author: "alice@example.com".to_string(),
-            description: "Updated description".to_string(),
-            ..DiffContent::default()
-        };
-
-        assert_eq!(cache.change_id, "abc12345");
-        assert_ne!(cache.content.description, new_content.description);
+        // Now commit_id changes → entry evicted
+        let changes_stale = vec![Change {
+            change_id: "abc12345".to_string(),
+            commit_id: "commit_bbb".to_string(),
+            ..Change::default()
+        }];
+        cache.validate(&changes_stale);
+        assert_eq!(cache.len(), 0);
     }
 }

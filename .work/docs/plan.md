@@ -47,9 +47,10 @@
 - [x] Phase 21: `jj git push --revisions` サポート（v0.3.34）
 - [x] Phase 23: Diff Export — クリップボードコピー (`y`/`Y`) & ファイルエクスポート (`w`, git unified patch)（v0.3.35）
 - [x] Phase 17.1: Dirty Flag による遅延リフレッシュ（v0.3.36）
+- [x] Phase 17.2: Preview キャッシュ LRU + commit_id バリデーション（v0.3.37）
 
 ### 現在アクティブ
-- [ ] Phase 17: パフォーマンスチューニング（17.2〜17.4 残り）
+- [ ] Phase 17: パフォーマンスチューニング（17.3〜17.4 残り）
 - [ ] Phase 13: ワークフローエンジン（後段）
 
 ## 4. 次の実装順（推奨）
@@ -83,9 +84,13 @@
 - [x] bookmark 系 → log+bookmarks（status 不要）
 - [x] 推定 30-40% の jj サブプロセス削減
 
-#### 17.2 キャッシュ改善
-- [ ] Preview cache の方針明確化（容量/失効条件）
-- [ ] 同一内容への再fetch削減
+#### 17.2 キャッシュ改善 ✅
+- [x] LRU キャッシュ（8エントリ、VecDeque ベース）
+- [x] commit_id バリデーションによる部分失効（describe 後は変更コミットのみ再 fetch）
+- [x] validate() で bookmarks 更新（log refresh 時）
+- [x] DirtyFlags::all() 時は全クリア（undo/redo/fetch）
+- [x] toggle OFF→ON でキャッシュ保持
+- [x] DirtyFlags::bookmarks_only() 廃止 → log_and_bookmarks() に統合
 
 #### 17.3 実行方式改善
 - [ ] 並列化可能な取得を整理
