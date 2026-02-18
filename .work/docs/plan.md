@@ -49,6 +49,7 @@
 - [x] Phase 17.1: Dirty Flag による遅延リフレッシュ（v0.3.36）
 - [x] Phase 17.2: Preview キャッシュ LRU + commit_id バリデーション（v0.3.37）
 - [x] Phase 17.3: 計測基盤 + compare_diff 並列化 + 競合ルール定義（v0.3.38）
+- [x] Phase 24: Push auto-retry (--allow-private / --allow-empty-description) + Fetch --branch（v0.3.39）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
@@ -111,12 +112,13 @@
 ## 5. コマンド/オプション拡張バックログ
 
 ### High
-- [ ] `jj git push`: `--allow-private`, `--allow-empty-description`
+- [x] `jj git push`: `--allow-private`, `--allow-empty-description`（Phase 24 完了）
   - [x] `--remote`（Phase 16.3 完了）, [x] `--change`（Phase 16.1 完了）
   - [x] `--all`, `--tracked`, `--deleted`（v0.3.30 完了）
   - [x] `--revisions`（Phase 21 完了）
-- [ ] `jj git fetch`: `--tracked`, `--branch`
+- [x] `jj git fetch`: `--branch`（Phase 24 完了）
   - [x] `--remote`（Phase 15.3 完了）
+  - [ ] `--tracked`
 - [x] `jj bookmark`: `move`（v0.3.30 完了）
 
 ### Medium
