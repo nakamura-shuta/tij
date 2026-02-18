@@ -48,9 +48,10 @@
 - [x] Phase 23: Diff Export — クリップボードコピー (`y`/`Y`) & ファイルエクスポート (`w`, git unified patch)（v0.3.35）
 - [x] Phase 17.1: Dirty Flag による遅延リフレッシュ（v0.3.36）
 - [x] Phase 17.2: Preview キャッシュ LRU + commit_id バリデーション（v0.3.37）
+- [x] Phase 17.3: 計測基盤 + compare_diff 並列化 + 競合ルール定義（v0.3.38）
 
 ### 現在アクティブ
-- [ ] Phase 17: パフォーマンスチューニング（17.3〜17.4 残り）
+- [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
 - [ ] Phase 13: ワークフローエンジン（後段）
 
 ## 4. 次の実装順（推奨）
@@ -92,9 +93,11 @@
 - [x] toggle OFF→ON でキャッシュ保持
 - [x] DirtyFlags::bookmarks_only() 廃止 → log_and_bookmarks() に統合
 
-#### 17.3 実行方式改善
-- [ ] 並列化可能な取得を整理
-- [ ] 競合状態での整合ルール定義
+#### 17.3 実行方式改善 ✅
+- [x] 計測基盤（`[tij:perf]` TSV ログ、debug_assertions のみ、100ms 超）
+- [x] compare_diff の info×2 並列取得（`std::thread::scope`）
+- [x] JjExecutor: Sync コンパイル時アサーション
+- [x] 競合ルール定義（Read-Read/Write→Read/Write-Write）をコードコメント化
 
 #### 17.4 大規模リポ対応
 - [ ] 計測ポイント追加（遅延可視化）

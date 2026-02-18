@@ -67,8 +67,14 @@ impl App {
             }
         };
 
-        // Get metadata for both revisions
-        let from_info = match self.jj.get_change_info(from) {
+        // Fetch metadata for both revisions in parallel (independent reads)
+        let (from_result, to_result) = std::thread::scope(|s| {
+            let from_handle = s.spawn(|| self.jj.get_change_info(from));
+            let to_handle = s.spawn(|| self.jj.get_change_info(to));
+            (from_handle.join().unwrap(), to_handle.join().unwrap())
+        });
+
+        let from_info = match from_result {
             Ok((change_id, bookmarks, author, timestamp, description)) => CompareRevisionInfo {
                 change_id,
                 bookmarks,
@@ -82,7 +88,7 @@ impl App {
             }
         };
 
-        let to_info = match self.jj.get_change_info(to) {
+        let to_info = match to_result {
             Ok((change_id, bookmarks, author, timestamp, description)) => CompareRevisionInfo {
                 change_id,
                 bookmarks,

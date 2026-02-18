@@ -1,4 +1,13 @@
 //! Data refresh operations (reload from jj)
+//!
+//! ## Concurrency safety
+//!
+//! All refresh methods (`refresh_log`, `refresh_status`, etc.) are independent
+//! read-only jj commands that could theoretically run in parallel. However,
+//! `mark_dirty_and_refresh_current()` only refreshes the **current view**,
+//! so at most one jj command runs per call. Other views refresh lazily on
+//! navigation via `go_to_view()`. This design (from Phase 17.1 DirtyFlags)
+//! makes parallel refresh unnecessary for the current architecture.
 
 use crate::model::Notification;
 use crate::ui::views::ResolveView;

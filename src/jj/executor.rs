@@ -1,6 +1,14 @@
 //! jj command executor
 //!
 //! Handles running jj commands and capturing their output.
+//!
+//! ## Concurrency rules for jj command execution
+//!
+//! - **Read-Read**: Safe to parallelize (`jj log` + `jj status` + `jj op log`, etc.)
+//! - **Write → Read**: Must be sequential (action must complete before refresh reads its result)
+//! - **Write-Write**: Must be sequential (never parallelize two write operations)
+//! - **Result consistency**: When parallel reads complete, apply all results to App state
+//!   atomically to avoid partial/inconsistent UI state.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -46,11 +54,22 @@ impl PushBulkMode {
 }
 
 /// Executor for jj commands
+///
+/// All methods take `&self` (no mutable state), making `JjExecutor` safe to
+/// share across threads via `&JjExecutor`. This is verified by the compile-time
+/// assertion below.
 #[derive(Debug, Clone)]
 pub struct JjExecutor {
     /// Path to the repository (None = current directory)
     repo_path: Option<PathBuf>,
 }
+
+// Compile-time assertion: JjExecutor must be Sync for thread::scope sharing.
+// If this fails, consider wrapping in Arc or removing interior mutability.
+const _: () = {
+    const fn assert_sync<T: Sync>() {}
+    assert_sync::<JjExecutor>();
+};
 
 impl Default for JjExecutor {
     fn default() -> Self {
@@ -102,6 +121,9 @@ impl JjExecutor {
         // which may not signal EOF properly under raw-mode terminals.
         cmd.stdin(Stdio::null());
 
+        #[cfg(debug_assertions)]
+        let start = std::time::Instant::now();
+
         let output = cmd.output().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 JjError::JjNotFound
@@ -109,6 +131,14 @@ impl JjExecutor {
                 JjError::IoError(e)
             }
         })?;
+
+        #[cfg(debug_assertions)]
+        {
+            let elapsed = start.elapsed();
+            if elapsed > std::time::Duration::from_millis(100) {
+                eprintln!("[tij:perf]\t{}\t{}ms", args.join(" "), elapsed.as_millis());
+            }
+        }
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).into_owned())
