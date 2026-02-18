@@ -1,0 +1,1214 @@
+Implement the following plan:
+
+# Phase 17.2: Preview キャッシュ改善 — LRU + commit_id バリデーション
+
+## Context
+
+現在の Preview キャッシュは **1 エントリのみ**（`Option<PreviewCache>`）。
+- j/k で 2 つのコミットを行き来すると、毎回 `jj show` が走る
+- `refresh_log()` が呼ばれると無条件にキャッシュ全クリア（describe 後も全消去）
+- 17.1 の DirtyFlags で不要な `refresh_log()` 自体は減ったが、必要な `refresh_log()` 後にもキャッシュが消えるのは無駄
+
+**解決**: LRU キャッシュ（8 エントリ）+ `commit_id` バリデーションで、内容が変わっていないエントリを保持する。
+
+## 設計
+
+### 新データ構造 (`state.rs`)
+
+```rust
+const PREVIEW_CACHE_CAPACITY: usize = 8;
+
+/// 単一キャッシュエントリ
+#[derive(Debug)]
+pub(crate) struct PreviewCacheEntry {
+    pub change_id: String,
+    pub commit_id: String,       // ← 新: コンテンツ変更検出用
+    pub content: DiffContent,
+    pub bookmarks: Vec<String>,
+}
+
+/// LRU キャッシュ（VecDeque: front=LRU, back=MRU）
+#[derive(Debug)]
+pub(crate) struct PreviewCache {
+    entries: VecDeque<PreviewCacheEntry>,
+    capacity: usize,
+}
+```
+
+メソッド:
+- `new()` — 空のキャッシュ
+- `touch(&mut self, change_id)` — MRU 昇格のみ（該当エントリを back へ移動）。借用制約を避けるため peek と分離
+- `peek(&self, change_id) -> Option<&Entry>` — 検索のみ（&self、render + ルックアップ判定用）
+- `insert(entry)` — 挿入、同一 change_id は上書き、容量超過で LRU 削除
+- `remove(change_id)` — 指定エントリ削除
+- `validate(&mut self, changes: &[Change])` — 全エントリを Change リストと照合。commit_id 不一致 or ログに存在しない → 削除。一致 → bookmarks 更新
+- `clear()` — 全消去
+- `len()` — テスト用
+
+> **設計判断**: `get(&mut self) -> Option<&Entry>`（MRU 昇格 + 参照返却）は VecDeque の要素移動と借用制約が衝突するため不採用。`touch()` で昇格、`peek()` で参照取得に分離する。
+
+### App フィールド変更
+
+```
+- preview_cache: Option<PreviewCache>   // 旧（単一エントリ）
++ preview_cache: PreviewCache           // 新（LRU、常に存在、空かもしれない）
+```
+
+### ルックアップフロー (`actions.rs: update_preview_if_needed`)
+
+```
+selected_change → (change_id, commit_id)
+  ↓
+preview_cache.peek(change_id)
+  ├─ Found + commit_id 一致 → cache hit → touch(change_id) で MRU 昇格 → return
+  ├─ Found + commit_id 不一致 → stale → pending_id セット
+  └─ Not found → pending_id セット
+```
+
+### フェッチフロー (`actions.rs: fetch_preview`)
+
+- `jj show` 成功 → `preview_cache.insert(entry)` （commit_id も保存）
+- `jj show` 失敗 → `preview_cache.remove(change_id)`
+
+### 失効ルール
+
+| トリガー | 旧動作 | 新動作 |
+|---------|--------|--------|
+| `refresh_log()` | 全クリア | `validate(changes)` — commit_id 一致エントリは保持、bookmarks 更新 |
+| `DirtyFlags::all()` (undo/redo/fetch等) | N/A | `clear()` — 全クリア（何が変わったか不明） |
+| Preview toggle OFF | 全クリア | pending_id のみクリア（キャッシュ保持） |
+| jj show 失敗 | 全クリア | 該当エントリのみ remove |
+
+> **設計判断**: `DirtyFlags::bookmarks_only()` 時に log refresh なしで bookmark 名だけ更新する `refresh_bookmarks()` は、正のデータソースが不明確になる問題がある（log_view.changes が古い可能性）。
+> **対策**: bookmark rename/forget を `DirtyFlags::log_and_bookmarks()` に昇格する。これにより log が refresh → `validate()` → bookmarks 更新、と自然にフローが通る。`DirtyFlags::bookmarks_only()` と `refresh_bookmarks()` メソッド自体を廃止し、シンプルに保つ。
+
+### レンダリング変更 (`render.rs: render_preview_pane`)
+
+- `&self` で呼ばれるため `peek()` を使用（MRU 昇格は `update_preview_if_needed` で済み）
+- `selected_change().change_id` で lookup → `Option<&PreviewCacheEntry>` を使って描画
+
+## 変更ファイル
+
+| ファイル | 変更内容 |
+|---------|---------|
+| `src/app/state.rs` | `PreviewCacheEntry` + `PreviewCache` 定義（touch/peek 分離）、App フィールド変更、`init()` 更新、`DirtyFlags::bookmarks_only()` 削除 |
+| `src/app/actions.rs` | `update_preview_if_needed()` commit_id 検証 + touch/peek 分離、`fetch_preview()` insert、bookmark rename/forget → `log_and_bookmarks()` |
+| `src/app/refresh.rs` | `refresh_log()` で `validate()` 、`mark_dirty_and_refresh_current()` で all 時 → `clear()` |
+| `src/app/render.rs` | `render_preview_pane()` を `peek()` ベースに変更 |
+| `src/app/input.rs` | toggle OFF 時のキャッシュクリア削除 |
+
+## 実装ステップ
+
+### Step 1: PreviewCache 構造体 + メソッド
+- `state.rs`: `PreviewCacheEntry` + `PreviewCache` 定義（旧 `PreviewCache` を置換）
+- `new()`, `touch()`, `peek()`, `insert()`, `remove()`, `validate()`, `clear()`, `len()`
+- App の `preview_cache` を `PreviewCache` に変更、`init()` で `PreviewCache::new()`
+- `DirtyFlags::bookmarks_only()` を削除（bookmark rename/forget → `log_and_bookmarks()` に昇格）
+
+### Step 2: ルックアップ + フェッチ更新
+- `actions.rs`: `update_preview_if_needed()` に commit_id 検証追加
+- `actions.rs`: `fetch_preview()` を `insert()` ベースに変更
+- selection なし時は何もしない（キャッシュは維持）
+
+### Step 3: 失効ルール更新
+- `refresh.rs`: `refresh_log()` の `preview_cache = None` → `validate(changes)` に置換（`set_changes()` 後に呼ぶ）
+- `refresh.rs`: `mark_dirty_and_refresh_current()` に `DirtyFlags::all()` 相当時 → `preview_cache.clear()` を追加
+- `actions.rs`: bookmark rename/forget の DirtyFlags を `bookmarks_only()` → `log_and_bookmarks()` に変更
+
+### Step 4: レンダリング更新
+- `render.rs`: `render_preview_pane()` を `peek()` ベースに
+
+### Step 5: Preview toggle 最適化 + 全コンパイル箇所修正
+- `input.rs`: toggle OFF 時の `preview_cache = None` 削除
+- `preview_cache = None` / `preview_cache = Some(...)` の全箇所を新 API に移行
+
+### Step 6: テスト + 検証
+- PreviewCache ユニットテスト（insert/touch/peek/eviction/validate）
+- 既存テスト `test_preview_cache_cleared_on_refresh_log` を validate 動作に更新
+- `cargo fmt && cargo clippy && cargo test`
+- 手動: j/k 連打で戻ったときキャッシュヒット、describe 後の部分失効、toggle OFF→ON でキャッシュ保持
+
+## 実装時の注意事項
+
+1. **validate() の is_graph_only 除外**: Change リスト照合時、`is_graph_only` 行を除外して `change_id → commit_id/bookmarks` を引く
+2. **DirtyFlags::all() 時の clear() は一度だけ**: `mark_dirty_and_refresh_current()` 内で一度実行。`refresh_log()` 内の `validate()` との二重クリアを避ける（all 時は clear 後に refresh_log → validate はスキップ or 空キャッシュで no-op）
+3. **touch() の呼び出し箇所を限定**: `render_preview_pane()` は `peek()` のみ。`touch()` は `update_preview_if_needed()` 側に限定
+4. **テスト名の更新**: `test_preview_cache_cleared_on_refresh_log` → `test_preview_cache_validated_on_refresh_log` など、validate 動作に合った名前に変更
+
+## 推定効果
+
+- j/k で 2-3 コミット行き来: **毎回 jj show → 初回のみ**（以降キャッシュヒット）
+- describe 後: 変更したコミットのみ再 fetch、他は保持
+- Tab 切替後: Log に戻っても選択中コミットのプレビューが即表示
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/nakamura.shuta/.REDACTED.jsonl
+
+---
+
+重大な指摘はありません。LGTM です。
+
+  確認した点:
+
+  - PreviewCache の LRU 化（touch/peek/insert/remove/validate/clear）は
+    整合しています。
+  - commit_id 検証による部分失効ロジックも妥当です。
+  - DirtyFlags::all() 時の全クリア、toggle OFF 時のキャッシュ保持も意図
+    どおりです。
+  - bookmark rename を log_and_bookmarks に上げた判断も安全側です。
+
+  実行確認:
+
+  - cargo test -q preview_cache_validate は通過（5 passed）。
+
+  残リスク（軽微）:
+
+  - fetch_preview() で selected_change が見つからないケースは commit_id
+    が空で挿入されうる実装なので、将来のイベント順変更時は要注意です（現
+    状フローでは実害は出にくい）。
+
+確認方法教えて下さい
+
+---
+
+いえ、いれなくてよいです。
+plan.md,README更新後にcommit,push,publishして
+
+---
+
+実行しちゃって
+
+---
+
+次のタスク候補教えて下さい
+
+---
+
+17.3 実行方式改善
+SoW作成して
+
+---
+
+指摘事項
+
+  1. High SoW内で方針が矛盾しています。
+     冒頭は「並列リフレッシュ + 50-70%削減」と書かれていますが、本文後半
+     では「並列リフレッシュは効果なし・スコープ外」と整理されています。
+     概要を後者に合わせて修正した方が良いです（期待値の齟齬を防ぐた
+     め）。
+  2. Medium std::thread::scope で self.jj を2スレッド共有する前提は、
+     JjExecutor: Sync を暗黙依存しています。
+     今は通る想定でも、SoWに「JjExecutor が Sync であることをコンパイル
+     時に確認（必要なら Arc<JjExecutor> に切替）」を明記すると安全です。
+  3. Low 計測ログの出力先が stderr だと、既存のUIエラー出力と混ざる可能
+     性があります。
+     [jj slow] の識別子は良いので、さらに「1行JSON or 固定フォーマット」
+     にして解析しやすくすると運用しやすいです。
+
+  全体方針（17.3を軽量に留める）は妥当です。上記だけ直せば実装に進めて問
+  題ありません。
+
+---
+
+実装お願いします。
+
+---
+
+plan.md 更新 → commit → push → publish
+してください
+
+---
+
+次のタスク候補教えて下さい
+
+---
+
+コマンド拡張（High）
+
+  候補: jj git push --allow-private
+  内容: private commit の push 許可
+  難易度: 低
+  ────────────────────────────────────────
+  候補: jj git push --allow-empty-description
+  内容: 空 description の push 許可
+  難易度: 低
+  ────────────────────────────────────────
+  候補: jj git fetch --branch
+  内容: ブランチ指定 fetch
+  難易度: 低
+SoW作成お願いします
+
+---
+
+• 指摘事項
+
+  1. High Fetch フローの仕様が文書内で矛盾しています。
+     InputMode::FetchBranch へ遷移する案（phase24-push-fetch-
+     options.md:173-177）と、「最終方針は Select ダイアログのみ」
+     （phase24-push-fetch-options.md:188-199）が両立していません。実装者
+     が迷うのでどちらかに統一してください。
+  2. Medium コード例のコマンド定数名が現行実装と不一致の可能性がありま
+     す。
+     commands::PUSH を使っていますが、既存は commands::GIT_PUSH 系の命名
+     です（例示でも合わせた方が安全）。
+     参照: phase24-push-fetch-options.md:106
+  3. Medium 変更ファイルのパス記述が誤解を招きます。
+     src/ui/components/dialog.rs となっていますが、実体は src/ui/
+     components/dialog/mod.rs です。
+     参照: phase24-push-fetch-options.md:209
+  4. Medium fetch --branch の候補ソースをローカル bookmark のみにする
+     と、候補ゼロ時のUXが弱いです。
+     bookmark list が空、または取得失敗時のフォールバック（デフォルト
+     fetch 継続 or 簡易入力）を受け入れ条件に入れてください。
+     参照: phase24-push-fetch-options.md:199
+  5. Low Push エラー検出は文字列依存が強いので、テストケースを明示すると
+     安全です。
+     バージョン差分で文言が変わる可能性があるため、private/no
+     description の複数パターンをSoWに列挙推奨。
+     参照: phase24-push-fetch-options.md:45-56
+
+---
+
+実装お願いします
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the entire conversation:
+
+1. **Phase 17.2: Preview Cache LRU Implementation** - The user provided a detailed plan for implementing LRU preview cache with commit_id validation. I implemented it across multiple files.
+
+2. **Manual verification discussion** - User asked how to verify the changes, I provided manual testing steps.
+
+3. **Release v0.3.37** - User asked to update plan.md, README, commit, push, and publish. I bumped version to 0.3.37, updated docs, and executed jj/git commands.
+
+4. **Next task candidates** - User asked for next task suggestions. I provided options.
+
+5. **Phase 17.3 SoW creation** - User chose 17.3, asked for SoW. I explored the codebase and created the SoW.
+
+6. **User asked about --allow-empty-description** - Quick question about jj flag.
+
+7. **SoW review feedback** - User provided 3 review items (High: contradictory overview, Medium: Sync assertion, Low: log format). I fixed all three.
+
+8. **Phase 17.3 Implementation** - User approved, I implemented: perf measurement in executor.rs, compare_diff parallelization with thread::scope, Sync assertion, concurrency rule comments.
+
+9. **Release v0.3.38** - Updated plan.md, bumped version, committed, pushed, tagged.
+
+10. **Next task candidates again** - User asked again, I suggested Phase 24.
+
+11. **Phase 24 SoW creation** - User asked for SoW for push --allow-private, --allow-empty-description, fetch --branch. I explored codebase and created detailed SoW.
+
+12. **SoW review feedback for Phase 24** - User provided 5 review items. I fixed all 5.
+
+13. **Phase 24 Implementation** - User said "実装お願いします". I created task list, read constants.rs, executor.rs, and actions.rs to understand the current push implementation. I was about to start implementing when the summary was requested.
+
+Let me now trace through the key files and changes in detail:
+
+### Phase 17.2 Changes (completed, released as v0.3.37):
+
+**state.rs**: 
+- Added VecDeque import, Change import
+- Replaced single-entry PreviewCache with LRU cache (8 entries)
+- Added PreviewCacheEntry with commit_id field
+- Methods: new(), peek(), touch(), insert(), remove(), validate(), clear(), len()
+- Changed App.preview_cache from Option<PreviewCache> to PreviewCache
+- Removed DirtyFlags::bookmarks_only()
+- Added 11 unit tests
+
+**actions.rs**:
+- update_preview_if_needed(): commit_id validation + touch/peek separation
+- fetch_preview(): uses insert() for success, remove() for failure
+- bookmark rename: bookmarks_only() → log_and_bookmarks()
+
+**refresh.rs**:
+- refresh_log(): validate(changes) instead of full clear
+- mark_dirty_and_refresh_current(): clear() on DirtyFlags::all()
+
+**render.rs**:
+- render_preview_pane(): uses peek() with selected change_id
+
+**input.rs**:
+- Toggle OFF: only clears pending_id, keeps cache
+
+### Phase 17.3 Changes (completed, released as v0.3.38):
+
+**executor.rs**:
+- Added concurrency rules module doc comment
+- Added JjExecutor Sync compile-time assertion
+- Added #[cfg(debug_assertions)] timing measurement with [tij:perf] TSV format
+
+**navigation.rs**:
+- open_compare_diff(): parallelized info×2 with std::thread::scope
+
+**refresh.rs**:
+- Added concurrency safety doc comment
+
+### Phase 24 (in progress - implementation just started):
+
+SoW created at `.work/docs/spec-detail/phase24-push-fetch-options.md`
+
+Key design decisions:
+- Push --allow-private / --allow-empty-description: auto-retry on error detection (same pattern as untracked bookmark)
+- Fetch --branch: 2-step Select dialog (first select "Specific branch...", then select from bookmark list)
+- Fallback for empty bookmark list: default fetch + notification
+- DialogCallback::GitFetchBranch added
+
+I had created tasks #10-14 and was reading executor.rs and actions.rs to understand the current push implementation. I had just read the execute_push() and execute_push_change() methods when the summary was requested.
+
+### User messages (non-tool):
+1. Initial plan for Phase 17.2
+2. Review feedback (LGTM + risk note) + "確認方法教えて下さい"
+3. "いえ、いれなくてよいです。plan.md,README更新後にcommit,push,publishして"
+4. "実行しちゃって" (execute the jj/git commands)
+5. "次のタスク候補教えて下さい"
+6. "17.3 実行方式改善 SoW作成して"
+7. "--allow-empty-descriptionって何？" (interruption while working)
+8. Phase 17.3 SoW review feedback (3 items)
+9. "実装お願いします。" (implement 17.3)
+10. "plan.md 更新 → commit → push → publish してください"
+11. "次のタスク候補教えて下さい"
+12. "コマンド拡張（High） SoW作成お願いします" (Phase 24)
+13. Phase 24 SoW review feedback (5 items)
+14. "実装お願いします" (implement Phase 24)
+
+Summary:
+1. Primary Request and Intent:
+   The user has been iteratively developing the **Tij** TUI application (Text-mode Interface for Jujutsu VCS). The conversation covers three phases:
+   - **Phase 17.2** (completed, v0.3.37): LRU preview cache with commit_id validation
+   - **Phase 17.3** (completed, v0.3.38): Performance measurement + compare_diff parallelization + concurrency rules
+   - **Phase 24** (implementation just started): Push `--allow-private`/`--allow-empty-description` auto-retry + Fetch `--branch` dialog
+   
+   The user follows a strict workflow: SoW creation → review feedback → implementation → plan.md/README update → commit → push → publish via jj + git tag.
+
+2. Key Technical Concepts:
+   - **LRU Cache**: VecDeque-based with capacity 8, front=LRU, back=MRU. touch()/peek() separation to avoid borrow conflicts.
+   - **commit_id validation**: Cache entries validated against Change list; stale commit_id → evict, matching → update bookmarks.
+   - **DirtyFlags pattern**: Phase 17.1 established lazy refresh; 17.2 builds on it with partial cache invalidation.
+   - **std::thread::scope**: Used for parallel jj subprocess execution (compare_diff info×2). Requires JjExecutor: Sync.
+   - **Auto-retry pattern**: Detect jj error messages → retry with additional flags (existing pattern for untracked bookmarks, extending to private/empty-description).
+   - **2-step Select dialog**: For fetch --branch, first dialog selects "Specific branch...", second dialog shows bookmark list.
+   - **Release procedure**: jj describe → jj bookmark set main → jj git push → git tag → git push origin tag (triggers CI).
+
+3. Files and Code Sections:
+
+   - **`src/app/state.rs`** — Core app state definitions
+     - Phase 17.2: Replaced single-entry `PreviewCache` with LRU. Added `PreviewCacheEntry` (with `commit_id` field), `PreviewCache` struct with VecDeque. Changed `App.preview_cache` from `Option<PreviewCache>` to `PreviewCache`. Removed `DirtyFlags::bookmarks_only()`. Added 11 unit tests.
+     ```rust
+     const PREVIEW_CACHE_CAPACITY: usize = 8;
+     
+     pub(crate) struct PreviewCacheEntry {
+         pub change_id: String,
+         pub commit_id: String,
+         pub content: DiffContent,
+         pub bookmarks: Vec<String>,
+     }
+     
+     pub(crate) struct PreviewCache {
+         entries: VecDeque<PreviewCacheEntry>,
+         capacity: usize,
+     }
+     // Methods: new(), peek(), touch(), insert(), remove(), validate(), clear(), len()
+     ```
+
+   - **`src/app/actions.rs`** — Action handlers (~2600 lines)
+     - Phase 17.2: `update_preview_if_needed()` now checks commit_id via peek(), promotes MRU via touch(). `fetch_preview()` uses insert()/remove(). Bookmark rename changed from `bookmarks_only()` to `log_and_bookmarks()`.
+     - Phase 24 will modify: `execute_push()` (lines 1113-1191), `execute_push_change()` (lines 1197-1229), `execute_push_revisions()` (lines 1540+). Will add `is_private_commit_error()`, `is_empty_description_error()`, retry logic with extra flags. Will modify `start_fetch()` to add "Specific branch..." option.
+     - Current `execute_push()` retry pattern (reference for Phase 24):
+     ```rust
+     if is_untracked_bookmark_error(&err_msg) {
+         let retry = if let Some(ref r) = remote {
+             self.jj.git_push_bookmark_allow_new_to_remote(name, r)
+         } else {
+             self.jj.git_push_bookmark_allow_new(name)
+         };
+         // ... handle retry result
+     }
+     ```
+
+   - **`src/app/refresh.rs`** — Data refresh operations
+     - Phase 17.2: `refresh_log()` uses `validate(changes)` instead of full cache clear. `mark_dirty_and_refresh_current()` calls `clear()` on `DirtyFlags::all()`.
+     - Phase 17.3: Added concurrency safety doc comment.
+
+   - **`src/app/render.rs`** — Rendering logic
+     - Phase 17.2: `render_preview_pane()` uses `peek()` with selected change_id. Updated test to `test_preview_cache_validated_on_refresh_log`.
+
+   - **`src/app/input.rs`** — Key event handling
+     - Phase 17.2: Toggle OFF only clears `pending_id`, keeps cache for toggle back ON.
+
+   - **`src/app/navigation.rs`** — View navigation
+     - Phase 17.3: `open_compare_diff()` parallelized with `std::thread::scope`:
+     ```rust
+     let (from_result, to_result) = std::thread::scope(|s| {
+         let from_handle = s.spawn(|| self.jj.get_change_info(from));
+         let to_handle = s.spawn(|| self.jj.get_change_info(to));
+         (from_handle.join().unwrap(), to_handle.join().unwrap())
+     });
+     ```
+
+   - **`src/jj/executor.rs`** — jj command executor
+     - Phase 17.3: Added concurrency rules doc comment, Sync compile-time assertion, debug-only perf measurement:
+     ```rust
+     const _: () = {
+         const fn assert_sync<T: Sync>() {}
+         assert_sync::<JjExecutor>();
+     };
+     
+     // In run():
+     #[cfg(debug_assertions)]
+     let start = std::time::Instant::now();
+     // ... command execution ...
+     #[cfg(debug_assertions)]
+     {
+         let elapsed = start.elapsed();
+         if elapsed > std::time::Duration::from_millis(100) {
+             eprintln!("[tij:perf]\t{}\t{}ms", args.join(" "), elapsed.as_millis());
+         }
+     }
+     ```
+     - Phase 24 will add: `git_push_bookmark_with_flags()`, `git_push_change_with_flags()`, `git_push_revisions_with_flags()`, `git_fetch_branch()`.
+
+   - **`src/jj/constants.rs`** — Flag constants
+     - Phase 24 will add: `ALLOW_PRIVATE`, `ALLOW_EMPTY_DESC`, `BRANCH` to flags module.
+
+   - **`src/ui/components/dialog/mod.rs`** — Dialog definitions
+     - Phase 24 will add: `DialogCallback::GitFetchBranch`.
+
+   - **`.work/docs/spec-detail/phase24-push-fetch-options.md`** — Phase 24 SoW (created and reviewed)
+   - **`.work/docs/spec-detail/phase17-3-parallel-execution.md`** — Phase 17.3 SoW (created, reviewed, implemented)
+   - **`.work/docs/plan.md`** — Development plan (updated for 17.2 and 17.3 completion)
+   - **`Cargo.toml`** — Version currently at 0.3.38
+
+4. Errors and Fixes:
+   - **Clippy collapsible_if warning**: In `update_preview_if_needed()`, nested `if let Some(...) { if ... }` was flagged. Fixed by `cargo clippy --fix`.
+   - **rustfmt disagreement after clippy fix**: The auto-fix from clippy produced non-standard formatting. Fixed by running `cargo fmt`.
+   - **File modified since read error**: When trying to edit actions.rs after clippy had auto-modified it. Fixed by using `cargo clippy --fix --allow-dirty` instead.
+   - **Phase 17.3 SoW review feedback** (3 items from user):
+     1. High: Overview contradicted body (claimed 50-70% reduction but body said parallel refresh was unnecessary). Fixed by rewriting overview to match lightweight scope.
+     2. Medium: Missing JjExecutor Sync assertion requirement. Fixed by adding compile-time assertion note.
+     3. Low: stderr log mixing with UI errors. Fixed by using `[tij:perf]` prefix + TSV format.
+   - **Phase 24 SoW review feedback** (5 items from user):
+     1. High: Fetch flow contradiction (InputMode vs Select dialog). Fixed by removing InputMode discussion, keeping only Select dialog approach.
+     2. Medium: Wrong command constants (`commands::PUSH` → `commands::GIT_PUSH`). Fixed.
+     3. Medium: Wrong dialog file path (`dialog.rs` → `dialog/mod.rs`). Fixed + added GitFetchBranch callback.
+     4. Medium: Missing fallback for empty bookmark list. Fixed by adding fallback to default fetch + notification.
+     5. Low: Missing test case patterns for error detection. Fixed by adding comprehensive patterns including false positive prevention.
+
+5. Problem Solving:
+   - Successfully implemented LRU cache that avoids refetching on j/k navigation between recent commits
+   - Solved borrow checker issue with touch()/peek() separation (can't mutate VecDeque while holding reference)
+   - Used `retain_mut` for validate() to efficiently update bookmarks while filtering stale entries
+   - Used `std::thread::scope` for safe parallel subprocess execution without Arc/async overhead
+   - Designed auto-retry pattern for push errors that reuses existing untracked bookmark retry architecture
+
+6. All User Messages:
+   - Provided detailed Phase 17.2 implementation plan (LRU + commit_id validation)
+   - "確認方法教えて下さい" (asked for manual verification methods)
+   - "いえ、いれなくてよいです。plan.md,README更新後にcommit,push,publishして" (declined defensive guard, asked for release)
+   - "実行しちゃって" (execute the jj/git release commands directly)
+   - "次のタスク候補教えて下さい" (asked for next task candidates)
+   - "17.3 実行方式改善 SoW作成して" (requested SoW for phase 17.3)
+   - "--allow-empty-descriptionって何？" (asked what the flag means - interruption)
+   - Phase 17.3 SoW review with 3 numbered items (High/Medium/Low)
+   - "実装お願いします。" (implement Phase 17.3)
+   - "plan.md 更新 → commit → push → publish してください" (release 17.3)
+   - "次のタスク候補教えて下さい" (next task candidates again)
+   - Selected High priority command extensions and asked "SoW作成お願いします"
+   - Phase 24 SoW review with 5 numbered items (High/Medium×3/Low)
+   - "実装お願いします" (implement Phase 24)
+
+7. Pending Tasks:
+   - **Phase 24 Implementation** (5 steps from SoW):
+     - Task #10: Add flag constants (ALLOW_PRIVATE, ALLOW_EMPTY_DESC, BRANCH) to constants.rs
+     - Task #11: Add error detection functions (is_private_commit_error, is_empty_description_error) + unit tests
+     - Task #12: Add executor retry methods (git_push_bookmark_with_flags etc.) + integrate retry logic into execute_push, execute_push_change, execute_push_revisions
+     - Task #13: Add fetch --branch (git_fetch_branch, DialogCallback::GitFetchBranch, 2-step select dialog, empty bookmark fallback)
+     - Task #14: Final cargo fmt, clippy, test
+   - After implementation: plan.md update → version bump → commit → push → publish (user will likely request this)
+
+8. Current Work:
+   I was implementing **Phase 24: Push/Fetch Options** per the user's request "実装お願いします". I had:
+   - Created task items #10-14
+   - Read `src/jj/constants.rs` fully (to understand flag module structure for adding new constants)
+   - Read `src/app/actions.rs` lines 1113-1260 (execute_push, execute_push_change, start_push_change) to understand the existing retry pattern
+   - Was about to start Step 1 (adding flag constants) when the summary was requested
+   
+   The SoW is at `.work/docs/spec-detail/phase24-push-fetch-options.md` with all 5 review items fixed.
+
+9. Optional Next Step:
+   Continue Phase 24 implementation starting with Step 1: Add `ALLOW_PRIVATE`, `ALLOW_EMPTY_DESC`, `BRANCH` constants to `src/jj/constants.rs` flags module.
+   
+   The user's most recent request was: "実装お願いします" (implement it) referring to Phase 24. I had just finished reading the source files and created task items, and was about to begin coding the changes. The next immediate action is to edit `src/jj/constants.rs` to add the three new flag constants, then proceed through Steps 2-5 of the SoW.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/nakamura.shuta/.REDACTED.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+指摘事項
+
+  1. Medium bookmark 一覧取得失敗時のフォールバックが未実装です。
+     start_fetch_branch_select() の Err 分岐で error_message を設定する
+     だけになっており、デフォルト fetch へフォールバックしていません。
+     SoW/報告では「空/取得失敗時フォールバック」と読めるので、実装と不一
+     致です。
+     参照: src/app/actions.rs:976
+  2. Low 既存UXからの挙動変更（要確認）
+     リモートが1つ以下でも start_fetch() が即 fetch せず、毎回モード選択
+     ダイアログを出すようになっています。
+     意図的なら問題ありませんが、従来の「ワンキー fetch」体験を維持した
+     い場合は回帰です。
+     参照: src/app/actions.rs:847
+
+  総評
+
+  - Push 側の --allow-private / --allow-empty-description 自動リトライ統
+    合は概ね良好です。
+
+---
+
+確認方法教えて下さい
+
+---
+
+pwd
+/Users/nakamura.shuta/dev/playground/anything/mytest-private-repository
+で準備お願いします。おわったら手順提示してください
+
+---
+
+Error:  Push failed: jj command failed (exit code 1): Warning: Refused to snapshot some files:  .entire/metadata/6199e1ff-6135-461a-9617-c1c52de235d6/
+
+utzvyrkq
+origin->Push by change ID (--change)
+
+---
+
+成功したけど、通知表示で、画面全体の表示がズレた
+
+---
+
+もう一度同じリポジトリ状況作成して
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the entire conversation:
+
+1. **Session Start**: The conversation was continued from a previous session. The summary indicates Phase 17.2 and 17.3 were completed and released, and Phase 24 implementation was in progress.
+
+2. **Phase 24 Implementation**: I was implementing "Push/Fetch Options Extension" which includes:
+   - `--allow-private` / `--allow-empty-description` auto-retry for push
+   - `--branch` option for fetch
+
+3. **Step 1**: Added flag constants (`ALLOW_PRIVATE`, `ALLOW_EMPTY_DESC`, `BRANCH`) to `src/jj/constants.rs`
+
+4. **Step 2**: Added error detection functions (`is_private_commit_error`, `is_empty_description_error`) + unit tests to `src/app/actions.rs`
+
+5. **Step 3**: Added executor retry methods (`git_push_bookmark_with_flags`, etc.) to `src/jj/executor.rs`. Integrated retry logic into `execute_push`, `execute_push_change`, `execute_push_revisions` in `src/app/actions.rs`. Added helper functions `detect_push_retry_flags`, `retry_notes_from_flags`, `build_push_suffix`.
+
+6. **Step 4**: Added fetch --branch feature:
+   - Added `DialogCallback::GitFetchBranch` to dialog/mod.rs
+   - Modified `start_fetch()` to add "Specific branch..." option
+   - Added `start_fetch_branch_select()` and `execute_fetch_branch()` methods
+   - Added dialog handler for `GitFetchBranch`
+
+7. **Step 5**: cargo fmt, clippy, test - all passed (566 tests)
+
+8. **User Review #1**: Two items:
+   - Medium: `start_fetch_branch_select()` Err branch should fallback to default fetch (not just show error)
+   - Low: Single remote now shows dialog instead of instant fetch (UX regression)
+   
+   **Fixes applied**:
+   - Changed error branch to fallback to default fetch with notification
+   - Restored single-remote instant fetch behavior (removed dialog for single remote)
+
+9. **User asked for manual verification steps**: I provided test instructions.
+
+10. **User asked to set up test environment** at `mytest-private-repository`:
+    - Created test-private bookmark (private commit via `git.private-commits` config)
+    - Created test-empty-desc bookmark (empty description)
+    - Initially used wrong config key `revsets.private` → found correct key is `git.private-commits`
+    - Initially used `description(exact:...)` which didn't match → changed to `description(substring:...)`
+    - Verified both push errors occur as expected
+
+11. **User reported bug**: "Push failed: jj command failed (exit code 1): Warning: Refused to snapshot..."
+    - Root cause: The dry-run in `start_push_change()` fails BEFORE reaching `execute_push_change()` (which has the retry logic)
+    - Fix: Added fallback in `start_push_change()` and `start_push_revisions()` dry-run error paths to show confirm dialog when private/empty-description error is detected, allowing the actual push (with retry) to proceed
+
+12. **User reported display shift**: "成功したけど、通知表示で、画面全体の表示がズレた"
+    - I asked if Ctrl+L fixes it (likely subprocess terminal output issue)
+
+13. **User's latest message**: "もう一度同じリポジトリ状況作成して" (recreate the same repository situation) + summary request
+
+Key files modified:
+- `src/jj/constants.rs` - flag constants
+- `src/jj/executor.rs` - `_with_flags` methods + `git_fetch_branch`
+- `src/app/actions.rs` - retry logic, error detection, fetch branch flow, dry-run fallbacks
+- `src/ui/components/dialog/mod.rs` - `DialogCallback::GitFetchBranch`
+
+Key errors and fixes:
+1. Wrong config key: `revsets.private` → `git.private-commits` 
+2. Wrong revset function: `description(exact:...)` → `description(substring:...)`
+3. Dry-run path doesn't have retry logic → Added fallback confirm dialog in dry-run error paths
+4. Single remote UX regression → Restored instant fetch
+5. Fetch branch error fallback missing → Added default fetch fallback
+
+The test repository at mytest-private-repository needs to be recreated because:
+- test-private was pushed and deleted during testing
+- The display shift issue needs to be investigated further
+- User wants to re-test after the dry-run fix
+
+Summary:
+1. Primary Request and Intent:
+   The user is implementing **Phase 24: Push/Fetch Options Extension** for the Tij TUI application. This includes:
+   - Auto-retry `jj git push` with `--allow-private` when private commit errors are detected
+   - Auto-retry `jj git push` with `--allow-empty-description` when empty description errors are detected
+   - Add `jj git fetch --branch` support with a 2-step Select dialog flow
+   
+   The SoW is at `.work/docs/spec-detail/phase24-push-fetch-options.md`.
+   
+   The user's most recent request is: **"もう一度同じリポジトリ状況作成して"** (recreate the same test repository situation) at `/Users/nakamura.shuta/dev/playground/anything/mytest-private-repository`, AND there is a reported display shift bug ("成功したけど、通知表示で、画面全体の表示がズレた") that needs investigation.
+
+2. Key Technical Concepts:
+   - **Auto-retry pattern**: Detect jj error messages → retry with additional flags (existing pattern for untracked bookmarks, extended to private/empty-description)
+   - **Dry-run vs execute paths**: `start_push_*()` methods run dry-run first for preview → `execute_push_*()` does actual push. Retry logic must handle BOTH paths.
+   - **Dialog flow**: 2-step Select dialog for fetch branch (first select "Specific branch...", then select from bookmark list)
+   - **jj config**: `git.private-commits` (NOT `revsets.private`) is the correct config key for private commits in jj 0.38.0
+   - **`description(substring:...)` vs `description(exact:...)`**: exact match doesn't work due to trailing newline in jj descriptions; use substring instead
+   - **DirtyFlags pattern**: `DirtyFlags::all()` for fetch, `DirtyFlags::log_and_status()` for push
+   - **Notification suffix pattern**: `build_push_suffix()` concatenates retry notes like "(private commit allowed + empty description allowed)"
+
+3. Files and Code Sections:
+
+   - **`src/jj/constants.rs`** — Flag constants
+     - Added 3 new constants to `flags` module:
+     ```rust
+     pub const ALLOW_PRIVATE: &str = "--allow-private";
+     pub const ALLOW_EMPTY_DESC: &str = "--allow-empty-description";
+     pub const BRANCH: &str = "--branch";
+     ```
+
+   - **`src/jj/executor.rs`** — jj command executor
+     - Added 8 new methods for retry-with-flags and fetch-branch:
+     ```rust
+     pub fn git_push_bookmark_with_flags(&self, bookmark_name: &str, extra_flags: &[&str]) -> Result<String, JjError>
+     pub fn git_push_bookmark_to_remote_with_flags(&self, bookmark_name: &str, remote: &str, extra_flags: &[&str]) -> Result<String, JjError>
+     pub fn git_push_change_with_flags(&self, change_id: &str, extra_flags: &[&str]) -> Result<String, JjError>
+     pub fn git_push_change_to_remote_with_flags(&self, change_id: &str, remote: &str, extra_flags: &[&str]) -> Result<String, JjError>
+     pub fn git_push_revisions_with_flags(&self, change_id: &str, extra_flags: &[&str]) -> Result<String, JjError>
+     pub fn git_push_revisions_to_remote_with_flags(&self, change_id: &str, remote: &str, extra_flags: &[&str]) -> Result<String, JjError>
+     pub fn git_fetch_branch(&self, branch: &str) -> Result<String, JjError>
+     ```
+     All `_with_flags` methods build args vec, extend with extra_flags, then call `self.run()`.
+
+   - **`src/app/actions.rs`** — Main action handlers (~3400 lines)
+     - **Error detection functions** (module-level):
+     ```rust
+     fn is_private_commit_error(err_msg: &str) -> bool {
+         let lower = err_msg.to_lowercase();
+         lower.contains("private") && lower.contains("won't push")
+     }
+     fn is_empty_description_error(err_msg: &str) -> bool {
+         let lower = err_msg.to_lowercase();
+         lower.contains("no description") && lower.contains("won't push")
+     }
+     fn detect_push_retry_flags(err_msg: &str) -> Vec<&'static str> { ... }
+     fn retry_notes_from_flags<'a>(extra_flags: &[&str]) -> Vec<&'a str> { ... }
+     fn build_push_suffix(used_allow_new: bool, retry_notes: &[&str]) -> String { ... }
+     ```
+     
+     - **`execute_push()`** (line ~1113): Rewritten to detect all retry-able errors (untracked + private + empty-desc) and combine flags for retry. Uses `git_push_bookmark_with_flags()` for retry.
+     
+     - **`execute_push_change()`** (line ~1223): Added retry path using `detect_push_retry_flags()`. Extracted `notify_push_change_success()` helper to avoid duplication between success and retry-success paths.
+     
+     - **`execute_push_revisions()`** (line ~1708): Added private/empty-description retry after the existing `is_revisions_unsupported_error` check.
+     
+     - **`start_push_change()`** dry-run error path (line ~1412): **CRITICAL FIX** - Added fallback to show confirm dialog when dry-run fails due to private/empty-description, allowing the actual push (with retry) to proceed:
+     ```rust
+     Err(e) => {
+         let err_msg = format!("{}", e);
+         let retry_flags = detect_push_retry_flags(&err_msg);
+         if !retry_flags.is_empty() {
+             // Show confirm dialog without preview
+             self.active_dialog = Some(Dialog::confirm(...));
+         } else {
+             self.push_target_remote = None;
+             self.error_message = Some(format!("Push failed: {}", e));
+         }
+     }
+     ```
+     
+     - **`start_push_revisions()`** dry-run error path: Same fix applied.
+     
+     - **`start_fetch()`**: Single remote → instant fetch (unchanged). Multiple remotes → dialog with "Specific branch..." added at bottom.
+     
+     - **`start_fetch_branch_select()`** (new): Gets local bookmarks via `bookmark_list_all()`, filters to local-only, shows Select dialog. Empty list → fallback to default fetch. Error → fallback to default fetch with notification.
+     
+     - **`execute_fetch_branch()`** (new): Calls `jj git fetch --branch <name>`, shows success/up-to-date notification.
+     
+     - **`handle_dialog_result()`**: Added routing for `__branch__` value in GitFetch handler, and new `GitFetchBranch` handler.
+     
+     - **Unit tests**: 11 new tests for `is_private_commit_error`, `is_empty_description_error`, and simultaneous error detection.
+
+   - **`src/ui/components/dialog/mod.rs`** — Dialog definitions
+     - Added `DialogCallback::GitFetchBranch` variant
+
+4. Errors and Fixes:
+   - **Wrong jj config key for private commits**: Used `revsets.private` initially → correct key is `git.private-commits` in jj 0.38.0. Discovered by checking `jj config list --include-defaults | grep private`.
+   - **`description(exact:...)` doesn't match**: Due to trailing newline in jj descriptions. Fixed by using `description(substring:'private-test-commit')`.
+   - **Dry-run path has no retry logic (CRITICAL BUG)**: `start_push_change()` and `start_push_revisions()` run dry-run first. When dry-run fails due to private/empty-description, the error was displayed immediately without reaching the retry logic in `execute_push_change()`. Fixed by adding `detect_push_retry_flags()` check in the dry-run error path to show a confirm dialog instead, letting the actual push handle the retry.
+   - **User review: bookmark list error fallback missing**: `start_fetch_branch_select()` Err branch only showed error. Fixed to fallback to default fetch with notification.
+   - **User review: single-remote UX regression**: `start_fetch()` was changed to always show dialog. Reverted single-remote case to instant fetch.
+   - **Display shift after successful push**: User reported "画面全体の表示がズレた" (entire screen layout shifted) after push succeeded. Suspected causes: (1) jj/git subprocess output leaking to terminal, or (2) notification message too long. Asked user if Ctrl+L fixes it. **Not yet resolved.**
+   - **test-private bookmark was accidentally pushed**: During initial testing, `revsets.private` config didn't work, so push succeeded. Had to delete remote bookmark and recreate.
+
+5. Problem Solving:
+   - Successfully implemented auto-retry pattern for private/empty-description push errors across all push paths (bookmark, --change, --revisions)
+   - Successfully implemented fetch --branch with 2-step dialog
+   - Discovered and fixed critical bug where dry-run failure prevented retry logic from executing
+   - All 566 unit tests + 17 integration tests pass
+   - Display shift bug after push is still under investigation
+
+6. All User Messages:
+   - (From previous session context) "実装お願いします" (implement Phase 24)
+   - Review feedback with 2 items: (1) Medium: bookmark list error fallback missing, (2) Low: single-remote UX regression
+   - "確認方法教えて下さい" (teach me how to verify)
+   - "pwd /Users/nakamura.shuta/dev/playground/anything/mytest-private-repository で準備お願いします。おわったら手順提示してください" (set up test environment at that path, then show me the steps)
+   - "Error: Push failed: jj command failed (exit code 1): Warning: Refused to snapshot some files: .entire/metadata/6199e1ff-6135-461a-9617-c1c52de235d6/ utzvyrkq origin->Push by change ID (--change)" (bug report: dry-run fails before reaching retry)
+   - "成功したけど、通知表示で、画面全体の表示がズレた" (succeeded but display shifted)
+   - "もう一度同じリポジトリ状況作成して" (recreate the same repository situation)
+
+7. Pending Tasks:
+   - Recreate test repository situation at `mytest-private-repository` (user's most recent explicit request)
+   - Investigate display shift bug after successful push
+   - After all testing passes: plan.md update → version bump → commit → push → publish (not yet requested but follows established pattern)
+
+8. Current Work:
+   The user reported a display shift bug after successful push with `--allow-private` retry. I asked if Ctrl+L fixes it but haven't received an answer. The user then requested: **"もう一度同じリポジトリ状況作成して"** — recreate the test repository situation so they can re-test.
+
+   The test repository needs:
+   - A commit with `description(substring:'private-test-commit')` matching `git.private-commits` config → `test-private` bookmark (local only, not on remote)
+   - A commit with empty description → `test-empty-desc` bookmark (local only, not on remote)
+   - Both should be children of `main` bookmark
+   - Config: `git.private-commits = "description(substring:'private-test-commit')"` set in repo config
+   
+   Previous setup commands:
+   ```bash
+   cd /Users/nakamura.shuta/dev/playground/anything/mytest-private-repository
+   jj config set --repo git.private-commits "description(substring:'private-test-commit')"
+   jj new -r main && jj describe -m "private-test-commit" && jj bookmark create test-private -r @
+   jj new -r main && jj bookmark create test-empty-desc -r @
+   ```
+
+   Note: Previous test left the repository in a state where test-private may have been pushed and deleted. Need to clean up first.
+
+9. Optional Next Step:
+   Recreate the test repository situation as the user explicitly requested: "もう一度同じリポジトリ状況作成して". This involves cleaning up any leftover state from previous testing and re-creating the `test-private` and `test-empty-desc` bookmarks with proper configuration at `/Users/nakamura.shuta/dev/playground/anything/mytest-private-repository`. Then provide the manual test steps again. After testing, investigate the display shift bug.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/nakamura.shuta/.REDACTED.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+origin選択するとPush bookmark "test-private"?と効かれるけど正しい
+
+---
+
+[Request interrupted by user]
+
+---
+
+origin選択するとPush bookmark "test-private"?と効かれるけど正しい?
+
+---
+
+y押した時点でズレた。Refreshしてもなおらない
+  Push bookmark "test-private"?         │                                                  │
+││ ├─╯                                            6-02-12T10:15:32+0900 forward push test                                                             │
+└─────────────────────────────────────────────────     Remote changes cannot be undone with 'u'.    ──────────────────────────────────────────────────┘
+┌ Preview: wokltnmu (e2d8920a) ───────────────────6-02-12T10:15:32+0900 a forward push test
+
+---
+
+1,2　ok
+
+---
+
+3. Fetch --branchはうごいた（どれ選べば実際にfetchされるかわからん（
+
+---
+
+plan.md,README更新後にcommit,push,publishして
+
+---
+
+descriptionつけて実行しちゃって
+
+---
+
+次の作業候補教えて下さい
+
+---
+
+#: 1                                                                  
+  候補: rebase 拡張                                                     
+  規模: Medium
+  内容: --branch, --revisions, --skip-emptied 等。現在のrebaseは
+  -s/-A/-B
+
+SoW作成お願いします。これを実装するとどういうことができるようになりますか？
+
+---
+
+実装前レビューの指摘です（重要度順）。
+
+  1. High: -b / --skip-emptied の非対応 jj バージョン時のフォールバック
+     仕様が未定義です。
+      .work/docs/spec-detail/phase25-rebase-extension.md:6  .work/docs/
+     spec-detail/phase25-rebase-extension.md:32
+     Phase 24 では非対応フラグを検知して退避する設計でしたが、Phase 25
+     には同等の互換方針がありません。環境差で rebase が即失敗するリスク
+     があります。
+     少なくとも「unsupported flag 検出 → 明示エラー通知」か「-b は -s 案
+     内へ退避」のどちらかを仕様に入れるのが安全です。
+  2. Medium: skip_emptied の状態リセット条件が曖昧です。
+      .work/docs/spec-detail/phase25-rebase-extension.md:164  .work/
+     docs/spec-detail/phase25-rebase-extension.md:223
+     LogView に bool を持つだけだと、前回 ON の状態が次回 rebase 開始時
+     に残る可能性があります。
+     「rebase 開始時に false」「Confirm/Cancel 時に false」に固定する旨
+     を明記した方がよいです。
+  3. Medium: テスト計画が機能追加に対して不足しています。
+      .work/docs/spec-detail/phase25-rebase-extension.md:230
+     現状は mode/トグルの単体のみで、以下の回帰を捕まえにくいです。
+
+  - LogAction::Rebase に skip_emptied が正しく載るか（入力層）
+  - mode ごとの executor 引数組み立て（-r/-s/-b/-A/-B + --skip-emptied）
+  - Esc/確定後の skip_emptied リセット
+
+  全体方針（-b 追加＋トグル UI）は良いです。上記3点を SoW に追記すれば、
+  実装時の事故はかなり減らせます。
+
+---
+
+追加で1点だけ実装時注意です。
+  -b 非対応時の案内通知は、src/app/actions.rs の rebase 実行失敗分岐で
+  self.error_message ではなく notification（warning/info） に寄せると UX
+  が揃います（Phase 24 のフォールバック系と一貫）。
+
+実装お願いします
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the conversation:
+
+1. **Session Start**: This is a continuation from a previous session. The summary indicates Phase 24 (Push/Fetch Options Extension) was being implemented and tested.
+
+2. **Test Repository Recreation**: The user asked to recreate the test repository situation at `mytest-private-repository`. I cleaned up old bookmarks and created:
+   - `test-private` (wokltnmu) with description "private-test-commit" 
+   - `test-empty-desc` (lumtpvnz) with no description
+   - Config: `git.private-commits = "description(substring:'private-test-commit')"`
+
+3. **User tested push flow**: Asked "origin選択するとPush bookmark 'test-private'?と聞かれるけど正しい?" - I confirmed this is correct behavior.
+
+4. **Display shift bug**: User reported "y押した時点でズレた。Refreshしてもなおらない" - display corruption when pressing 'y' on the confirm dialog.
+
+5. **Root cause investigation**: Found `eprintln!` in `executor.rs:139` (debug build only) that writes to stderr during TUI raw mode, corrupting terminal display. User confirmed they use `cargo run` (debug build). Push commands take >100ms (network I/O) so the perf logging always triggers.
+
+6. **Fix**: Removed the `#[cfg(debug_assertions)]` perf logging block from `executor.rs`. All tests pass (666 total).
+
+7. **Re-test**: User confirmed "1,2 ok" for private push and empty-desc push. Also confirmed "3. Fetch --branchはうごいた".
+
+8. **Commit & Release**: 
+   - Committed Phase 24 changes
+   - Updated plan.md, README.md, bumped version to 0.3.39
+   - Pushed via jj and tagged v0.3.39
+
+9. **Next work candidates**: User asked for next work candidates. I presented 6 options. User chose "rebase 拡張".
+
+10. **SoW Creation**: Created `.work/docs/spec-detail/phase25-rebase-extension.md` with:
+    - Branch mode (`-b`): rebase entire branch
+    - `--skip-emptied`: auto-abandon empty commits after rebase
+
+11. **Code Review Feedback (3 points)**:
+    - High: Missing fallback for unsupported jj versions
+    - Medium: skip_emptied state reset conditions ambiguous
+    - Medium: Test plan insufficient
+
+12. **Additional feedback**: `-b` unsupported notification should use `notification` (not `error_message`) for UX consistency with Phase 24.
+
+13. **Implementation started** (Phase 25):
+    - **Step 1** (completed): Added constants `BRANCH_SHORT="-b"`, `SKIP_EMPTIED="--skip-emptied"` to `constants.rs`. Added `rebase_branch()` and all 5 `_with_flags()` methods to `executor.rs`.
+    
+    - **Step 2** (completed): Added `RebaseMode::Branch` variant. Added `b` key handler in `input.rs`. Updated render title, keys hints, help text, and `execute_rebase` dispatch.
+    
+    - **Step 3** (in progress): Added `skip_emptied: bool` to LogView, reset on start/confirm/cancel. Added to `LogAction::Rebase`. Added `S` toggle in RebaseSelect. Updated `HintContext` with `skip_emptied` field. Made hints dynamic via `rebase_select_hints()` function. Updated existing tests to use `..` pattern for new field. Updated `execute_rebase` signature to accept `skip_emptied` with full fallback logic + `notify_rebase_success` helper.
+    
+    - **Step 4** (pending): Fallback + tests - `is_rebase_flag_unsupported()` function not yet implemented.
+
+14. **Where it stopped**: Was about to edit `src/app/render.rs` to add `skip_emptied` to `build_hint_context()` but got "File has not been read yet" error. Also missing:
+    - `is_rebase_flag_unsupported()` function in `actions.rs`
+    - HintContext `skip_emptied` population in `render.rs`
+    - HintContext needs `Default` derive or manual implementation with the new field
+    - Tests for Phase 25
+
+Key files modified so far in Phase 25:
+- `src/jj/constants.rs` - BRANCH_SHORT, SKIP_EMPTIED
+- `src/jj/executor.rs` - rebase_branch, 5x _with_flags methods
+- `src/ui/views/log/mod.rs` - RebaseMode::Branch, skip_emptied field, LogAction field, reset logic
+- `src/ui/views/log/input.rs` - 'b' handler, 'S' toggle, skip_emptied in Enter
+- `src/ui/views/log/render.rs` - Branch title
+- `src/ui/views/log/tests.rs` - Updated matches to use `..`, added 'b' to mode test
+- `src/keys.rs` - Branch hint, rebase_select_hints() function, HintContext.skip_emptied, help text
+- `src/app/actions.rs` - Full execute_rebase rewrite with skip_emptied + fallback + notify_rebase_success
+- `src/app/input.rs` - Pass skip_emptied through
+
+Compilation errors remaining:
+1. `is_rebase_flag_unsupported` not found in scope (actions.rs:2054, 2080)
+2. `render.rs` needs to be read before editing to add skip_emptied to build_hint_context
+3. HintContext might need Default updated for new bool field (but bool defaults to false, so `..HintContext::default()` should work if derive(Default) is present)
+
+Summary:
+1. Primary Request and Intent:
+   The user is implementing **Phase 25: Rebase Extension** for the Tij TUI application. This adds:
+   - Branch mode (`-b`): Rebase entire branch relative to destination's ancestors
+   - `--skip-emptied` flag: Auto-abandon commits that become empty after rebase
+   - Fallback handling for unsupported jj versions
+   
+   The SoW is at `.work/docs/spec-detail/phase25-rebase-extension.md`.
+   
+   Prior to Phase 25, Phase 24 (Push auto-retry + fetch --branch) was completed and released as v0.3.39. A display shift bug caused by `eprintln!` in debug builds was also fixed.
+
+2. Key Technical Concepts:
+   - **jj rebase modes**: `-r` (single revision), `-s` (source + descendants), `-b` (branch), `-A` (insert-after), `-B` (insert-before)
+   - **`--skip-emptied` flag**: Abandons commits that become empty after rebase
+   - **`_with_flags()` pattern**: Executor methods that accept extra CLI flags (reused from Phase 24)
+   - **Fallback for unsupported flags**: Detect "unexpected argument"/"unrecognized" errors → retry without flag or show guidance notification
+   - **skip_emptied state lifecycle**: Reset to `false` on rebase start, confirm, and cancel — never persists between rebase operations
+   - **Dynamic status bar hints**: `rebase_select_hints(skip_emptied: bool)` replaces static `REBASE_SELECT_HINTS` const
+   - **TUI raw mode + eprintln bug**: `eprintln!` in debug builds corrupts terminal display during raw mode (fixed in v0.3.39)
+   - **Notification vs error_message**: Fallback/guidance messages should use `self.notification` (info/warning) not `self.error_message` for UX consistency
+
+3. Files and Code Sections:
+
+   - **`src/jj/constants.rs`** — Added two new flag constants
+     ```rust
+     pub const BRANCH_SHORT: &str = "-b";
+     pub const SKIP_EMPTIED: &str = "--skip-emptied";
+     ```
+
+   - **`src/jj/executor.rs`** — Added 6 new methods
+     - Removed `eprintln!` debug perf logging (v0.3.39 fix)
+     - Added `rebase_branch()` for `-b` mode
+     - Added 5 `_with_flags()` methods: `rebase_with_flags`, `rebase_source_with_flags`, `rebase_branch_with_flags`, `rebase_insert_after_with_flags`, `rebase_insert_before_with_flags`
+     - All follow same pattern: build args vec, extend with extra_flags, call `self.run(&args)`
+
+   - **`src/ui/views/log/mod.rs`** — Core state changes
+     - Added `RebaseMode::Branch` variant
+     - Added `skip_emptied: bool` field to `LogView`
+     - Added `skip_emptied: bool` field to `LogAction::Rebase`
+     - Reset `skip_emptied = false` in `start_rebase_mode_select()`, `cancel_rebase_mode_select()`, `cancel_rebase_select()`
+
+   - **`src/ui/views/log/input.rs`** — Input handling
+     - Added `KeyCode::Char('b')` handler in `handle_rebase_mode_select_key` → sets `RebaseMode::Branch`
+     - Added `KeyCode::Char('S')` toggle in `handle_rebase_select_key` → toggles `skip_emptied`
+     - Enter handler now captures `skip_emptied`, resets it to false, and includes it in `LogAction::Rebase`
+
+   - **`src/ui/views/log/render.rs`** — Display
+     - Updated RebaseModeSelect title: `"(r/s/A/B)"` → `"(r/s/b/A/B)"`
+     - Added Branch mode title: `" Tij - Log View [Rebase -b: Select destination (branch)] "`
+
+   - **`src/ui/views/log/tests.rs`** — Updated existing tests
+     - All `LogAction::Rebase { source, destination, mode }` matches updated to `{ source, destination, mode, .. }` (4 occurrences)
+     - Self-rebase test: `['r', 's', 'A', 'B']` → `['r', 's', 'b', 'A', 'B']`
+
+   - **`src/keys.rs`** — Hints and help
+     - Added `skip_emptied: bool` field to `HintContext` struct
+     - Added `KeyHint { key: "b", label: "Branch", color: Color::LightBlue }` to `REBASE_MODE_SELECT_HINTS`
+     - Replaced static `REBASE_SELECT_HINTS` with dynamic `rebase_select_hints(skip_emptied: bool)` function that shows `"Skip-empty:ON"` (Green) or `"Skip-empty:OFF"` (DarkGray)
+     - Updated `log_hints()` to call `rebase_select_hints(ctx.skip_emptied)`
+     - Updated help text: `"Rebase (r/s/A/B)"` → `"Rebase (r/s/b/A/B)"`
+
+   - **`src/app/actions.rs`** — Full execute_rebase rewrite
+     - Signature changed: `execute_rebase(&mut self, source, destination, mode, skip_emptied: bool)`
+     - Builds `extra_flags` vec with `SKIP_EMPTIED` if toggled
+     - Uses original methods when no flags (no overhead), `_with_flags` when flags present
+     - Extracted `notify_rebase_success()` helper for success notification with skip_suffix
+     - Fallback logic on error:
+       - `skip_emptied && unsupported` → retry without flag + notification suffix
+       - `!skip_emptied && unsupported && Branch` → notification warning (not error_message) suggesting Source mode
+       - Other errors → `error_message`
+     - **MISSING**: `is_rebase_flag_unsupported()` function not yet added
+
+   - **`src/app/input.rs`** — Updated LogAction handler
+     - Now destructures `skip_emptied` and passes it to `execute_rebase`
+
+   - **`src/app/render.rs`** — Needs updating (NOT YET EDITED)
+     - `build_hint_context()` needs `skip_emptied: self.log_view.skip_emptied` added
+
+4. Errors and fixes:
+   - **Display shift bug (Phase 24)**: `eprintln!("[tij:perf]...")` in debug builds corrupts TUI raw mode during push (>100ms network calls). Fixed by removing the entire `#[cfg(debug_assertions)]` perf logging block from `executor.rs`.
+   - **`is_rebase_flag_unsupported` not found** (actions.rs:2054, 2080): Function referenced but not yet defined. Needs to be added in Step 4.
+   - **"File has not been read yet" error on render.rs**: Attempted to edit `src/app/render.rs` without reading it first. This was the last action before summary.
+   - **Test pattern mismatch**: Adding `skip_emptied` to `LogAction::Rebase` broke existing tests. Fixed by changing match patterns from `{ source, destination, mode }` to `{ source, destination, mode, .. }`.
+   - **User review feedback on SoW (3 points)**:
+     1. High: Added fallback for unsupported jj versions
+     2. Medium: Explicitly defined skip_emptied reset conditions
+     3. Medium: Expanded test plan significantly
+   - **User additional feedback**: `-b` unsupported notification should use `notification` not `error_message` — implemented in the execute_rebase fallback logic.
+
+5. Problem Solving:
+   - Phase 24 fully completed and released (v0.3.39)
+   - Debug build display corruption identified and fixed
+   - Phase 25 SoW created, reviewed, and updated based on 3 review points + 1 additional note
+   - Phase 25 implementation ~70% complete (Steps 1-2 done, Step 3 nearly done, Step 4 pending)
+   - Remaining: read render.rs → add skip_emptied to HintContext build → add is_rebase_flag_unsupported() → tests → compile check
+
+6. All user messages:
+   - "origin選択するとPush bookmark 'test-private'?と聞かれるけど正しい?" (asking if confirm dialog is correct)
+   - "y押した時点でズレた。Refreshしてもなおらない" (display shift bug report with screenshot)
+   - "cargo runです" (confirming debug build usage)
+   - "1,2 ok" (confirming private push + empty-desc push work)
+   - "3. Fetch --branchはうごいた（どれ選べば実際にfetchされるかわからん（" (confirming fetch --branch works)
+   - "plan.md,README更新後にcommit,push,publishして" (requesting release)
+   - "descriptionつけて実行しちゃって" (requesting to add jj description and execute push/tag commands)
+   - "次の作業候補教えて下さい" (asking for next work candidates)
+   - Chose "#: 1 rebase 拡張" and asked "SoW作成お願いします。これを実装するとどういうことができるようになりますか？"
+   - Code review with 3 points (High: fallback, Medium: reset conditions, Medium: test plan)
+   - "追加で1点だけ実装時注意です。-b 非対応時の案内通知は...notification（warning/info）に寄せると UX が揃います" + "実装お願いします"
+
+7. Pending Tasks:
+   Task list state:
+   - #15 [completed] Step 1: Constants + executor methods
+   - #16 [completed] Step 2: RebaseMode::Branch + UI
+   - #17 [in_progress] Step 3: skip_emptied toggle
+   - #18 [pending] Step 4: Fallback + Step 5: Tests
+
+   Remaining work for Phase 25:
+   - Read and edit `src/app/render.rs` to add `skip_emptied: self.log_view.skip_emptied` to `build_hint_context()`
+   - Add `is_rebase_flag_unsupported()` function to `src/app/actions.rs`
+   - Add comprehensive unit tests (Branch mode, skip_emptied toggle/reset, LogAction field, executor args, fallback)
+   - Run `cargo fmt && cargo clippy && cargo test`
+   - Manual testing
+
+8. Current Work:
+   Implementing Phase 25 Step 3 (skip_emptied toggle). The last action was attempting to edit `src/app/render.rs:build_hint_context()` to add `skip_emptied: self.log_view.skip_emptied` but got "File has not been read yet" error. The file needs to be read first, then edited.
+
+   Additionally, `is_rebase_flag_unsupported()` function is referenced in `actions.rs` but not yet defined, causing compile errors at lines 2054 and 2080.
+
+9. Optional Next Step:
+   Continue Phase 25 implementation:
+   1. Read `src/app/render.rs` and add `skip_emptied` to `build_hint_context()`
+   2. Add `is_rebase_flag_unsupported()` function to `actions.rs` (near the other error detection functions like `is_private_commit_error`)
+   3. Verify compilation passes
+   4. Complete Step 4: Add unit tests
+   5. Run full test suite
+
+   The user explicitly requested "実装お願いします" (please implement) for Phase 25, and we are mid-implementation of Step 3 with Step 4 remaining.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/nakamura.shuta/.REDACTED.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+以下、実装レビュー結果です（重大度順）。
+
+  1. High -b 非対応時の案内が skip_emptied=true 経路で効かない
+     src/app/actions.rs:2053 src/app/actions.rs:2074 src/app/
+     actions.rs:2079
+     skip_emptied=true で Branch rebase を実行し、実際の失敗原因が -b 非
+     対応だった場合、
+     1回目失敗 → --skip-emptied なしで再試行 → 再試行失敗時に
+     error_message で終了、となり、-b 非対応の案内通知に到達しません。
+     SoW の「-b 非対応は案内通知」に反する経路が残っています。
+  2. Medium conflict 時の Warning が Info に上書きされる
+     src/app/actions.rs:2065 src/app/actions.rs:2066
+     --skip-emptied 非対応リトライ成功時、notify_rebase_success() が
+     conflict を Warning で設定しても、その直後に
+     Notification::info(...) で必ず上書きされます。
+     結果として「conflict あり」の重要度が下がる回帰があります。
+  3. Low (テストギャップ) execute_rebase() 本体のフォールバック分岐テス
+     トが不足
+     src/app/actions.rs:1993 src/app/actions.rs:3800
+     追加テストは is_rebase_flag_unsupported() のヘルパー中心で、上記
+     1/2 の経路を直接検証していません。
+     特に「Branch 非対応 × skip_emptied=true」「conflict + fallback」の
+     ケースを追加した方が安全です。
+
+---
+
+確認しました。今回の3点は実装として解消されています。
+
+  - -b 非対応の再試行失敗時に案内通知へ到達する分岐が追加済み
+    src/app/actions.rs:2076
+  - --skip-emptied フォールバック時に通知 severity を保持する実装へ変更
+    済み
+    src/app/actions.rs:2068 src/app/actions.rs:2073
+  - 追加テスト3件も存在し、個別実行で pass を確認しました
+    src/app/actions.rs:3866 src/app/actions.rs:3880 src/app/
+    actions.rs:3903
+
+  残タスクとしては、Low で1点だけです。
+  今回の3テストは主に分岐条件・通知生成ロジックの検証で、
+  execute_rebase() 全体の振る舞い（App状態遷移込み）を直接叩く形ではない
+  ため、将来の回帰検知力はやや弱めです。必要なら App レベルの1本を追加す
+  るとより堅くなります。
+
+---
+
+おわったら動作確認方法教えて下さい。
+
+---
+
+pwd
+/Users/nakamura.shuta/dev/playground/anything/mytest-private-repository
+でどう確認すればよい
+
+---
+
+[Request interrupted by user]
+
+---
+
+どう？
+
+---
+
+branch-test-Aってどれ？
+
+---
+
+テスト1やりました。Success: Rebased branch successfully
+あってる？
+
+---
+
+Success: Rebased successfully (empty commits skipped)
+テスト２.
+
+---
+
+[]
+
+---
+
+[Request interrupted by user]
+
+---
+
+「?」 ok
+
+---
+
+ok
+
+---
+
+plan.md,README更新後にcommit,push,publishしてください。区切りがいいので、バージョンは0.4.0にしてください
