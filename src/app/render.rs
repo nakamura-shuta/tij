@@ -81,6 +81,7 @@ impl App {
             has_bookmarks: change.is_some_and(|c| !c.bookmarks.is_empty()),
             has_conflicts: change.is_some_and(|c| c.has_conflict),
             is_working_copy: change.is_some_and(|c| c.is_working_copy),
+            skip_emptied: self.log_view.skip_emptied,
             dialog: self.dialog_hint_kind(),
             ..HintContext::default()
         }

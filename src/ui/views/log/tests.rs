@@ -851,7 +851,7 @@ fn test_rebase_action_revision_mode() {
     // Press Enter to confirm
     let action = press_key(&mut view, KeyCode::Enter);
     assert!(
-        matches!(action, LogAction::Rebase { source, destination, mode }
+        matches!(action, LogAction::Rebase { source, destination, mode, .. }
         if source == "abc12345" && destination == "xyz98765" && mode == RebaseMode::Revision)
     );
     assert_eq!(view.input_mode, InputMode::Normal);
@@ -973,7 +973,7 @@ fn test_rebase_source_mode_action() {
 
     let action = press_key(&mut view, KeyCode::Enter);
     assert!(
-        matches!(action, LogAction::Rebase { source, destination, mode }
+        matches!(action, LogAction::Rebase { source, destination, mode, .. }
         if source == "abc12345" && destination == "xyz98765" && mode == RebaseMode::Source)
     );
 }
@@ -990,7 +990,7 @@ fn test_rebase_insert_after_action() {
 
     let action = press_key(&mut view, KeyCode::Enter);
     assert!(
-        matches!(action, LogAction::Rebase { source, destination, mode }
+        matches!(action, LogAction::Rebase { source, destination, mode, .. }
         if source == "abc12345" && destination == "xyz98765" && mode == RebaseMode::InsertAfter)
     );
 }
@@ -1007,7 +1007,7 @@ fn test_rebase_insert_before_action() {
 
     let action = press_key(&mut view, KeyCode::Enter);
     assert!(
-        matches!(action, LogAction::Rebase { source, destination, mode }
+        matches!(action, LogAction::Rebase { source, destination, mode, .. }
         if source == "abc12345" && destination == "xyz98765" && mode == RebaseMode::InsertBefore)
     );
 }
@@ -1015,7 +1015,7 @@ fn test_rebase_insert_before_action() {
 #[test]
 fn test_rebase_self_select_blocked_all_modes() {
     // Test that selecting self as destination is blocked in all modes
-    for mode_key in ['r', 's', 'A', 'B'] {
+    for mode_key in ['r', 's', 'b', 'A', 'B'] {
         let mut view = LogView::new();
         view.set_changes(create_test_changes());
 
@@ -1863,4 +1863,151 @@ fn test_reverse_ignored_in_special_modes() {
     assert_eq!(view.input_mode, InputMode::SquashSelect);
     let action = press_key(&mut view, keys::LOG_REVERSE);
     assert_eq!(action, LogAction::None);
+}
+
+// =============================================================================
+// Rebase Branch mode tests (b key)
+// =============================================================================
+
+#[test]
+fn test_rebase_mode_select_b_enters_branch() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    assert_eq!(view.input_mode, InputMode::RebaseModeSelect);
+
+    press_key(&mut view, KeyCode::Char('b'));
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+    assert_eq!(view.rebase_mode, RebaseMode::Branch);
+}
+
+#[test]
+fn test_rebase_branch_mode_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // R -> b -> navigate -> Enter
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('b'));
+    press_key(&mut view, keys::MOVE_DOWN);
+
+    let action = press_key(&mut view, KeyCode::Enter);
+    assert!(
+        matches!(action, LogAction::Rebase { source, destination, mode, .. }
+        if source == "abc12345" && destination == "xyz98765" && mode == RebaseMode::Branch)
+    );
+}
+
+// =============================================================================
+// skip_emptied toggle tests (S key in RebaseSelect)
+// =============================================================================
+
+#[test]
+fn test_skip_emptied_toggle_in_rebase_select() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode -> Revision
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+    assert!(!view.skip_emptied); // default false
+
+    // Toggle ON
+    press_key(&mut view, KeyCode::Char('S'));
+    assert!(view.skip_emptied);
+
+    // Toggle OFF
+    press_key(&mut view, KeyCode::Char('S'));
+    assert!(!view.skip_emptied);
+}
+
+#[test]
+fn test_skip_emptied_included_in_rebase_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode -> Revision -> toggle skip_emptied ON
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    press_key(&mut view, KeyCode::Char('S'));
+    assert!(view.skip_emptied);
+
+    // Navigate and confirm
+    press_key(&mut view, keys::MOVE_DOWN);
+    let action = press_key(&mut view, KeyCode::Enter);
+    assert!(matches!(
+        action,
+        LogAction::Rebase {
+            skip_emptied: true,
+            ..
+        }
+    ));
+
+    // After confirm, skip_emptied should be reset
+    assert!(!view.skip_emptied);
+}
+
+#[test]
+fn test_skip_emptied_reset_on_rebase_start() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Manually set skip_emptied to true (simulate leftover from previous session)
+    view.skip_emptied = true;
+
+    // Enter rebase mode — should reset
+    press_key(&mut view, keys::REBASE);
+    assert!(!view.skip_emptied);
+}
+
+#[test]
+fn test_skip_emptied_reset_on_cancel_from_mode_select() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode, toggle skip_emptied manually
+    press_key(&mut view, keys::REBASE);
+    view.skip_emptied = true;
+
+    // Cancel from RebaseModeSelect
+    press_key(&mut view, keys::ESC);
+    assert!(!view.skip_emptied);
+}
+
+#[test]
+fn test_skip_emptied_reset_on_cancel_from_rebase_select() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode -> Revision -> toggle ON
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    press_key(&mut view, KeyCode::Char('S'));
+    assert!(view.skip_emptied);
+
+    // Cancel from RebaseSelect
+    press_key(&mut view, keys::ESC);
+    assert!(!view.skip_emptied);
+}
+
+#[test]
+fn test_skip_emptied_false_in_action_when_not_toggled() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode -> Revision (no toggle)
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    press_key(&mut view, keys::MOVE_DOWN);
+
+    let action = press_key(&mut view, KeyCode::Enter);
+    assert!(matches!(
+        action,
+        LogAction::Rebase {
+            skip_emptied: false,
+            ..
+        }
+    ));
 }

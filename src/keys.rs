@@ -368,7 +368,7 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     },
     KeyBindEntry {
         key: "R",
-        description: "Rebase (r/s/A/B)",
+        description: "Rebase (r/s/b/A/B)",
     },
     KeyBindEntry {
         key: "B",
@@ -811,6 +811,8 @@ pub struct HintContext {
     pub dialog: Option<DialogHintKind>,
     /// Selected bookmark kind (Bookmark View only)
     pub selected_bookmark_kind: Option<BookmarkKind>,
+    /// Whether --skip-emptied is toggled ON in rebase select mode
+    pub skip_emptied: bool,
 }
 
 /// Dialog kind for hint selection
@@ -862,7 +864,7 @@ fn log_hints(input_mode: InputMode, ctx: &HintContext) -> Vec<KeyHint> {
         InputMode::Normal => log_normal_hints(ctx),
         InputMode::SquashSelect => vec![HINT_NAV, HINT_SQUASH_CONFIRM, HINT_CANCEL],
         InputMode::RebaseModeSelect => REBASE_MODE_SELECT_HINTS.to_vec(),
-        InputMode::RebaseSelect => REBASE_SELECT_HINTS.to_vec(),
+        InputMode::RebaseSelect => rebase_select_hints(ctx.skip_emptied),
         InputMode::CompareSelect => COMPARE_SELECT_HINTS.to_vec(),
         InputMode::SearchInput
         | InputMode::RevsetInput
@@ -965,6 +967,11 @@ pub const REBASE_MODE_SELECT_HINTS: &[KeyHint] = &[
         color: Color::Magenta,
     },
     KeyHint {
+        key: "b",
+        label: "Branch",
+        color: Color::LightBlue,
+    },
+    KeyHint {
         key: "A",
         label: "After",
         color: Color::Cyan,
@@ -981,24 +988,41 @@ pub const REBASE_MODE_SELECT_HINTS: &[KeyHint] = &[
     },
 ];
 
-/// RebaseSelect mode status bar hints
-pub const REBASE_SELECT_HINTS: &[KeyHint] = &[
-    KeyHint {
-        key: "j/k",
-        label: "Navigate",
-        color: Color::Blue,
-    },
-    KeyHint {
-        key: "Enter",
-        label: "Rebase",
-        color: Color::Green,
-    },
-    KeyHint {
-        key: "Esc",
-        label: "Cancel",
-        color: Color::Red,
-    },
-];
+/// Build RebaseSelect mode status bar hints (dynamic for skip-emptied state)
+fn rebase_select_hints(skip_emptied: bool) -> Vec<KeyHint> {
+    let skip_label = if skip_emptied {
+        "Skip-empty:ON"
+    } else {
+        "Skip-empty:OFF"
+    };
+    let skip_color = if skip_emptied {
+        Color::Green
+    } else {
+        Color::DarkGray
+    };
+    vec![
+        KeyHint {
+            key: "j/k",
+            label: "Navigate",
+            color: Color::Blue,
+        },
+        KeyHint {
+            key: "S",
+            label: skip_label,
+            color: skip_color,
+        },
+        KeyHint {
+            key: "Enter",
+            label: "Rebase",
+            color: Color::Green,
+        },
+        KeyHint {
+            key: "Esc",
+            label: "Cancel",
+            color: Color::Red,
+        },
+    ]
+}
 
 /// Diff view status bar hints
 pub const DIFF_VIEW_HINTS: &[KeyHint] = &[

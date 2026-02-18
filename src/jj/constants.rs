@@ -119,6 +119,10 @@ pub mod flags {
     pub const ALLOW_EMPTY_DESC: &str = "--allow-empty-description";
     /// Fetch specific branch only
     pub const BRANCH: &str = "--branch";
+    /// Rebase branch mode (short form, distinct from --branch for fetch)
+    pub const BRANCH_SHORT: &str = "-b";
+    /// Skip commits that become empty after rebase
+    pub const SKIP_EMPTIED: &str = "--skip-emptied";
 }
 
 /// Default limit for log output (no revset)

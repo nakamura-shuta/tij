@@ -345,8 +345,9 @@ impl App {
                 source,
                 destination,
                 mode,
+                skip_emptied,
             } => {
-                self.execute_rebase(&source, &destination, mode);
+                self.execute_rebase(&source, &destination, mode, skip_emptied);
             }
             LogAction::Absorb => {
                 self.execute_absorb();

@@ -673,6 +673,98 @@ impl JjExecutor {
         ])
     }
 
+    /// Run `jj rebase -b <source> -d <destination>` to rebase a branch
+    ///
+    /// Moves all commits on the branch (relative to the destination's ancestors)
+    /// to be children of the destination.
+    pub fn rebase_branch(&self, source: &str, destination: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::REBASE,
+            flags::BRANCH_SHORT,
+            source,
+            "-d",
+            destination,
+        ])
+    }
+
+    /// Run `jj rebase -r` with extra flags (e.g. --skip-emptied)
+    pub fn rebase_with_flags(
+        &self,
+        source: &str,
+        destination: &str,
+        extra_flags: &[&str],
+    ) -> Result<String, JjError> {
+        let mut args = vec![commands::REBASE, flags::REVISION, source, "-d", destination];
+        args.extend_from_slice(extra_flags);
+        self.run(&args)
+    }
+
+    /// Run `jj rebase -s` with extra flags
+    pub fn rebase_source_with_flags(
+        &self,
+        source: &str,
+        destination: &str,
+        extra_flags: &[&str],
+    ) -> Result<String, JjError> {
+        let mut args = vec![commands::REBASE, flags::SOURCE, source, "-d", destination];
+        args.extend_from_slice(extra_flags);
+        self.run(&args)
+    }
+
+    /// Run `jj rebase -b` with extra flags
+    pub fn rebase_branch_with_flags(
+        &self,
+        source: &str,
+        destination: &str,
+        extra_flags: &[&str],
+    ) -> Result<String, JjError> {
+        let mut args = vec![
+            commands::REBASE,
+            flags::BRANCH_SHORT,
+            source,
+            "-d",
+            destination,
+        ];
+        args.extend_from_slice(extra_flags);
+        self.run(&args)
+    }
+
+    /// Run `jj rebase -r -A` with extra flags
+    pub fn rebase_insert_after_with_flags(
+        &self,
+        source: &str,
+        target: &str,
+        extra_flags: &[&str],
+    ) -> Result<String, JjError> {
+        let mut args = vec![
+            commands::REBASE,
+            flags::REVISION,
+            source,
+            flags::INSERT_AFTER,
+            target,
+        ];
+        args.extend_from_slice(extra_flags);
+        self.run(&args)
+    }
+
+    /// Run `jj rebase -r -B` with extra flags
+    pub fn rebase_insert_before_with_flags(
+        &self,
+        source: &str,
+        target: &str,
+        extra_flags: &[&str],
+    ) -> Result<String, JjError> {
+        let mut args = vec![
+            commands::REBASE,
+            flags::REVISION,
+            source,
+            flags::INSERT_BEFORE,
+            target,
+        ];
+        args.extend_from_slice(extra_flags);
+        self.run(&args)
+    }
+
     /// Check if a specific change has conflicts
     ///
     /// Uses `jj log -r <change_id> -T 'conflict'` to query the conflict status.

@@ -288,6 +288,11 @@ impl LogView {
                 self.input_mode = InputMode::RebaseSelect;
                 LogAction::None
             }
+            KeyCode::Char('b') => {
+                self.rebase_mode = RebaseMode::Branch;
+                self.input_mode = InputMode::RebaseSelect;
+                LogAction::None
+            }
             KeyCode::Char('A') => {
                 self.rebase_mode = RebaseMode::InsertAfter;
                 self.input_mode = InputMode::RebaseSelect;
@@ -330,6 +335,11 @@ impl LogView {
                 self.move_to_bottom();
                 LogAction::None
             }
+            // Toggle --skip-emptied
+            KeyCode::Char('S') => {
+                self.skip_emptied = !self.skip_emptied;
+                LogAction::None
+            }
             // Confirm rebase
             KeyCode::Enter => {
                 if let (Some(source), Some(dest_change)) =
@@ -343,13 +353,16 @@ impl LogView {
                     }
 
                     let mode = self.rebase_mode;
+                    let skip_emptied = self.skip_emptied;
                     self.rebase_source = None;
                     self.rebase_mode = RebaseMode::default();
+                    self.skip_emptied = false;
                     self.input_mode = InputMode::Normal;
                     LogAction::Rebase {
                         source,
                         destination,
                         mode,
+                        skip_emptied,
                     }
                 } else {
                     LogAction::None

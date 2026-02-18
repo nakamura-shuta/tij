@@ -88,7 +88,7 @@ impl LogView {
     fn build_title(&self) -> Line<'static> {
         // Special title for RebaseModeSelect mode
         if self.input_mode == InputMode::RebaseModeSelect {
-            return Line::from(" Tij - Log View [Rebase: Select mode (r/s/A/B)] ")
+            return Line::from(" Tij - Log View [Rebase: Select mode (r/s/b/A/B)] ")
                 .bold()
                 .yellow()
                 .centered();
@@ -101,6 +101,9 @@ impl LogView {
                 RebaseMode::Source => {
                     " Tij - Log View [Rebase -s: Select destination (with descendants)] "
                         .to_string()
+                }
+                RebaseMode::Branch => {
+                    " Tij - Log View [Rebase -b: Select destination (branch)] ".to_string()
                 }
                 RebaseMode::InsertAfter => {
                     " Tij - Log View [Rebase: Select insert-after target] ".to_string()

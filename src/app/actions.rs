@@ -1981,56 +1981,167 @@ impl App {
 
     /// Execute rebase with specified mode
     ///
-    /// Supports four modes:
+    /// Supports five modes:
     /// - `Revision` (`-r`): Move single change, descendants rebased onto parent
     /// - `Source` (`-s`): Move change and all descendants together
+    /// - `Branch` (`-b`): Move entire branch relative to destination's ancestors
     /// - `InsertAfter` (`-A`): Insert change after target in history
     /// - `InsertBefore` (`-B`): Insert change before target in history
-    pub(crate) fn execute_rebase(&mut self, source: &str, destination: &str, mode: RebaseMode) {
+    ///
+    /// When `skip_emptied` is true, `--skip-emptied` is appended.
+    /// On unsupported flag errors, retries without the flag or shows guidance.
+    pub(crate) fn execute_rebase(
+        &mut self,
+        source: &str,
+        destination: &str,
+        mode: RebaseMode,
+        skip_emptied: bool,
+    ) {
         // Prevent rebasing to self
         if source == destination {
             self.notification = Some(Notification::warning("Cannot rebase to itself"));
             return;
         }
 
-        let result = match mode {
-            RebaseMode::Revision => self.jj.rebase(source, destination),
-            RebaseMode::Source => self.jj.rebase_source(source, destination),
-            RebaseMode::InsertAfter => self.jj.rebase_insert_after(source, destination),
-            RebaseMode::InsertBefore => self.jj.rebase_insert_before(source, destination),
+        let extra_flags: Vec<&str> = if skip_emptied {
+            vec![crate::jj::constants::flags::SKIP_EMPTIED]
+        } else {
+            vec![]
+        };
+
+        let result = if extra_flags.is_empty() {
+            // No extra flags: use original methods (no allocation overhead)
+            match mode {
+                RebaseMode::Revision => self.jj.rebase(source, destination),
+                RebaseMode::Source => self.jj.rebase_source(source, destination),
+                RebaseMode::Branch => self.jj.rebase_branch(source, destination),
+                RebaseMode::InsertAfter => self.jj.rebase_insert_after(source, destination),
+                RebaseMode::InsertBefore => self.jj.rebase_insert_before(source, destination),
+            }
+        } else {
+            match mode {
+                RebaseMode::Revision => {
+                    self.jj.rebase_with_flags(source, destination, &extra_flags)
+                }
+                RebaseMode::Source => {
+                    self.jj
+                        .rebase_source_with_flags(source, destination, &extra_flags)
+                }
+                RebaseMode::Branch => {
+                    self.jj
+                        .rebase_branch_with_flags(source, destination, &extra_flags)
+                }
+                RebaseMode::InsertAfter => {
+                    self.jj
+                        .rebase_insert_after_with_flags(source, destination, &extra_flags)
+                }
+                RebaseMode::InsertBefore => {
+                    self.jj
+                        .rebase_insert_before_with_flags(source, destination, &extra_flags)
+                }
+            }
         };
 
         match result {
             Ok(output) => {
-                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
-
-                // Unified conflict detection from jj output
-                let has_conflict = output.to_lowercase().contains("conflict");
-                let notification = if has_conflict {
-                    Notification::warning("Rebased with conflicts - resolve with jj resolve")
-                } else {
-                    let msg = match mode {
-                        RebaseMode::Revision => "Rebased successfully".to_string(),
-                        RebaseMode::Source => {
-                            "Rebased source and descendants successfully".to_string()
-                        }
-                        RebaseMode::InsertAfter => {
-                            let short = &destination[..8.min(destination.len())];
-                            format!("Inserted after {} successfully", short)
-                        }
-                        RebaseMode::InsertBefore => {
-                            let short = &destination[..8.min(destination.len())];
-                            format!("Inserted before {} successfully", short)
-                        }
-                    };
-                    Notification::success(msg)
-                };
-                self.notification = Some(notification);
+                self.notify_rebase_success(&output, destination, mode, skip_emptied);
             }
             Err(e) => {
-                self.error_message = Some(format!("Rebase failed: {}", e));
+                let err_msg = format!("{}", e);
+
+                if skip_emptied && is_rebase_flag_unsupported(&err_msg) {
+                    // --skip-emptied (or mode flag) caused failure, retry without it
+                    let retry = match mode {
+                        RebaseMode::Revision => self.jj.rebase(source, destination),
+                        RebaseMode::Source => self.jj.rebase_source(source, destination),
+                        RebaseMode::Branch => self.jj.rebase_branch(source, destination),
+                        RebaseMode::InsertAfter => self.jj.rebase_insert_after(source, destination),
+                        RebaseMode::InsertBefore => {
+                            self.jj.rebase_insert_before(source, destination)
+                        }
+                    };
+                    match retry {
+                        Ok(output) => {
+                            self.notify_rebase_success(&output, destination, mode, false);
+                            // Append skip-emptied note, preserving severity
+                            // (e.g., Warning for conflicts must not be downgraded to Info)
+                            if let Some(existing) = self.notification.take() {
+                                let new_msg = format!(
+                                    "{} (--skip-emptied not supported, empty commits may remain)",
+                                    existing.message
+                                );
+                                self.notification = Some(Notification::new(new_msg, existing.kind));
+                            }
+                        }
+                        Err(e2) => {
+                            // Retry also failed — if mode is Branch and error is still
+                            // "unsupported flag", the real issue is -b not being supported
+                            let retry_msg = format!("{}", e2);
+                            if mode == RebaseMode::Branch && is_rebase_flag_unsupported(&retry_msg)
+                            {
+                                self.notification = Some(Notification::warning(
+                                    "Branch mode (-b) not supported in this jj version. Use Source mode (-s) instead.",
+                                ));
+                            } else {
+                                self.error_message = Some(format!("Rebase failed: {}", e2));
+                            }
+                        }
+                    }
+                } else if is_rebase_flag_unsupported(&err_msg) {
+                    // No skip_emptied — flag unsupported (e.g., -b not supported)
+                    if mode == RebaseMode::Branch {
+                        self.notification = Some(Notification::warning(
+                            "Branch mode (-b) not supported in this jj version. Use Source mode (-s) instead.",
+                        ));
+                    } else {
+                        self.error_message = Some(format!("Rebase failed: {}", e));
+                    }
+                } else {
+                    self.error_message = Some(format!("Rebase failed: {}", e));
+                }
             }
         }
+    }
+
+    /// Build and set notification for successful rebase
+    fn notify_rebase_success(
+        &mut self,
+        output: &str,
+        destination: &str,
+        mode: RebaseMode,
+        skip_emptied: bool,
+    ) {
+        self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
+
+        let skip_suffix = if skip_emptied {
+            " (empty commits skipped)"
+        } else {
+            ""
+        };
+
+        // Unified conflict detection from jj output
+        let has_conflict = output.to_lowercase().contains("conflict");
+        let notification = if has_conflict {
+            Notification::warning("Rebased with conflicts - resolve with jj resolve")
+        } else {
+            let msg = match mode {
+                RebaseMode::Revision => format!("Rebased successfully{}", skip_suffix),
+                RebaseMode::Source => {
+                    format!("Rebased source and descendants successfully{}", skip_suffix)
+                }
+                RebaseMode::Branch => format!("Rebased branch successfully{}", skip_suffix),
+                RebaseMode::InsertAfter => {
+                    let short = &destination[..8.min(destination.len())];
+                    format!("Inserted after {} successfully{}", short, skip_suffix)
+                }
+                RebaseMode::InsertBefore => {
+                    let short = &destination[..8.min(destination.len())];
+                    format!("Inserted before {} successfully{}", short, skip_suffix)
+                }
+            };
+            Notification::success(msg)
+        };
+        self.notification = Some(notification);
     }
 
     /// Handle dialog result
@@ -2797,6 +2908,18 @@ fn is_revisions_unsupported_error(err_msg: &str) -> bool {
         || lower.contains("unknown flag")
         || lower.contains("unknown option");
     mentions_revisions && is_unknown_flag
+}
+
+/// Check if a rebase error indicates an unsupported flag
+///
+/// Older jj versions may not support `--skip-emptied` or `-b`.
+/// Detects generic "unexpected argument" / "unrecognized" errors.
+fn is_rebase_flag_unsupported(err_msg: &str) -> bool {
+    let lower = err_msg.to_lowercase();
+    lower.contains("unexpected argument")
+        || lower.contains("unrecognized")
+        || lower.contains("unknown flag")
+        || lower.contains("unknown option")
 }
 
 /// Check if a push error indicates a private commit
@@ -3684,5 +3807,111 @@ mod tests {
         let msg = "Won't push commit abc123 since it is private\nWon't push commit def456 since it has no description";
         assert!(is_private_commit_error(msg));
         assert!(is_empty_description_error(msg));
+    }
+
+    // =========================================================================
+    // is_rebase_flag_unsupported tests
+    // =========================================================================
+
+    #[test]
+    fn test_rebase_flag_unsupported_unexpected_argument() {
+        assert!(is_rebase_flag_unsupported(
+            "error: unexpected argument '--skip-emptied'"
+        ));
+    }
+
+    #[test]
+    fn test_rebase_flag_unsupported_unrecognized() {
+        assert!(is_rebase_flag_unsupported(
+            "error: unrecognized option '-b'"
+        ));
+    }
+
+    #[test]
+    fn test_rebase_flag_unsupported_unknown_flag() {
+        assert!(is_rebase_flag_unsupported(
+            "error: unknown flag '--skip-emptied'"
+        ));
+    }
+
+    #[test]
+    fn test_rebase_flag_unsupported_unknown_option() {
+        assert!(is_rebase_flag_unsupported(
+            "error: unknown option '--skip-emptied'"
+        ));
+    }
+
+    #[test]
+    fn test_rebase_flag_unsupported_false_for_normal_error() {
+        assert!(!is_rebase_flag_unsupported(
+            "Error: Revision abc123 is not reachable from destination"
+        ));
+    }
+
+    #[test]
+    fn test_rebase_flag_unsupported_false_for_conflict() {
+        assert!(!is_rebase_flag_unsupported(
+            "Rebase produced conflict in src/main.rs"
+        ));
+    }
+
+    // =========================================================================
+    // Rebase fallback: Branch unsupported × skip_emptied=true (Issue #1)
+    // =========================================================================
+
+    /// When both `-b` and `--skip-emptied` are unsupported, the retry (without
+    /// `--skip-emptied`) also fails with "unsupported flag" for `-b`.
+    /// The handler must detect this and show the Branch guidance notification.
+    #[test]
+    fn test_rebase_branch_unsupported_detected_on_retry_error() {
+        // Simulates: first error = "--skip-emptied unsupported", retry error = "-b unsupported"
+        let retry_msg = "error: unexpected argument '-b'";
+        assert!(is_rebase_flag_unsupported(retry_msg));
+        // In execute_rebase, mode == Branch && unsupported → guidance notification (not error_message)
+    }
+
+    // =========================================================================
+    // Rebase fallback: notification severity preservation (Issue #2)
+    // =========================================================================
+
+    /// When --skip-emptied retry succeeds with conflicts, notify_rebase_success
+    /// sets a Warning. The skip-emptied suffix must preserve Warning severity.
+    #[test]
+    fn test_notification_severity_preserved_on_skip_emptied_fallback() {
+        use crate::model::{Notification, NotificationKind};
+
+        // Simulate: notify_rebase_success set a Warning for conflicts
+        let existing = Notification::warning("Rebased with conflicts - resolve with jj resolve");
+        assert_eq!(existing.kind, NotificationKind::Warning);
+
+        // The fallback code takes the existing notification and creates a new one
+        // preserving the kind
+        let new_msg = format!(
+            "{} (--skip-emptied not supported, empty commits may remain)",
+            existing.message
+        );
+        let result = Notification::new(new_msg, existing.kind);
+
+        // Severity must remain Warning (not downgraded to Info)
+        assert_eq!(result.kind, NotificationKind::Warning);
+        assert!(result.message.contains("conflicts"));
+        assert!(result.message.contains("--skip-emptied not supported"));
+    }
+
+    /// When --skip-emptied retry succeeds without conflicts, severity is Success.
+    #[test]
+    fn test_notification_severity_success_on_skip_emptied_fallback() {
+        use crate::model::{Notification, NotificationKind};
+
+        let existing = Notification::success("Rebased successfully");
+        let new_msg = format!(
+            "{} (--skip-emptied not supported, empty commits may remain)",
+            existing.message
+        );
+        let result = Notification::new(new_msg, existing.kind);
+
+        assert_eq!(result.kind, NotificationKind::Success);
+        assert!(result.message.contains("Rebased successfully"));
+        assert!(result.message.contains("--skip-emptied not supported"));
     }
 }

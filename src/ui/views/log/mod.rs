@@ -15,6 +15,8 @@ pub enum RebaseMode {
     Revision,
     /// `-s`: Move revision and all descendants together
     Source,
+    /// `-b`: Move entire branch (relative to destination's ancestors)
+    Branch,
     /// `-A`: Insert revision after target in history
     InsertAfter,
     /// `-B`: Insert revision before target in history
@@ -105,6 +107,7 @@ pub enum LogAction {
         source: String,
         destination: String,
         mode: RebaseMode,
+        skip_emptied: bool,
     },
     /// Absorb working copy changes into ancestor commits
     Absorb,
@@ -180,6 +183,8 @@ pub struct LogView {
     pub(crate) compare_from: Option<String>,
     /// Whether to display log in reversed order (oldest first)
     pub(crate) reversed: bool,
+    /// Whether to pass --skip-emptied on rebase (toggled with S in RebaseSelect)
+    pub(crate) skip_emptied: bool,
 }
 
 pub mod empty_text {
@@ -296,6 +301,7 @@ impl LogView {
 
         if let Some(change_id) = change_id {
             self.rebase_source = Some(change_id);
+            self.skip_emptied = false;
             self.input_mode = InputMode::RebaseModeSelect;
             true
         } else {
@@ -307,6 +313,7 @@ impl LogView {
     pub fn cancel_rebase_mode_select(&mut self) {
         self.rebase_source = None;
         self.rebase_mode = RebaseMode::default();
+        self.skip_emptied = false;
         self.input_mode = InputMode::Normal;
     }
 
@@ -330,6 +337,7 @@ impl LogView {
     pub fn cancel_rebase_select(&mut self) {
         self.rebase_source = None;
         self.rebase_mode = RebaseMode::default();
+        self.skip_emptied = false;
         self.input_mode = InputMode::Normal;
     }
 
