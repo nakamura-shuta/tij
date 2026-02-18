@@ -50,7 +50,7 @@
 - [x] Phase 17.2: Preview キャッシュ LRU + commit_id バリデーション（v0.3.37）
 - [x] Phase 17.3: 計測基盤 + compare_diff 並列化 + 競合ルール定義（v0.3.38）
 - [x] Phase 24: Push auto-retry (--allow-private / --allow-empty-description) + Fetch --branch（v0.3.39）
-- [x] Phase 25: Rebase拡張 — Branch mode (-b) + --skip-emptied + フォールバック（v0.3.40）
+- [x] Phase 25: Rebase拡張 — Branch mode (-b) + --skip-emptied + フォールバック（v0.4.0）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
@@ -123,7 +123,7 @@
 - [x] `jj bookmark`: `move`（v0.3.30 完了）
 
 ### Medium
-- [x] `jj rebase`: `--branch`（v0.3.40）, `--skip-emptied`（v0.3.40）
+- [x] `jj rebase`: `--branch`（v0.4.0）, `--skip-emptied`（v0.4.0）
 - [ ] `jj rebase`: `--revisions`, `--keep-divergent`
 - [ ] `jj diff/show` 表示オプション拡張
 
