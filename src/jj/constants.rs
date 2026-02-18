@@ -113,6 +113,12 @@ pub mod flags {
     pub const REVISIONS: &str = "--revisions";
     /// Git-compatible unified diff format
     pub const GIT_FORMAT: &str = "--git";
+    /// Allow pushing private commits
+    pub const ALLOW_PRIVATE: &str = "--allow-private";
+    /// Allow pushing commits with no description
+    pub const ALLOW_EMPTY_DESC: &str = "--allow-empty-description";
+    /// Fetch specific branch only
+    pub const BRANCH: &str = "--branch";
 }
 
 /// Default limit for log output (no revset)

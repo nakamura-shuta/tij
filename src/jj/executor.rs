@@ -121,9 +121,6 @@ impl JjExecutor {
         // which may not signal EOF properly under raw-mode terminals.
         cmd.stdin(Stdio::null());
 
-        #[cfg(debug_assertions)]
-        let start = std::time::Instant::now();
-
         let output = cmd.output().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 JjError::JjNotFound
@@ -131,14 +128,6 @@ impl JjExecutor {
                 JjError::IoError(e)
             }
         })?;
-
-        #[cfg(debug_assertions)]
-        {
-            let elapsed = start.elapsed();
-            if elapsed > std::time::Duration::from_millis(100) {
-                eprintln!("[tij:perf]\t{}\t{}ms", args.join(" "), elapsed.as_millis());
-            }
-        }
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).into_owned())
@@ -1142,6 +1131,113 @@ impl JjExecutor {
             let exit_code = output.status.code().unwrap_or(-1);
             Err(JjError::CommandFailed { stderr, exit_code })
         }
+    }
+
+    /// Run `jj git push --bookmark <name>` with extra flags (e.g. --allow-private)
+    ///
+    /// Used for retry after error detection.
+    pub fn git_push_bookmark_with_flags(
+        &self,
+        bookmark_name: &str,
+        extra_flags: &[&str],
+    ) -> Result<String, JjError> {
+        let mut args = vec![
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::BOOKMARK_FLAG,
+            bookmark_name,
+        ];
+        args.extend_from_slice(extra_flags);
+        self.run(&args)
+    }
+
+    /// Run `jj git push --bookmark <name> --remote <remote>` with extra flags
+    pub fn git_push_bookmark_to_remote_with_flags(
+        &self,
+        bookmark_name: &str,
+        remote: &str,
+        extra_flags: &[&str],
+    ) -> Result<String, JjError> {
+        let mut args = vec![
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::BOOKMARK_FLAG,
+            bookmark_name,
+            flags::REMOTE,
+            remote,
+        ];
+        args.extend_from_slice(extra_flags);
+        self.run(&args)
+    }
+
+    /// Run `jj git push --change <change_id>` with extra flags
+    pub fn git_push_change_with_flags(
+        &self,
+        change_id: &str,
+        extra_flags: &[&str],
+    ) -> Result<String, JjError> {
+        let mut args = vec![commands::GIT, commands::GIT_PUSH, flags::CHANGE, change_id];
+        args.extend_from_slice(extra_flags);
+        self.run(&args)
+    }
+
+    /// Run `jj git push --change <change_id> --remote <remote>` with extra flags
+    pub fn git_push_change_to_remote_with_flags(
+        &self,
+        change_id: &str,
+        remote: &str,
+        extra_flags: &[&str],
+    ) -> Result<String, JjError> {
+        let mut args = vec![
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::CHANGE,
+            change_id,
+            flags::REMOTE,
+            remote,
+        ];
+        args.extend_from_slice(extra_flags);
+        self.run(&args)
+    }
+
+    /// Run `jj git push --revisions <change_id>` with extra flags
+    pub fn git_push_revisions_with_flags(
+        &self,
+        change_id: &str,
+        extra_flags: &[&str],
+    ) -> Result<String, JjError> {
+        let mut args = vec![
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::REVISIONS,
+            change_id,
+        ];
+        args.extend_from_slice(extra_flags);
+        self.run(&args)
+    }
+
+    /// Run `jj git push --revisions <change_id> --remote <remote>` with extra flags
+    pub fn git_push_revisions_to_remote_with_flags(
+        &self,
+        change_id: &str,
+        remote: &str,
+        extra_flags: &[&str],
+    ) -> Result<String, JjError> {
+        let mut args = vec![
+            commands::GIT,
+            commands::GIT_PUSH,
+            flags::REVISIONS,
+            change_id,
+            flags::REMOTE,
+            remote,
+        ];
+        args.extend_from_slice(extra_flags);
+        self.run(&args)
+    }
+
+    /// Run `jj git fetch --branch <name>` to fetch a specific branch
+    pub fn git_fetch_branch(&self, branch: &str) -> Result<String, JjError> {
+        self.run(&[commands::GIT, commands::GIT_FETCH, flags::BRANCH, branch])
     }
 
     /// Run `jj git push --revisions <change_id>` to push all bookmarks on a revision

@@ -837,6 +837,10 @@ impl App {
     }
 
     /// Start fetch flow: check remotes and show dialog if multiple
+    ///
+    /// When multiple remotes exist, shows a selection dialog including
+    /// a "Specific branch..." option that opens a second dialog for
+    /// branch selection.
     pub(crate) fn start_fetch(&mut self) {
         match self.jj.git_remote_list() {
             Ok(remotes) => {
@@ -864,6 +868,11 @@ impl App {
                             selected: false,
                         });
                     }
+                    items.push(SelectItem {
+                        label: "Specific branch...".to_string(),
+                        value: "__branch__".to_string(),
+                        selected: false,
+                    });
                     self.active_dialog = Some(Dialog::select_single(
                         "Git Fetch",
                         "Select remote to fetch from:",
@@ -900,6 +909,71 @@ impl App {
                         remote => remote,
                     };
                     Notification::success(format!("Fetched from {}", source))
+                };
+                self.notification = Some(notification);
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Fetch failed: {}", e));
+            }
+        }
+    }
+
+    /// Show 2nd-step Select dialog for branch selection
+    ///
+    /// Gets local bookmark names via `jj bookmark list` and shows a Select dialog.
+    /// If no bookmarks found, falls back to default fetch with notification.
+    fn start_fetch_branch_select(&mut self) {
+        match self.jj.bookmark_list_all() {
+            Ok(bookmarks) => {
+                // Filter to local-only bookmarks (no remote)
+                let local_names: Vec<String> = bookmarks
+                    .iter()
+                    .filter(|b| b.remote.is_none())
+                    .map(|b| b.name.clone())
+                    .collect();
+
+                if local_names.is_empty() {
+                    self.notification = Some(Notification::info("No bookmarks found"));
+                    self.execute_fetch();
+                    return;
+                }
+
+                let items: Vec<SelectItem> = local_names
+                    .iter()
+                    .map(|name| SelectItem {
+                        label: name.clone(),
+                        value: name.clone(),
+                        selected: false,
+                    })
+                    .collect();
+
+                self.active_dialog = Some(Dialog::select_single(
+                    "Fetch Branch",
+                    "Select branch to fetch:",
+                    items,
+                    None,
+                    DialogCallback::GitFetchBranch,
+                ));
+            }
+            Err(_) => {
+                // Fallback to default fetch on bookmark list failure
+                self.notification =
+                    Some(Notification::info("Failed to list bookmarks, fetching all"));
+                self.execute_fetch();
+            }
+        }
+    }
+
+    /// Execute `jj git fetch --branch <name>` for a specific branch
+    fn execute_fetch_branch(&mut self, branch: &str) {
+        match self.jj.git_fetch_branch(branch) {
+            Ok(output) => {
+                self.mark_dirty_and_refresh_current(DirtyFlags::all());
+
+                let notification = if output.trim().is_empty() {
+                    Notification::info(format!("Branch '{}': already up to date", branch))
+                } else {
+                    Notification::success(format!("Fetched branch '{}'", branch))
                 };
                 self.notification = Some(notification);
             }
@@ -1122,6 +1196,7 @@ impl App {
         let mut successes = Vec::new();
         let mut errors = Vec::new();
         let mut used_allow_new = false;
+        let mut retry_notes: Vec<&str> = Vec::new();
 
         for name in bookmark_names {
             let result = if let Some(ref r) = remote {
@@ -1136,17 +1211,43 @@ impl App {
                 }
                 Err(e) => {
                     let err_msg = format!("{}", e);
-                    // Auto-retry with --allow-new if the bookmark is new on remote.
+
+                    // Detect retry-able errors and build flag list
+                    let mut extra_flags: Vec<&str> = Vec::new();
                     if is_untracked_bookmark_error(&err_msg) {
+                        extra_flags.push(crate::jj::constants::flags::ALLOW_NEW);
+                    }
+                    if is_private_commit_error(&err_msg) {
+                        extra_flags.push(crate::jj::constants::flags::ALLOW_PRIVATE);
+                    }
+                    if is_empty_description_error(&err_msg) {
+                        extra_flags.push(crate::jj::constants::flags::ALLOW_EMPTY_DESC);
+                    }
+
+                    if !extra_flags.is_empty() {
                         let retry = if let Some(ref r) = remote {
-                            self.jj.git_push_bookmark_allow_new_to_remote(name, r)
+                            self.jj
+                                .git_push_bookmark_to_remote_with_flags(name, r, &extra_flags)
                         } else {
-                            self.jj.git_push_bookmark_allow_new(name)
+                            self.jj.git_push_bookmark_with_flags(name, &extra_flags)
                         };
                         match retry {
                             Ok(_) => {
                                 successes.push(name.clone());
-                                used_allow_new = true;
+                                if extra_flags.contains(&crate::jj::constants::flags::ALLOW_NEW) {
+                                    used_allow_new = true;
+                                }
+                                if extra_flags.contains(&crate::jj::constants::flags::ALLOW_PRIVATE)
+                                    && !retry_notes.contains(&"private commit allowed")
+                                {
+                                    retry_notes.push("private commit allowed");
+                                }
+                                if extra_flags
+                                    .contains(&crate::jj::constants::flags::ALLOW_EMPTY_DESC)
+                                    && !retry_notes.contains(&"empty description allowed")
+                                {
+                                    retry_notes.push("empty description allowed");
+                                }
                                 continue;
                             }
                             Err(e2) => {
@@ -1163,18 +1264,11 @@ impl App {
         // Show result (include remote name if specified)
         if !successes.is_empty() {
             let names = successes.join(", ");
-            let msg = match (used_allow_new, remote.as_deref()) {
-                (true, Some(r)) => {
-                    format!(
-                        "Pushed bookmark: {} to {} (used deprecated --allow-new)",
-                        names, r
-                    )
-                }
-                (true, None) => {
-                    format!("Pushed bookmark: {} (used deprecated --allow-new)", names)
-                }
-                (false, Some(r)) => format!("Pushed bookmark: {} to {}", names, r),
-                (false, None) => format!("Pushed bookmark: {}", names),
+            let suffix = build_push_suffix(used_allow_new, &retry_notes);
+            let msg = if let Some(r) = remote.as_deref() {
+                format!("Pushed bookmark: {} to {}{}", names, r, suffix)
+            } else {
+                format!("Pushed bookmark: {}{}", names, suffix)
             };
             self.notification = Some(Notification::success(msg));
         }
@@ -1194,6 +1288,7 @@ impl App {
     ///
     /// Creates an automatic bookmark (push-<prefix>) and pushes it.
     /// Uses `push_target_remote` if set (consumed via `take()`).
+    /// On private/empty-description errors, retries with appropriate flags.
     pub(crate) fn execute_push_change(&mut self, change_id: &str) {
         let remote = self.push_target_remote.take();
         let result = if let Some(ref r) = remote {
@@ -1203,29 +1298,70 @@ impl App {
         };
         match result {
             Ok(output) => {
-                let bookmark_name = Self::parse_push_change_bookmark(&output, change_id);
-                let short_id = &change_id[..change_id.len().min(8)];
-                let msg = match (bookmark_name, remote.as_deref()) {
-                    (Some(name), Some(r)) => {
-                        format!(
-                            "Pushed change {} to {} (created bookmark: {})",
-                            short_id, r, name
-                        )
-                    }
-                    (Some(name), None) => {
-                        format!("Pushed change {} (created bookmark: {})", short_id, name)
-                    }
-                    (None, Some(r)) => format!("Pushed change {} to {}", short_id, r),
-                    (None, None) => format!("Pushed change {}", short_id),
-                };
-                self.notification = Some(Notification::success(msg));
-
+                self.notify_push_change_success(&output, change_id, remote.as_deref(), &[]);
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
             }
             Err(e) => {
-                self.error_message = Some(format!("Push failed: {}", e));
+                let err_msg = format!("{}", e);
+                let extra_flags = detect_push_retry_flags(&err_msg);
+
+                if !extra_flags.is_empty() {
+                    let retry = if let Some(ref r) = remote {
+                        self.jj
+                            .git_push_change_to_remote_with_flags(change_id, r, &extra_flags)
+                    } else {
+                        self.jj.git_push_change_with_flags(change_id, &extra_flags)
+                    };
+                    match retry {
+                        Ok(output) => {
+                            self.notify_push_change_success(
+                                &output,
+                                change_id,
+                                remote.as_deref(),
+                                &extra_flags,
+                            );
+                            self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
+                        }
+                        Err(e2) => {
+                            self.error_message = Some(format!("Push failed: {}", e2));
+                        }
+                    }
+                } else {
+                    self.error_message = Some(format!("Push failed: {}", e));
+                }
             }
         }
+    }
+
+    /// Build notification message for successful push --change
+    fn notify_push_change_success(
+        &mut self,
+        output: &str,
+        change_id: &str,
+        remote: Option<&str>,
+        extra_flags: &[&str],
+    ) {
+        let bookmark_name = Self::parse_push_change_bookmark(output, change_id);
+        let short_id = &change_id[..change_id.len().min(8)];
+        let notes = retry_notes_from_flags(extra_flags);
+        let suffix = build_push_suffix(false, &notes);
+        let msg = match (bookmark_name, remote) {
+            (Some(name), Some(r)) => {
+                format!(
+                    "Pushed change {} to {} (created bookmark: {}){suffix}",
+                    short_id, r, name
+                )
+            }
+            (Some(name), None) => {
+                format!(
+                    "Pushed change {} (created bookmark: {}){suffix}",
+                    short_id, name
+                )
+            }
+            (None, Some(r)) => format!("Pushed change {} to {}{suffix}", short_id, r),
+            (None, None) => format!("Pushed change {}{suffix}", short_id),
+        };
+        self.notification = Some(Notification::success(msg));
     }
 
     /// Parse the auto-created bookmark name from `jj git push --change` output
@@ -1274,8 +1410,27 @@ impl App {
                 ));
             }
             Err(e) => {
-                self.push_target_remote = None;
-                self.error_message = Some(format!("Push failed: {}", e));
+                // If dry-run fails due to private/empty-description, show confirm
+                // dialog anyway (without preview). The actual push will retry with flags.
+                let err_msg = format!("{}", e);
+                let retry_flags = detect_push_retry_flags(&err_msg);
+                if !retry_flags.is_empty() {
+                    let short_id = &change_id[..change_id.len().min(8)];
+                    self.active_dialog = Some(Dialog::confirm(
+                        "Push to Remote",
+                        format!(
+                            "Push by change ID? (creates push-{})\n(preview unavailable: will auto-retry with flags)",
+                            short_id
+                        ),
+                        Some("Remote changes cannot be undone with 'u'.".to_string()),
+                        DialogCallback::GitPushChange {
+                            change_id: change_id.to_string(),
+                        },
+                    ));
+                } else {
+                    self.push_target_remote = None;
+                    self.error_message = Some(format!("Push failed: {}", e));
+                }
             }
         }
     }
@@ -1526,6 +1681,22 @@ impl App {
                         "--revisions not supported, pushing bookmarks individually".to_string(),
                     ));
                     self.execute_push(bookmarks);
+                } else if !detect_push_retry_flags(&err_msg).is_empty() {
+                    // Dry-run failed due to private/empty-description: show confirm
+                    // dialog anyway. The actual push will retry with flags.
+                    let short_id = &change_id[..change_id.len().min(8)];
+                    self.active_dialog = Some(Dialog::confirm(
+                        "Push to Remote",
+                        format!(
+                            "Push all bookmarks on {}?\n(preview unavailable: will auto-retry with flags)",
+                            short_id
+                        ),
+                        Some("Remote changes cannot be undone with 'u'.".to_string()),
+                        DialogCallback::GitPushRevisions {
+                            change_id: change_id.to_string(),
+                            bookmarks: bookmarks.to_vec(),
+                        },
+                    ));
                 } else {
                     self.push_target_remote = None;
                     self.error_message = Some(format!("Push failed: {}", e));
@@ -1537,6 +1708,7 @@ impl App {
     /// Execute push by revisions (called after confirmation)
     ///
     /// Falls back to per-bookmark push if --revisions is not supported.
+    /// On private/empty-description errors, retries with appropriate flags.
     fn execute_push_revisions(&mut self, change_id: &str, bookmarks: &[String]) {
         let remote = self.push_target_remote.take();
         let result = if let Some(ref r) = remote {
@@ -1565,7 +1737,42 @@ impl App {
                     ));
                     self.execute_push(bookmarks);
                 } else {
-                    self.error_message = Some(format!("Push failed: {}", e));
+                    // Try private/empty-description retry
+                    let extra_flags = detect_push_retry_flags(&err_msg);
+                    if !extra_flags.is_empty() {
+                        let retry = if let Some(ref r) = remote {
+                            self.jj.git_push_revisions_to_remote_with_flags(
+                                change_id,
+                                r,
+                                &extra_flags,
+                            )
+                        } else {
+                            self.jj
+                                .git_push_revisions_with_flags(change_id, &extra_flags)
+                        };
+                        match retry {
+                            Ok(_) => {
+                                let short_id = &change_id[..change_id.len().min(8)];
+                                let notes = retry_notes_from_flags(&extra_flags);
+                                let suffix = build_push_suffix(false, &notes);
+                                let msg = if let Some(r) = remote.as_deref() {
+                                    format!(
+                                        "Pushed all bookmarks on {} to {}{}",
+                                        short_id, r, suffix
+                                    )
+                                } else {
+                                    format!("Pushed all bookmarks on {}{}", short_id, suffix)
+                                };
+                                self.notification = Some(Notification::success(msg));
+                                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
+                            }
+                            Err(e2) => {
+                                self.error_message = Some(format!("Push failed: {}", e2));
+                            }
+                        }
+                    } else {
+                        self.error_message = Some(format!("Push failed: {}", e));
+                    }
                 }
             }
         }
@@ -1941,7 +2148,16 @@ impl App {
             }
             (Some(DialogCallback::GitFetch), DialogResult::Confirmed(selected)) => {
                 if let Some(value) = selected.first() {
-                    self.execute_fetch_with_option(value);
+                    if value == "__branch__" {
+                        self.start_fetch_branch_select();
+                    } else {
+                        self.execute_fetch_with_option(value);
+                    }
+                }
+            }
+            (Some(DialogCallback::GitFetchBranch), DialogResult::Confirmed(selected)) => {
+                if let Some(branch) = selected.first() {
+                    self.execute_fetch_branch(branch);
                 }
             }
             // --- GitPushModeSelect ---
@@ -2581,6 +2797,70 @@ fn is_revisions_unsupported_error(err_msg: &str) -> bool {
         || lower.contains("unknown flag")
         || lower.contains("unknown option");
     mentions_revisions && is_unknown_flag
+}
+
+/// Check if a push error indicates a private commit
+///
+/// In jj, pushing a private commit fails with an error like:
+/// "Won't push commit abc123 since it is private"
+fn is_private_commit_error(err_msg: &str) -> bool {
+    let lower = err_msg.to_lowercase();
+    lower.contains("private") && lower.contains("won't push")
+}
+
+/// Check if a push error indicates an empty description
+///
+/// In jj, pushing a commit with no description fails with:
+/// "Won't push commit abc123 since it has no description"
+fn is_empty_description_error(err_msg: &str) -> bool {
+    let lower = err_msg.to_lowercase();
+    lower.contains("no description") && lower.contains("won't push")
+}
+
+/// Detect which retry flags are needed based on push error message
+///
+/// Returns a Vec of flag strings for use with `_with_flags` methods.
+/// Detects private commit and empty description errors simultaneously.
+fn detect_push_retry_flags(err_msg: &str) -> Vec<&'static str> {
+    let mut flags = Vec::new();
+    if is_private_commit_error(err_msg) {
+        flags.push(crate::jj::constants::flags::ALLOW_PRIVATE);
+    }
+    if is_empty_description_error(err_msg) {
+        flags.push(crate::jj::constants::flags::ALLOW_EMPTY_DESC);
+    }
+    flags
+}
+
+/// Convert retry flags into human-readable notes for notification
+fn retry_notes_from_flags<'a>(extra_flags: &[&str]) -> Vec<&'a str> {
+    let mut notes = Vec::new();
+    if extra_flags.contains(&crate::jj::constants::flags::ALLOW_PRIVATE) {
+        notes.push("private commit allowed");
+    }
+    if extra_flags.contains(&crate::jj::constants::flags::ALLOW_EMPTY_DESC) {
+        notes.push("empty description allowed");
+    }
+    notes
+}
+
+/// Build notification suffix from retry state
+///
+/// Examples:
+/// - `" (used deprecated --allow-new)"` when allow_new is true
+/// - `" (private commit allowed)"` for private retry
+/// - `" (private commit allowed + empty description allowed)"` for both
+fn build_push_suffix(used_allow_new: bool, retry_notes: &[&str]) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    if used_allow_new {
+        parts.push("used deprecated --allow-new");
+    }
+    parts.extend_from_slice(retry_notes);
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", parts.join(" + "))
+    }
 }
 
 /// Truncate a description string to max_len characters (UTF-8 safe)
@@ -3327,5 +3607,82 @@ mod tests {
             app.error_message.is_some(),
             "Expected error from jj command in test environment"
         );
+    }
+
+    // =========================================================================
+    // is_private_commit_error tests
+    // =========================================================================
+
+    #[test]
+    fn test_private_commit_error_standard() {
+        assert!(is_private_commit_error(
+            "Won't push commit abc123 since it is private"
+        ));
+    }
+
+    #[test]
+    fn test_private_commit_error_hint_format() {
+        assert!(is_private_commit_error(
+            "Hint: ... won't push commit ... private ..."
+        ));
+    }
+
+    #[test]
+    fn test_private_commit_error_lowercase() {
+        assert!(is_private_commit_error(
+            "error: won't push ... it is private"
+        ));
+    }
+
+    #[test]
+    fn test_private_commit_error_false_positive_no_push() {
+        // "private" without "won't push" → false
+        assert!(!is_private_commit_error("private key error"));
+    }
+
+    #[test]
+    fn test_private_commit_error_network_error() {
+        assert!(!is_private_commit_error("Push failed: network error"));
+    }
+
+    // =========================================================================
+    // is_empty_description_error tests
+    // =========================================================================
+
+    #[test]
+    fn test_empty_description_error_standard() {
+        assert!(is_empty_description_error(
+            "Won't push commit abc123 since it has no description"
+        ));
+    }
+
+    #[test]
+    fn test_empty_description_error_hint_format() {
+        assert!(is_empty_description_error(
+            "Hint: ... won't push commit ... no description ..."
+        ));
+    }
+
+    #[test]
+    fn test_empty_description_error_lowercase() {
+        assert!(is_empty_description_error(
+            "error: won't push ... has no description"
+        ));
+    }
+
+    #[test]
+    fn test_empty_description_error_false_positive_no_push() {
+        // "no description" without "won't push" → false
+        assert!(!is_empty_description_error(
+            "no description found in config"
+        ));
+    }
+
+    #[test]
+    fn test_both_errors_simultaneous() {
+        // Both private and empty description in same output
+        let msg = "Won't push commit abc123 since it is private\nWon't push commit def456 since it has no description";
+        assert!(is_private_commit_error(msg));
+        assert!(is_empty_description_error(msg));
     }
 }
