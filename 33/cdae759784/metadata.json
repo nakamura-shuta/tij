@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "33cdae759784",
+  "strategy": "manual-commit",
+  "checkpoints_count": 5,
+  "files_touched": [
+    ".work/docs/plan.md",
+    ".work/docs/spec-detail/phase17-3-parallel-execution.md",
+    ".work/docs/spec-detail/phase24-push-fetch-options.md",
+    ".work/docs/spec-detail/phase25-rebase-extension.md",
+    "Cargo.toml",
+    "README.md",
+    "src/app/actions.rs",
+    "src/app/input.rs",
+    "src/app/navigation.rs",
+    "src/app/refresh.rs",
+    "src/app/render.rs",
+    "src/app/state.rs",
+    "src/jj/constants.rs",
+    "src/jj/executor.rs",
+    "src/keys.rs",
+    "src/ui/components/dialog/mod.rs",
+    "src/ui/views/log/input.rs",
+    "src/ui/views/log/mod.rs",
+    "src/ui/views/log/render.rs",
+    "src/ui/views/log/tests.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/33/cdae759784/0/metadata.json",
+      "transcript": "/33/cdae759784/0/full.jsonl",
+      "context": "/33/cdae759784/0/context.md",
+      "content_hash": "/33/cdae759784/0/content_hash.txt",
+      "prompt": "/33/cdae759784/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 664,
+    "cache_creation_tokens": 249331,
+    "cache_read_tokens": 12118289,
+    "output_tokens": 7720,
+    "api_call_count": 100
+  }
+}
