@@ -111,6 +111,8 @@ pub mod flags {
     pub const ONTO: &str = "--onto";
     /// Push all bookmarks on specified revisions
     pub const REVISIONS: &str = "--revisions";
+    /// Git-compatible unified diff format
+    pub const GIT_FORMAT: &str = "--git";
 }
 
 /// Default limit for log output (no revset)

@@ -2453,28 +2453,17 @@ impl App {
         let compare_info = diff_view.compare_info.clone();
 
         // Determine filename and content based on mode
+        // Uses `jj diff --git` for git-compatible unified patch format (git apply compatible)
         let (short_id, result) = if let Some(ref ci) = compare_info {
-            // Compare mode: use diff --from --to with metadata header
+            // Compare mode: use diff --git --from --to
             let from_short = &ci.from.change_id[..ci.from.change_id.len().min(8)];
             let to_short = &ci.to.change_id[..ci.to.change_id.len().min(8)];
             let label = format!("{}_{}", from_short, to_short);
-            let diff = self.jj.diff_range(&ci.from.change_id, &ci.to.change_id);
-            let result = diff.map(|d| {
-                format!(
-                    "Compare: {} -> {}\nFrom: {} ({})\nTo:   {} ({})\n\n{}",
-                    ci.from.change_id,
-                    ci.to.change_id,
-                    ci.from.change_id,
-                    ci.from.description,
-                    ci.to.change_id,
-                    ci.to.description,
-                    d,
-                )
-            });
+            let result = self.jj.diff_range_git(&ci.from.change_id, &ci.to.change_id);
             (label, result)
         } else {
             let short = change_id[..change_id.len().min(8)].to_string();
-            let result = self.jj.show_raw(&change_id);
+            let result = self.jj.diff_git_raw(&change_id);
             (short, result)
         };
 
@@ -3339,7 +3328,7 @@ mod tests {
         app.diff_view = Some(DiffView::new_compare(DiffContent::default(), compare_info));
 
         // Export will fail (no jj repo in test), but the error reveals which path was taken.
-        // In compare mode, it should attempt `jj diff --from --to` (not `jj show`).
+        // In compare mode, it should attempt `jj diff --git --from --to`.
         app.export_diff_to_file();
 
         // Should have an error (no jj repo), confirming the code path was executed
@@ -3390,7 +3379,7 @@ mod tests {
     }
 
     #[test]
-    fn test_export_normal_mode_uses_show_raw() {
+    fn test_export_normal_mode_uses_diff_git() {
         use crate::model::DiffContent;
         use crate::ui::views::DiffView;
 
@@ -3400,7 +3389,7 @@ mod tests {
             DiffContent::default(),
         ));
 
-        // Normal mode: should attempt `jj show`
+        // Normal mode: should attempt `jj diff --git`
         app.export_diff_to_file();
         assert!(
             app.error_message.is_some(),

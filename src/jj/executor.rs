@@ -1247,11 +1247,35 @@ impl JjExecutor {
         self.run(&[commands::DIFF, flags::REVISION, change_id])
     }
 
+    /// Run `jj diff --git -r <change_id>` for git-compatible unified patch output
+    ///
+    /// Produces output suitable for `git apply`.
+    pub fn diff_git_raw(&self, change_id: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::DIFF,
+            flags::GIT_FORMAT,
+            flags::REVISION,
+            change_id,
+        ])
+    }
+
     /// Run `jj diff --from <from> --to <to>` to compare two revisions
     ///
     /// Returns the raw diff output between the two revisions.
     pub fn diff_range(&self, from: &str, to: &str) -> Result<String, JjError> {
         self.run(&[commands::DIFF, flags::FROM, from, flags::TO, to])
+    }
+
+    /// Run `jj diff --git --from <from> --to <to>` for git-compatible unified patch
+    pub fn diff_range_git(&self, from: &str, to: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::DIFF,
+            flags::GIT_FORMAT,
+            flags::FROM,
+            from,
+            flags::TO,
+            to,
+        ])
     }
 
     /// Get metadata for a specific change (for compare info)
