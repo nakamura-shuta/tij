@@ -142,14 +142,14 @@ impl JjExecutor {
 
             // jj exits with code 1 when snapshot warnings are present
             // (e.g., large files exceeding snapshot.max-new-file-size)
-            // but still may produce valid stdout.
+            // but the command itself may have succeeded.
             //
-            // Most commands require non-empty stdout to treat this as success.
-            // `jj show` is a special case: empty commits legitimately produce
-            // empty stdout (no diff lines), so allow empty stdout only for show.
+            // The snapshot is a pre-command operation; its failure does not
+            // mean the command failed. Treat "Refused to snapshot" as
+            // non-fatal for all commands — the proper fix is configuring
+            // .jjignore or snapshot.max-new-file-size in the repository.
             let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-            let is_show = args.first().is_some_and(|a| *a == commands::SHOW);
-            if stderr.contains("Refused to snapshot") && (!stdout.is_empty() || is_show) {
+            if stderr.contains("Refused to snapshot") {
                 return Ok(stdout);
             }
 
@@ -791,6 +791,14 @@ impl JjExecutor {
     /// Returns the command output which describes what was absorbed.
     pub fn absorb(&self) -> Result<String, JjError> {
         self.run(&[commands::ABSORB])
+    }
+
+    /// Run `jj simplify-parents -r <change_id>` to remove redundant parent edges
+    ///
+    /// Removes parents that are ancestors of other parents, simplifying the DAG
+    /// without changing content. Returns the command output.
+    pub fn simplify_parents(&self, change_id: &str) -> Result<String, JjError> {
+        self.run(&[commands::SIMPLIFY_PARENTS, flags::REVISION, change_id])
     }
 
     /// List conflicted files for a change

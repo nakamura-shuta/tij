@@ -51,6 +51,7 @@ expression: terminal.backend()
 "│  E         Diffedit (external diff editor)                                   │"
 "│  L         Evolution log (change history)                                    │"
 "│  Z         Revert change (create reverse-diff commit)                        │"
+"│  i         Simplify parents (remove redundant parent edges)                  │"
 "│                                                                              │"
 "│Input Mode:                                                                   │"
 "│  Enter     Submit input                                                      │"
@@ -90,5 +91,4 @@ expression: terminal.backend()
 "│  D         Delete local bookmark                                             │"
 "│  r         Rename bookmark                                                   │"
 "│  f         Forget bookmark (remove tracking)                                 │"
-"│  m         Move bookmark to @                                                │"
 "└──────────────────────────────────────────────────────────────────────────────┘"

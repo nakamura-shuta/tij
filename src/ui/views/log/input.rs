@@ -214,6 +214,13 @@ impl LogView {
                     LogAction::None
                 }
             }
+            k if k == keys::SIMPLIFY_PARENTS => {
+                if let Some(change) = self.selected_change() {
+                    LogAction::SimplifyParents(change.change_id.clone())
+                } else {
+                    LogAction::None
+                }
+            }
             _ => LogAction::None,
         }
     }

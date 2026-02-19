@@ -73,6 +73,8 @@ pub enum DialogCallback {
     RestoreAll,
     /// Revert a change (Confirm dialog, creates reverse-diff commit)
     Revert { change_id: String },
+    /// Simplify parents (Confirm dialog, removes redundant parent edges)
+    SimplifyParents { change_id: String },
     /// Git push by revision (all bookmarks on a change via --revisions)
     GitPushRevisions {
         change_id: String,

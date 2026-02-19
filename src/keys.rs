@@ -184,6 +184,9 @@ pub const EVOLOG: KeyCode = KeyCode::Char('L');
 /// Revert a change (Log View, creates reverse-diff commit)
 pub const REVERT: KeyCode = KeyCode::Char('Z');
 
+/// Simplify parents (remove redundant parent edges)
+pub const SIMPLIFY_PARENTS: KeyCode = KeyCode::Char('i');
+
 /// Jump to change in Log View (Blame View)
 pub const JUMP_TO_LOG: KeyCode = KeyCode::Char('J');
 
@@ -429,6 +432,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "Z",
         description: "Revert change (create reverse-diff commit)",
+    },
+    KeyBindEntry {
+        key: "i",
+        description: "Simplify parents (remove redundant parent edges)",
     },
 ];
 

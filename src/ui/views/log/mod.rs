@@ -146,6 +146,8 @@ pub enum LogAction {
     OpenEvolog(String),
     /// Revert a change (jj revert, creates reverse-diff commit)
     Revert(String),
+    /// Simplify parents (remove redundant parent edges)
+    SimplifyParents(String),
 }
 
 /// Log View state

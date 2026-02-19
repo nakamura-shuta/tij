@@ -418,6 +418,16 @@ impl App {
                     DialogCallback::Revert { change_id },
                 ));
             }
+            LogAction::SimplifyParents(change_id) => {
+                use crate::ui::components::{Dialog, DialogCallback};
+                let short_id = &change_id[..8.min(change_id.len())];
+                self.active_dialog = Some(Dialog::confirm(
+                    "Simplify Parents",
+                    format!("Simplify parents for {}?", short_id),
+                    None,
+                    DialogCallback::SimplifyParents { change_id },
+                ));
+            }
             LogAction::ToggleReversed => {
                 // Preserve selection by change_id across toggle
                 let selected_id = self.log_view.selected_change().map(|c| c.change_id.clone());

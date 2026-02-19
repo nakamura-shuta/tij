@@ -817,6 +817,28 @@ impl App {
         }
     }
 
+    /// Execute simplify-parents: remove redundant parent edges
+    pub(crate) fn execute_simplify_parents(&mut self, change_id: &str) {
+        match self.jj.simplify_parents(change_id) {
+            Ok(output) => {
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
+
+                let notification = if output.trim().is_empty()
+                    || output.to_lowercase().contains("nothing")
+                {
+                    Notification::info("No redundant parents found")
+                } else {
+                    let short_id = &change_id[..8.min(change_id.len())];
+                    Notification::success(format!("Simplified parents for {} (undo: u)", short_id))
+                };
+                self.notification = Some(notification);
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Simplify parents failed: {}", e));
+            }
+        }
+    }
+
     /// Execute git fetch (default behavior)
     pub(crate) fn execute_fetch(&mut self) {
         match self.jj.git_fetch() {
@@ -2324,6 +2346,10 @@ impl App {
             // --- Revert ---
             (Some(DialogCallback::Revert { change_id }), DialogResult::Confirmed(_)) => {
                 self.execute_revert(&change_id);
+            }
+            // --- SimplifyParents ---
+            (Some(DialogCallback::SimplifyParents { change_id }), DialogResult::Confirmed(_)) => {
+                self.execute_simplify_parents(&change_id);
             }
             (_, DialogResult::Cancelled) => {
                 // Cancelled - do nothing
@@ -3913,5 +3939,52 @@ mod tests {
         assert_eq!(result.kind, NotificationKind::Success);
         assert!(result.message.contains("Rebased successfully"));
         assert!(result.message.contains("--skip-emptied not supported"));
+    }
+
+    // =========================================================================
+    // Simplify Parents dialog callback tests
+    // =========================================================================
+
+    #[test]
+    fn test_simplify_parents_dialog_confirmed_calls_execute() {
+        let mut app = App::new_for_test();
+        app.active_dialog = Some(Dialog::confirm(
+            "Simplify Parents",
+            "Simplify parents for abc12345?",
+            None,
+            DialogCallback::SimplifyParents {
+                change_id: "abc12345".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Confirmed(vec![]));
+        // execute_simplify_parents was called → jj fails in test env → error_message set
+        assert!(
+            app.error_message.is_some(),
+            "execute_simplify_parents should have been called (error expected in test env)"
+        );
+        assert!(
+            app.error_message
+                .as_ref()
+                .unwrap()
+                .contains("Simplify parents failed"),
+            "Error should be from execute_simplify_parents, got: {}",
+            app.error_message.as_ref().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_simplify_parents_dialog_cancelled_does_nothing() {
+        let mut app = App::new_for_test();
+        app.active_dialog = Some(Dialog::confirm(
+            "Simplify Parents",
+            "Simplify parents for abc12345?",
+            None,
+            DialogCallback::SimplifyParents {
+                change_id: "abc12345".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Cancelled);
+        assert!(app.error_message.is_none());
+        assert!(app.notification.is_none());
     }
 }

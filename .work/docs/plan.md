@@ -51,6 +51,7 @@
 - [x] Phase 17.3: 計測基盤 + compare_diff 並列化 + 競合ルール定義（v0.3.38）
 - [x] Phase 24: Push auto-retry (--allow-private / --allow-empty-description) + Fetch --branch（v0.3.39）
 - [x] Phase 25: Rebase拡張 — Branch mode (-b) + --skip-emptied + フォールバック（v0.4.0）
+- [x] Phase 26: Simplify Parents — `i` キーで冗長な親エッジを削除（v0.4.1）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
@@ -132,7 +133,8 @@
 - [x] `restore`（Phase 18.2 完了）
 - [x] `evolog`（Phase 18.3 完了）
 - [x] `revert`（Phase 19 完了）
-- [ ] `metaedit`, `parallelize`, `simplify-parents`, `tag`, `workspace`, `sparse`, `bisect`, `fix`, `sign/unsign`
+- [x] `simplify-parents`（Phase 26, v0.4.1）
+- [ ] `metaedit`, `parallelize`, `tag`, `workspace`, `sparse`, `bisect`, `fix`, `sign/unsign`
 
 ## 6. jj log 方針
 - [x] `--limit`（デフォルト表示のみ 200）
