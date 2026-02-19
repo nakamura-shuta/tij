@@ -428,6 +428,26 @@ impl App {
                     DialogCallback::SimplifyParents { change_id },
                 ));
             }
+            LogAction::StartParallelize(from_id) => {
+                self.notification = Some(Notification::info(format!(
+                    "From: {}. Select end and press Enter",
+                    from_id
+                )));
+            }
+            LogAction::Parallelize { from, to } => {
+                use crate::ui::components::{Dialog, DialogCallback};
+                let from_short = &from[..8.min(from.len())];
+                let to_short = &to[..8.min(to.len())];
+                self.active_dialog = Some(Dialog::confirm(
+                    "Parallelize",
+                    format!("Parallelize {}::{}?", from_short, to_short),
+                    None,
+                    DialogCallback::Parallelize { from, to },
+                ));
+            }
+            LogAction::ParallelizeSameRevision => {
+                self.notification = Some(Notification::info("Cannot parallelize single revision"));
+            }
             LogAction::ToggleReversed => {
                 // Preserve selection by change_id across toggle
                 let selected_id = self.log_view.selected_change().map(|c| c.change_id.clone());

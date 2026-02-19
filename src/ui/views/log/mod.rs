@@ -45,6 +45,8 @@ pub enum InputMode {
     SquashSelect,
     /// Compare revision selection mode (select second revision)
     CompareSelect,
+    /// Parallelize selection mode (select end of range)
+    ParallelizeSelect,
 }
 
 impl InputMode {
@@ -54,12 +56,13 @@ impl InputMode {
             InputMode::RevsetInput => Some(("Revset: ", " r Revset ")),
             InputMode::DescribeInput => Some(("Describe: ", " d Describe ")),
             InputMode::BookmarkInput => Some(("Bookmark: ", " b Bookmark ")),
-            // RebaseModeSelect/RebaseSelect/SquashSelect/CompareSelect use status bar hints, not input bar
+            // RebaseModeSelect/RebaseSelect/SquashSelect/CompareSelect/ParallelizeSelect use status bar hints, not input bar
             InputMode::Normal
             | InputMode::RebaseModeSelect
             | InputMode::RebaseSelect
             | InputMode::SquashSelect
-            | InputMode::CompareSelect => None,
+            | InputMode::CompareSelect
+            | InputMode::ParallelizeSelect => None,
         }
     }
 }
@@ -148,6 +151,12 @@ pub enum LogAction {
     Revert(String),
     /// Simplify parents (remove redundant parent edges)
     SimplifyParents(String),
+    /// Parallelize commits (convert linear chain to siblings)
+    Parallelize { from: String, to: String },
+    /// Entered parallelize mode (notification with from_id)
+    StartParallelize(String),
+    /// Parallelize blocked: same revision selected
+    ParallelizeSameRevision,
 }
 
 /// Log View state
@@ -183,6 +192,8 @@ pub struct LogView {
     pub(crate) squash_source: Option<String>,
     /// "From" change ID for compare (set when entering CompareSelect mode)
     pub(crate) compare_from: Option<String>,
+    /// "From" change ID for parallelize (set when entering ParallelizeSelect mode)
+    pub(crate) parallelize_from: Option<String>,
     /// Whether to display log in reversed order (oldest first)
     pub(crate) reversed: bool,
     /// Whether to pass --skip-emptied on rebase (toggled with S in RebaseSelect)
@@ -385,6 +396,29 @@ impl LogView {
     /// Cancel compare selection mode
     pub fn cancel_compare_select(&mut self) {
         self.compare_from = None;
+        self.input_mode = InputMode::Normal;
+    }
+
+    /// Start parallelize selection mode
+    ///
+    /// The currently selected change becomes the "from" revision.
+    /// The user then selects the "to" revision to define the range.
+    /// Returns true if mode was entered, false if no change is selected.
+    pub fn start_parallelize_select(&mut self) -> bool {
+        let change_id = self.selected_change().map(|c| c.change_id.clone());
+
+        if let Some(change_id) = change_id {
+            self.parallelize_from = Some(change_id);
+            self.input_mode = InputMode::ParallelizeSelect;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Cancel parallelize selection mode
+    pub fn cancel_parallelize_select(&mut self) {
+        self.parallelize_from = None;
         self.input_mode = InputMode::Normal;
     }
 

@@ -23,7 +23,8 @@ impl LogView {
             | InputMode::RebaseModeSelect
             | InputMode::RebaseSelect
             | InputMode::SquashSelect
-            | InputMode::CompareSelect => (area, None),
+            | InputMode::CompareSelect
+            | InputMode::ParallelizeSelect => (area, None),
             InputMode::SearchInput
             | InputMode::RevsetInput
             | InputMode::DescribeInput
@@ -128,6 +129,18 @@ impl LogView {
             let from_id = self.compare_from.as_deref().unwrap_or("?");
             return Line::from(format!(
                 " Tij - Log View [Compare: From={}, Select To] ",
+                from_id
+            ))
+            .bold()
+            .yellow()
+            .centered();
+        }
+
+        // Special title for ParallelizeSelect mode
+        if self.input_mode == InputMode::ParallelizeSelect {
+            let from_id = self.parallelize_from.as_deref().unwrap_or("?");
+            return Line::from(format!(
+                " Tij - Log View [Parallelize: From={}, Select end] ",
                 from_id
             ))
             .bold()
@@ -252,8 +265,12 @@ impl LogView {
         let is_compare_from = self.input_mode == InputMode::CompareSelect
             && self.compare_from.as_ref() == Some(&change.change_id);
 
+        // Check if this is the parallelize "from" (in ParallelizeSelect mode)
+        let is_parallelize_from = self.input_mode == InputMode::ParallelizeSelect
+            && self.parallelize_from.as_ref() == Some(&change.change_id);
+
         // Apply styling
-        if is_rebase_source || is_squash_source || is_compare_from {
+        if is_rebase_source || is_squash_source || is_compare_from || is_parallelize_from {
             // Highlight rebase/squash source with distinct background
             line = line.style(
                 Style::default()

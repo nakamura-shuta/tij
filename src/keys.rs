@@ -187,6 +187,9 @@ pub const REVERT: KeyCode = KeyCode::Char('Z');
 /// Simplify parents (remove redundant parent edges)
 pub const SIMPLIFY_PARENTS: KeyCode = KeyCode::Char('i');
 
+/// Parallelize commits (convert linear chain to siblings)
+pub const PARALLELIZE: KeyCode = KeyCode::Char('|');
+
 /// Jump to change in Log View (Blame View)
 pub const JUMP_TO_LOG: KeyCode = KeyCode::Char('J');
 
@@ -436,6 +439,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "i",
         description: "Simplify parents (remove redundant parent edges)",
+    },
+    KeyBindEntry {
+        key: "|",
+        description: "Parallelize commits (convert linear chain to siblings)",
     },
 ];
 
@@ -873,6 +880,7 @@ fn log_hints(input_mode: InputMode, ctx: &HintContext) -> Vec<KeyHint> {
         InputMode::RebaseModeSelect => REBASE_MODE_SELECT_HINTS.to_vec(),
         InputMode::RebaseSelect => rebase_select_hints(ctx.skip_emptied),
         InputMode::CompareSelect => COMPARE_SELECT_HINTS.to_vec(),
+        InputMode::ParallelizeSelect => PARALLELIZE_SELECT_HINTS.to_vec(),
         InputMode::SearchInput
         | InputMode::RevsetInput
         | InputMode::DescribeInput
@@ -941,6 +949,25 @@ fn bookmark_view_hints(ctx: &HintContext) -> Vec<KeyHint> {
     h.extend([HINT_UNDO, HINT_REFRESH, HINT_BACK]);
     h
 }
+
+/// ParallelizeSelect mode status bar hints
+pub const PARALLELIZE_SELECT_HINTS: &[KeyHint] = &[
+    KeyHint {
+        key: "j/k",
+        label: "Navigate",
+        color: Color::Blue,
+    },
+    KeyHint {
+        key: "Enter",
+        label: "Parallelize",
+        color: Color::Green,
+    },
+    KeyHint {
+        key: "Esc",
+        label: "Cancel",
+        color: Color::Red,
+    },
+];
 
 /// CompareSelect mode status bar hints
 pub const COMPARE_SELECT_HINTS: &[KeyHint] = &[

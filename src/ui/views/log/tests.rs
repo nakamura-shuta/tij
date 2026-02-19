@@ -2057,3 +2057,91 @@ fn test_simplify_parents_ignored_in_rebase_select_mode() {
     let action = press_key(&mut view, keys::SIMPLIFY_PARENTS);
     assert_eq!(action, LogAction::None);
 }
+
+// =============================================================================
+// Parallelize tests (| key)
+// =============================================================================
+
+#[test]
+fn test_parallelize_key_enters_select_mode() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    let action = press_key(&mut view, keys::PARALLELIZE);
+    assert_eq!(action, LogAction::StartParallelize("abc12345".to_string()));
+    assert_eq!(view.input_mode, InputMode::ParallelizeSelect);
+    assert_eq!(view.parallelize_from, Some("abc12345".to_string()));
+}
+
+#[test]
+fn test_parallelize_enter_returns_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter ParallelizeSelect mode
+    press_key(&mut view, keys::PARALLELIZE);
+    // Move to second change
+    press_key(&mut view, KeyCode::Char('j'));
+
+    let action = press_key(&mut view, KeyCode::Enter);
+    assert_eq!(
+        action,
+        LogAction::Parallelize {
+            from: "abc12345".to_string(),
+            to: "xyz98765".to_string()
+        }
+    );
+    assert_eq!(view.input_mode, InputMode::Normal);
+}
+
+#[test]
+fn test_parallelize_same_revision_returns_notification() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::PARALLELIZE);
+    // Don't move — try to parallelize with self
+
+    let action = press_key(&mut view, KeyCode::Enter);
+    assert_eq!(action, LogAction::ParallelizeSameRevision);
+    assert_eq!(view.input_mode, InputMode::ParallelizeSelect); // Still in mode
+    assert_eq!(view.parallelize_from, Some("abc12345".to_string())); // Source preserved
+}
+
+#[test]
+fn test_parallelize_esc_cancels() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::PARALLELIZE);
+    assert_eq!(view.input_mode, InputMode::ParallelizeSelect);
+
+    escape(&mut view);
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert_eq!(view.parallelize_from, None);
+}
+
+#[test]
+fn test_parallelize_reverse_selection() {
+    // Select older first, then move to newer — should still produce Parallelize action
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Move to second change first (older)
+    press_key(&mut view, KeyCode::Char('j'));
+    // Enter ParallelizeSelect mode from "xyz98765"
+    press_key(&mut view, keys::PARALLELIZE);
+    assert_eq!(view.parallelize_from, Some("xyz98765".to_string()));
+
+    // Move back up to first change (newer)
+    press_key(&mut view, KeyCode::Char('k'));
+
+    let action = press_key(&mut view, KeyCode::Enter);
+    assert_eq!(
+        action,
+        LogAction::Parallelize {
+            from: "xyz98765".to_string(),
+            to: "abc12345".to_string()
+        }
+    );
+}

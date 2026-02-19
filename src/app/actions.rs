@@ -839,6 +839,32 @@ impl App {
         }
     }
 
+    /// Execute parallelize: convert linear chain to parallel (sibling) commits
+    pub(crate) fn execute_parallelize(&mut self, from: &str, to: &str) {
+        match self.jj.parallelize(from, to) {
+            Ok(output) => {
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
+                self.notification = Some(Self::parallelize_notification(&output));
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Parallelize failed: {}", e));
+            }
+        }
+    }
+
+    /// Determine the notification for parallelize output
+    ///
+    /// Unlike simplify-parents, `jj parallelize` outputs nothing to stdout on success
+    /// (changes are reported on stderr). So empty output means success, not "nothing happened".
+    /// Only explicit "nothing" in output indicates no change.
+    fn parallelize_notification(output: &str) -> Notification {
+        if output.to_lowercase().contains("nothing") {
+            Notification::info("Nothing to parallelize (revisions may not be connected)")
+        } else {
+            Notification::success("Parallelized (undo: u)")
+        }
+    }
+
     /// Execute git fetch (default behavior)
     pub(crate) fn execute_fetch(&mut self) {
         match self.jj.git_fetch() {
@@ -2350,6 +2376,10 @@ impl App {
             // --- SimplifyParents ---
             (Some(DialogCallback::SimplifyParents { change_id }), DialogResult::Confirmed(_)) => {
                 self.execute_simplify_parents(&change_id);
+            }
+            // --- Parallelize ---
+            (Some(DialogCallback::Parallelize { from, to }), DialogResult::Confirmed(_)) => {
+                self.execute_parallelize(&from, &to);
             }
             (_, DialogResult::Cancelled) => {
                 // Cancelled - do nothing
@@ -3981,6 +4011,88 @@ mod tests {
             None,
             DialogCallback::SimplifyParents {
                 change_id: "abc12345".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Cancelled);
+        assert!(app.error_message.is_none());
+        assert!(app.notification.is_none());
+    }
+
+    // =========================================================================
+    // Parallelize dialog callback tests
+    // =========================================================================
+
+    #[test]
+    fn test_parallelize_dialog_confirmed_calls_execute() {
+        let mut app = App::new_for_test();
+        app.active_dialog = Some(Dialog::confirm(
+            "Parallelize",
+            "Parallelize abc12345::xyz98765?",
+            None,
+            DialogCallback::Parallelize {
+                from: "abc12345".to_string(),
+                to: "xyz98765".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Confirmed(vec![]));
+        // execute_parallelize was called → jj fails in test env → error_message set
+        assert!(
+            app.error_message.is_some(),
+            "execute_parallelize should have been called (error expected in test env)"
+        );
+        assert!(
+            app.error_message
+                .as_ref()
+                .unwrap()
+                .contains("Parallelize failed"),
+            "Error should be from execute_parallelize, got: {}",
+            app.error_message.as_ref().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_parallelize_notification_success() {
+        use crate::model::NotificationKind;
+        let n = App::parallelize_notification("Rebased 3 commits");
+        assert_eq!(n.kind, NotificationKind::Success);
+        assert!(n.message.contains("Parallelized"));
+    }
+
+    #[test]
+    fn test_parallelize_notification_nothing_output() {
+        use crate::model::NotificationKind;
+        let n = App::parallelize_notification("Nothing changed");
+        assert_eq!(n.kind, NotificationKind::Info);
+        assert!(n.message.contains("Nothing to parallelize"));
+    }
+
+    #[test]
+    fn test_parallelize_notification_empty_output_is_success() {
+        // jj parallelize outputs nothing to stdout on success
+        use crate::model::NotificationKind;
+        let n = App::parallelize_notification("");
+        assert_eq!(n.kind, NotificationKind::Success);
+        assert!(n.message.contains("Parallelized"));
+    }
+
+    #[test]
+    fn test_parallelize_notification_whitespace_only_is_success() {
+        use crate::model::NotificationKind;
+        let n = App::parallelize_notification("  \n  ");
+        assert_eq!(n.kind, NotificationKind::Success);
+        assert!(n.message.contains("Parallelized"));
+    }
+
+    #[test]
+    fn test_parallelize_dialog_cancelled_does_nothing() {
+        let mut app = App::new_for_test();
+        app.active_dialog = Some(Dialog::confirm(
+            "Parallelize",
+            "Parallelize abc12345::xyz98765?",
+            None,
+            DialogCallback::Parallelize {
+                from: "abc12345".to_string(),
+                to: "xyz98765".to_string(),
             },
         ));
         app.handle_dialog_result(DialogResult::Cancelled);

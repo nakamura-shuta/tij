@@ -801,6 +801,16 @@ impl JjExecutor {
         self.run(&[commands::SIMPLIFY_PARENTS, flags::REVISION, change_id])
     }
 
+    /// Run `jj parallelize` to convert a linear chain into parallel (sibling) commits
+    ///
+    /// Uses the revset `from::to | to::from` to handle both directions
+    /// (user may select newer→older or older→newer). One side will be empty,
+    /// and the union ensures the correct range is always used.
+    pub fn parallelize(&self, from: &str, to: &str) -> Result<String, JjError> {
+        let revset = format!("{}::{} | {}::{}", from, to, to, from);
+        self.run(&[commands::PARALLELIZE, &revset])
+    }
+
     /// List conflicted files for a change
     ///
     /// Runs `jj resolve --list [-r <change_id>]` and parses the output.

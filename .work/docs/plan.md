@@ -52,6 +52,7 @@
 - [x] Phase 24: Push auto-retry (--allow-private / --allow-empty-description) + Fetch --branch（v0.3.39）
 - [x] Phase 25: Rebase拡張 — Branch mode (-b) + --skip-emptied + フォールバック（v0.4.0）
 - [x] Phase 26: Simplify Parents — `i` キーで冗長な親エッジを削除（v0.4.1）
+- [x] Phase 27: Parallelize — `|` キーで線形チェーンを兄弟に変換（v0.4.2）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
@@ -134,7 +135,8 @@
 - [x] `evolog`（Phase 18.3 完了）
 - [x] `revert`（Phase 19 完了）
 - [x] `simplify-parents`（Phase 26, v0.4.1）
-- [ ] `metaedit`, `parallelize`, `tag`, `workspace`, `sparse`, `bisect`, `fix`, `sign/unsign`
+- [x] `parallelize`（Phase 27, v0.4.2）
+- [ ] `metaedit`, `tag`, `workspace`, `sparse`, `bisect`, `fix`, `sign/unsign`
 
 ## 6. jj log 方針
 - [x] `--limit`（デフォルト表示のみ 200）

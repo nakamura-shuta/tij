@@ -52,6 +52,7 @@ expression: terminal.backend()
 "│  L         Evolution log (change history)                                    │"
 "│  Z         Revert change (create reverse-diff commit)                        │"
 "│  i         Simplify parents (remove redundant parent edges)                  │"
+"│  |         Parallelize commits (convert linear chain to siblings)            │"
 "│                                                                              │"
 "│Input Mode:                                                                   │"
 "│  Enter     Submit input                                                      │"
@@ -90,5 +91,4 @@ expression: terminal.backend()
 "│  U         Untrack remote bookmark                                           │"
 "│  D         Delete local bookmark                                             │"
 "│  r         Rename bookmark                                                   │"
-"│  f         Forget bookmark (remove tracking)                                 │"
 "└──────────────────────────────────────────────────────────────────────────────┘"

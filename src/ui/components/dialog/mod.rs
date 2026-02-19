@@ -75,6 +75,8 @@ pub enum DialogCallback {
     Revert { change_id: String },
     /// Simplify parents (Confirm dialog, removes redundant parent edges)
     SimplifyParents { change_id: String },
+    /// Parallelize commits (Confirm dialog, converts linear chain to siblings)
+    Parallelize { from: String, to: String },
     /// Git push by revision (all bookmarks on a change via --revisions)
     GitPushRevisions {
         change_id: String,
