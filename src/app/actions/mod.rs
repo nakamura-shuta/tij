@@ -889,9 +889,10 @@ impl App {
         destination: &str,
         mode: RebaseMode,
         skip_emptied: bool,
+        use_revset: bool,
     ) {
-        // Prevent rebasing to self
-        if source == destination {
+        // Prevent rebasing to self (skip for revset — let jj validate)
+        if !use_revset && source == destination {
             self.notify_warning("Cannot rebase to itself");
             return;
         }

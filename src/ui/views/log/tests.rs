@@ -2145,3 +2145,209 @@ fn test_parallelize_reverse_selection() {
         }
     );
 }
+
+// =============================================================================
+// Rebase Revset Input tests
+// =============================================================================
+
+#[test]
+fn test_rebase_colon_enters_revset_input_revision() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+
+    press_key(&mut view, KeyCode::Char(':'));
+    assert_eq!(view.input_mode, InputMode::RebaseRevsetInput);
+}
+
+#[test]
+fn test_rebase_colon_enters_revset_input_source() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('s'));
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+
+    press_key(&mut view, KeyCode::Char(':'));
+    assert_eq!(view.input_mode, InputMode::RebaseRevsetInput);
+}
+
+#[test]
+fn test_rebase_colon_enters_revset_input_branch() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('b'));
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+
+    press_key(&mut view, KeyCode::Char(':'));
+    assert_eq!(view.input_mode, InputMode::RebaseRevsetInput);
+}
+
+#[test]
+fn test_rebase_colon_ignored_in_insert_after() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('A'));
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+
+    press_key(&mut view, KeyCode::Char(':'));
+    // Should remain in RebaseSelect, not transition to RebaseRevsetInput
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+}
+
+#[test]
+fn test_rebase_colon_ignored_in_insert_before() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('B'));
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+
+    press_key(&mut view, KeyCode::Char(':'));
+    // Should remain in RebaseSelect, not transition to RebaseRevsetInput
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+}
+
+#[test]
+fn test_rebase_revset_input_sets_source() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    press_key(&mut view, KeyCode::Char(':'));
+    type_text(&mut view, "A|B");
+    submit(&mut view);
+
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+    assert_eq!(view.rebase_source, Some("A|B".to_string()));
+    assert!(view.rebase_use_revset);
+}
+
+#[test]
+fn test_rebase_revset_input_esc_clears_revset() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    press_key(&mut view, KeyCode::Char(':'));
+    type_text(&mut view, "some_revset");
+    escape(&mut view);
+
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+    assert!(!view.rebase_use_revset);
+    // Source should be restored to current selection's change_id
+    assert_eq!(view.rebase_source, Some("abc12345".to_string()));
+}
+
+#[test]
+fn test_rebase_revset_empty_restores_source() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    press_key(&mut view, KeyCode::Char(':'));
+    // Submit empty
+    submit(&mut view);
+
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+    assert!(!view.rebase_use_revset);
+    // Source should be restored to current selection's change_id
+    assert_eq!(view.rebase_source, Some("abc12345".to_string()));
+}
+
+#[test]
+fn test_rebase_revset_action_includes_flag() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    press_key(&mut view, KeyCode::Char(':'));
+    type_text(&mut view, "A|B");
+    submit(&mut view);
+
+    // Navigate to different change and confirm
+    press_key(&mut view, keys::MOVE_DOWN);
+    let action = press_key(&mut view, KeyCode::Enter);
+
+    assert!(matches!(
+        action,
+        LogAction::Rebase {
+            use_revset: true,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn test_rebase_revset_reset_on_cancel() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    press_key(&mut view, KeyCode::Char(':'));
+    type_text(&mut view, "A|B");
+    submit(&mut view);
+    assert!(view.rebase_use_revset);
+
+    // Cancel from RebaseSelect
+    escape(&mut view);
+    assert_eq!(view.input_mode, InputMode::Normal);
+    assert!(!view.rebase_use_revset);
+    assert_eq!(view.rebase_source, None);
+}
+
+#[test]
+fn test_rebase_revset_esc_after_previous_revset() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Set revset "A"
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    press_key(&mut view, KeyCode::Char(':'));
+    type_text(&mut view, "A");
+    submit(&mut view);
+    assert!(view.rebase_use_revset);
+    assert_eq!(view.rebase_source, Some("A".to_string()));
+
+    // Re-enter revset input, type "B", then Esc
+    press_key(&mut view, KeyCode::Char(':'));
+    type_text(&mut view, "B");
+    escape(&mut view);
+
+    // Esc should fully clear revset mode
+    assert!(!view.rebase_use_revset);
+    // Source should be restored to currently selected change_id
+    assert_eq!(view.rebase_source, Some("abc12345".to_string()));
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+}
+
+#[test]
+fn test_rebase_revset_backspace() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    press_key(&mut view, KeyCode::Char(':'));
+    type_text(&mut view, "abc");
+    press_key(&mut view, KeyCode::Backspace);
+    submit(&mut view);
+
+    assert_eq!(view.rebase_source, Some("ab".to_string()));
+    assert!(view.rebase_use_revset);
+}

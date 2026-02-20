@@ -34,6 +34,8 @@ pub enum InputMode {
     CompareSelect,
     /// Parallelize selection mode (select end of range)
     ParallelizeSelect,
+    /// Rebase revset text input mode
+    RebaseRevsetInput,
 }
 
 impl InputMode {
@@ -43,6 +45,7 @@ impl InputMode {
             InputMode::RevsetInput => Some(("Revset: ", " r Revset ")),
             InputMode::DescribeInput => Some(("Describe: ", " d Describe ")),
             InputMode::BookmarkInput => Some(("Bookmark: ", " b Bookmark ")),
+            InputMode::RebaseRevsetInput => Some(("Revset: ", " Rebase Revset ")),
             // RebaseModeSelect/RebaseSelect/SquashSelect/CompareSelect/ParallelizeSelect use status bar hints, not input bar
             InputMode::Normal
             | InputMode::RebaseModeSelect
@@ -98,6 +101,7 @@ pub enum LogAction {
         destination: String,
         mode: RebaseMode,
         skip_emptied: bool,
+        use_revset: bool,
     },
     /// Absorb working copy changes into ancestor commits
     Absorb,
@@ -185,6 +189,8 @@ pub struct LogView {
     pub(crate) reversed: bool,
     /// Whether to pass --skip-emptied on rebase (toggled with S in RebaseSelect)
     pub(crate) skip_emptied: bool,
+    /// Whether current rebase source is a revset string (vs single change_id)
+    pub(crate) rebase_use_revset: bool,
 }
 
 pub mod empty_text {
@@ -314,6 +320,7 @@ impl LogView {
         self.rebase_source = None;
         self.rebase_mode = RebaseMode::default();
         self.skip_emptied = false;
+        self.rebase_use_revset = false;
         self.input_mode = InputMode::Normal;
     }
 
@@ -338,6 +345,7 @@ impl LogView {
         self.rebase_source = None;
         self.rebase_mode = RebaseMode::default();
         self.skip_emptied = false;
+        self.rebase_use_revset = false;
         self.input_mode = InputMode::Normal;
     }
 

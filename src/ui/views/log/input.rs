@@ -33,6 +33,7 @@ impl LogView {
             InputMode::SquashSelect => self.handle_squash_select_key(key),
             InputMode::CompareSelect => self.handle_compare_select_key(key),
             InputMode::ParallelizeSelect => self.handle_parallelize_select_key(key),
+            InputMode::RebaseRevsetInput => self.handle_rebase_revset_input_key(key),
         }
     }
 
@@ -351,6 +352,17 @@ impl LogView {
                 self.move_to_bottom();
                 LogAction::None
             }
+            // Enter revset input (only for Revision/Source/Branch modes)
+            KeyCode::Char(':') => {
+                if matches!(
+                    self.rebase_mode,
+                    RebaseMode::Revision | RebaseMode::Source | RebaseMode::Branch
+                ) {
+                    self.input_buffer.clear();
+                    self.input_mode = InputMode::RebaseRevsetInput;
+                }
+                LogAction::None
+            }
             // Toggle --skip-emptied
             KeyCode::Char('S') => {
                 self.skip_emptied = !self.skip_emptied;
@@ -363,22 +375,25 @@ impl LogView {
                 {
                     let destination = dest_change.change_id.clone();
 
-                    // Prevent rebasing to self (all modes)
-                    if source == destination {
+                    // Prevent rebasing to self (skip for revset — let jj validate)
+                    if !self.rebase_use_revset && source == destination {
                         return LogAction::None;
                     }
 
                     let mode = self.rebase_mode;
                     let skip_emptied = self.skip_emptied;
+                    let use_revset = self.rebase_use_revset;
                     self.rebase_source = None;
                     self.rebase_mode = RebaseMode::default();
                     self.skip_emptied = false;
+                    self.rebase_use_revset = false;
                     self.input_mode = InputMode::Normal;
                     LogAction::Rebase {
                         source,
                         destination,
                         mode,
                         skip_emptied,
+                        use_revset,
                     }
                 } else {
                     LogAction::None
@@ -552,6 +567,55 @@ impl LogView {
                 LogAction::None
             }
             // Ignore other keys in parallelize select mode
+            _ => LogAction::None,
+        }
+    }
+
+    /// Handle key events in rebase revset text input mode
+    ///
+    /// Esc cancels and clears revset mode entirely.
+    /// Enter with text sets the revset as source.
+    /// Enter with empty input restores the original single change_id source.
+    fn handle_rebase_revset_input_key(&mut self, key: KeyEvent) -> LogAction {
+        match key.code {
+            k if k == keys::ESC => {
+                // Esc: discard input + clear revset mode entirely
+                self.input_buffer.clear();
+                self.rebase_use_revset = false;
+                // Restore source to currently selected change_id
+                if let Some(change) = self.selected_change() {
+                    self.rebase_source = Some(change.change_id.clone());
+                }
+                self.input_mode = InputMode::RebaseSelect;
+                LogAction::None
+            }
+            k if k == keys::SUBMIT => {
+                let revset = std::mem::take(&mut self.input_buffer);
+                if revset.is_empty() {
+                    // Empty Enter: clear revset mode + restore single change_id
+                    self.rebase_use_revset = false;
+                    if let Some(change) = self.selected_change() {
+                        self.rebase_source = Some(change.change_id.clone());
+                    }
+                } else {
+                    self.rebase_source = Some(revset);
+                    self.rebase_use_revset = true;
+                }
+                self.input_mode = InputMode::RebaseSelect;
+                LogAction::None
+            }
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                self.input_buffer.push(c);
+                LogAction::None
+            }
+            KeyCode::Backspace => {
+                self.input_buffer.pop();
+                LogAction::None
+            }
             _ => LogAction::None,
         }
     }

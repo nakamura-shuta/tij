@@ -834,6 +834,8 @@ pub struct HintContext {
     pub selected_bookmark_kind: Option<BookmarkKind>,
     /// Whether --skip-emptied is toggled ON in rebase select mode
     pub skip_emptied: bool,
+    /// Current rebase mode (for revset hint visibility)
+    pub rebase_mode: crate::model::RebaseMode,
 }
 
 /// Dialog kind for hint selection
@@ -885,9 +887,10 @@ fn log_hints(input_mode: InputMode, ctx: &HintContext) -> Vec<KeyHint> {
         InputMode::Normal => log_normal_hints(ctx),
         InputMode::SquashSelect => vec![HINT_NAV, HINT_SQUASH_CONFIRM, HINT_CANCEL],
         InputMode::RebaseModeSelect => REBASE_MODE_SELECT_HINTS.to_vec(),
-        InputMode::RebaseSelect => rebase_select_hints(ctx.skip_emptied),
+        InputMode::RebaseSelect => rebase_select_hints(ctx.skip_emptied, ctx.rebase_mode),
         InputMode::CompareSelect => COMPARE_SELECT_HINTS.to_vec(),
         InputMode::ParallelizeSelect => PARALLELIZE_SELECT_HINTS.to_vec(),
+        InputMode::RebaseRevsetInput => vec![HINT_SUBMIT, HINT_CANCEL_ESC],
         InputMode::SearchInput
         | InputMode::RevsetInput
         | InputMode::DescribeInput
@@ -1029,8 +1032,10 @@ pub const REBASE_MODE_SELECT_HINTS: &[KeyHint] = &[
     },
 ];
 
-/// Build RebaseSelect mode status bar hints (dynamic for skip-emptied state)
-fn rebase_select_hints(skip_emptied: bool) -> Vec<KeyHint> {
+/// Build RebaseSelect mode status bar hints (dynamic for skip-emptied state and rebase mode)
+fn rebase_select_hints(skip_emptied: bool, rebase_mode: crate::model::RebaseMode) -> Vec<KeyHint> {
+    use crate::model::RebaseMode;
+
     let skip_label = if skip_emptied {
         "Skip-empty:ON"
     } else {
@@ -1041,7 +1046,7 @@ fn rebase_select_hints(skip_emptied: bool) -> Vec<KeyHint> {
     } else {
         Color::DarkGray
     };
-    vec![
+    let mut hints = vec![
         KeyHint {
             key: "j/k",
             label: "Navigate",
@@ -1052,17 +1057,29 @@ fn rebase_select_hints(skip_emptied: bool) -> Vec<KeyHint> {
             label: skip_label,
             color: skip_color,
         },
-        KeyHint {
-            key: "Enter",
-            label: "Rebase",
-            color: Color::Green,
-        },
-        KeyHint {
-            key: "Esc",
-            label: "Cancel",
-            color: Color::Red,
-        },
-    ]
+    ];
+    // Show revset hint only for modes that support it
+    if matches!(
+        rebase_mode,
+        RebaseMode::Revision | RebaseMode::Source | RebaseMode::Branch
+    ) {
+        hints.push(KeyHint {
+            key: ":",
+            label: "Revset",
+            color: Color::Magenta,
+        });
+    }
+    hints.push(KeyHint {
+        key: "Enter",
+        label: "Rebase",
+        color: Color::Green,
+    });
+    hints.push(KeyHint {
+        key: "Esc",
+        label: "Cancel",
+        color: Color::Red,
+    });
+    hints
 }
 
 /// Diff view status bar hints

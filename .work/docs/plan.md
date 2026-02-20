@@ -57,6 +57,7 @@
 
 - [x] Refactoring R1-R4, R8: notification helpers, suspend_tui, handler splits, actions.rs file split（v0.4.4）
 - [x] Ctrl+E fix: immutable pre-check, `--editor` flag, startup preview load（v0.4.4）
+- [x] Phase 29: Rebase revset 入力 — `:` キーで revset テキスト指定による複数リビジョン一括 rebase（v0.4.5）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
@@ -130,7 +131,8 @@
 
 ### Medium
 - [x] `jj rebase`: `--branch`（v0.4.0）, `--skip-emptied`（v0.4.0）
-- [ ] `jj rebase`: `--revisions`, `--keep-divergent`
+- [x] `jj rebase`: revset 入力（`:` キーで `-r`/`-s`/`-b` に revset 指定）（v0.4.5）
+- [ ] `jj rebase`: `--keep-divergent`
 - [x] `jj diff/show` 表示オプション拡張（Phase 28, v0.4.3）
 
 ### Low

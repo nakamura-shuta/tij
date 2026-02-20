@@ -82,6 +82,7 @@ impl App {
             has_conflicts: change.is_some_and(|c| c.has_conflict),
             is_working_copy: change.is_some_and(|c| c.is_working_copy),
             skip_emptied: self.log_view.skip_emptied,
+            rebase_mode: self.log_view.rebase_mode,
             dialog: self.dialog_hint_kind(),
             ..HintContext::default()
         }

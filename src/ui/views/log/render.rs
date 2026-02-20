@@ -28,7 +28,8 @@ impl LogView {
             InputMode::SearchInput
             | InputMode::RevsetInput
             | InputMode::DescribeInput
-            | InputMode::BookmarkInput => {
+            | InputMode::BookmarkInput
+            | InputMode::RebaseRevsetInput => {
                 let chunks =
                     Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).split(area);
                 (chunks[0], Some(chunks[1]))
@@ -95,8 +96,43 @@ impl LogView {
                 .centered();
         }
 
+        // Special title for RebaseRevsetInput mode
+        if self.input_mode == InputMode::RebaseRevsetInput {
+            let mode_label = match self.rebase_mode {
+                RebaseMode::Revision => "-r",
+                RebaseMode::Source => "-s",
+                RebaseMode::Branch => "-b",
+                _ => "",
+            };
+            return Line::from(format!(
+                " Tij - Log View [Rebase {}: Enter revset] ",
+                mode_label
+            ))
+            .bold()
+            .yellow()
+            .centered();
+        }
+
         // Special title for RebaseSelect mode (varies by rebase_mode)
         if self.input_mode == InputMode::RebaseSelect {
+            // When revset is active, show the revset string in the title
+            if self.rebase_use_revset {
+                let revset_src = self.rebase_source.as_deref().unwrap_or("?");
+                let mode_label = match self.rebase_mode {
+                    RebaseMode::Revision => "-r",
+                    RebaseMode::Source => "-s",
+                    RebaseMode::Branch => "-b",
+                    _ => "",
+                };
+                return Line::from(format!(
+                    " Tij - Log View [Rebase {} \"{}\": Select destination] ",
+                    mode_label, revset_src
+                ))
+                .bold()
+                .yellow()
+                .centered();
+            }
+
             let title = match self.rebase_mode {
                 RebaseMode::Revision => " Tij - Log View [Rebase: Select destination] ".to_string(),
                 RebaseMode::Source => {
@@ -251,10 +287,10 @@ impl LogView {
 
         let mut line = Line::from(spans);
 
-        // Check if this is the rebase source (in RebaseModeSelect or RebaseSelect mode)
+        // Check if this is the rebase source (in RebaseModeSelect, RebaseSelect, or RebaseRevsetInput mode)
         let is_rebase_source = matches!(
             self.input_mode,
-            InputMode::RebaseModeSelect | InputMode::RebaseSelect
+            InputMode::RebaseModeSelect | InputMode::RebaseSelect | InputMode::RebaseRevsetInput
         ) && self.rebase_source.as_ref() == Some(&change.change_id);
 
         // Check if this is the squash source (in SquashSelect mode)
