@@ -1,0 +1,481 @@
+Implement the following plan:
+
+# リファクタリング R5 + R6 + R7
+
+## Context
+
+R1-R4, R8 が v0.4.4 で完了。残りの R5, R6, R7 を実施する。
+いずれも振る舞い変更なし（純粋リファクタリング）。
+
+---
+
+## R5: Diff format 取得ヘルパー抽出
+
+### 問題
+`cycle_diff_format()` (mod.rs:1200-1275) に 2×3 = 6 分岐がある:
+- normal vs compare × ColorWords/Stat/Git
+- `open_diff` / `open_compare_diff` (navigation.rs) にも同じ fetch パターンが散在
+
+### 対策
+`fetch_diff_content()` ヘルパーを追加。
+
+```rust
+fn fetch_diff_content(
+    &self,
+    change_id: &str,
+    format: DiffDisplayFormat,
+    compare: Option<&CompareInfo>,
+) -> Result<DiffContent, JjError>
+```
+
+### 変更ファイル
+| ファイル | 変更 |
+|---------|------|
+| `src/app/actions/mod.rs` | `fetch_diff_content()` 追加 + `cycle_diff_format()` を簡素化 |
+
+### 注意
+- `open_diff` / `open_compare_diff` は navigation.rs にあり、DiffView 生成やメタデータ取得も行うため、ヘルパーの適用は `cycle_diff_format` に限定する
+- ColorWords の normal モードは `self.jj.show()` が `DiffContent` を直接返す（パーサー不要）。他は `String` → `Parser::parse_*` が必要。この差異をヘルパー内で吸収
+- **状態変更順序**: `cycle_format()` で先に状態変更してから取得→失敗で巻き戻しの現行パターンは中間状態リスクあり。改善: old_format から next を計算 → fetch → 成功時にのみ display_format を反映する（`cycle_format()` は呼ばず `display_format.next()` で計算のみ）
+
+---
+
+## R6: executor.rs rebase メソッド統合
+
+### 問題
+10 メソッド（5 base + 5 with_flags）がほぼ同構造。
+actions.rs の `execute_rebase()` も flags 有無で 5×2 の match を持つ。
+
+### 対策（2段階）
+**Step 1**: `RebaseMode` 移動 + `rebase_unified()` 追加 + 呼び替え + テスト通過確認
+**Step 2**: `rg "rebase(_source|_branch|_insert_after|_insert_before|_with_flags|_source_with|_branch_with)"` で呼び出しゼロ確認後に旧 10 メソッドを削除
+
+### 変更ファイル
+| ファイル | 変更 |
+|---------|------|
+| `src/model/mod.rs` | `pub mod rebase;` 追加 |
+| `src/model/rebase.rs` | 新規: `RebaseMode` enum を移動 |
+| `src/ui/views/log/mod.rs` | `RebaseMode` 定義を削除、`use crate::model::RebaseMode` + re-export |
+| `src/ui/views/log/input.rs` | import 変更 |
+| `src/ui/views/log/tests.rs` | import 変更 |
+
+**import 置換漏れ防止**: `rg "ui::views.*RebaseMode\|log::RebaseMode"` で旧パスの参照が残っていないことを確認
+| `src/jj/executor.rs` | Step1: `rebase_unified()` 追加。Step2: 旧 10 メソッド削除 |
+| `src/app/actions/mod.rs` | `execute_rebase()` の match 簡素化、import 変更 |
+| `src/app/input.rs` | import 変更（RebaseMode） |
+
+### rebase_unified の実装
+
+```rust
+pub fn rebase_unified(
+    &self,
+    mode: RebaseMode,
+    source: &str,
+    target: &str,
+    extra_flags: &[&str],
+) -> Result<String, JjError> {
+    let mut args = vec![commands::REBASE];
+    match mode {
+        RebaseMode::Revision => {
+            args.extend_from_slice(&[flags::REVISION, source, "-d", target]);
+        }
+        RebaseMode::Source => {
+            args.extend_from_slice(&[flags::SOURCE, source, "-d", target]);
+        }
+        RebaseMode::Branch => {
+            args.extend_from_slice(&[flags::BRANCH_SHORT, source, "-d", target]);
+        }
+        RebaseMode::InsertAfter => {
+            args.extend_from_slice(&[flags::REVISION, source, flags::INSERT_AFTER, target]);
+        }
+        RebaseMode::InsertBefore => {
+            args.extend_from_slice(&[flags::REVISION, source, flags::INSERT_BEFORE, target]);
+        }
+    }
+    args.extend_from_slice(extra_flags);
+    self.run(&args)
+}
+```
+
+### execute_rebase の変更
+
+```rust
+// Before (30行の 5×2 match):
+let result = if extra_flags.is_empty() {
+    match mode { ... 5 arms ... }
+} else {
+    match mode { ... 5 arms ... }
+};
+
+// After (1行):
+let result = self.jj.rebase_unified(mode, source, destination, &extra_flags);
+```
+
+retry ロジック (skip_emptied fallback) も同様に簡素化:
+```rust
+// Before: match mode { 5 arms calling base methods }
+// After:
+let retry = self.jj.rebase_unified(mode, source, destination, &[]);
+```
+
+---
+
+## R7: jj 実行 + エラーハンドリング共通化（選択的）
+
+### 問題
+actions/ 内に ~37 箇所の `match self.jj.xxx { Ok => notify+dirty, Err => error }` パターン。
+うち 22 箇所が「Ok: notify_success + mark_dirty のみ」の単純パターン。
+
+### 対策
+`run_jj_action()` ヘルパーを追加。**19 箇所の単純パターンのみ**適用。
+
+**適用条件（厳密）**:
+- Ok 分岐: 固定文字列の `notify_success()` + `mark_dirty_and_refresh_current()` のみ
+- Err 分岐: 固定接頭辞の `set_error(format!("X failed: {}", e))` のみ
+- output 内容で通知を分岐するもの（fetch 系等）は対象外
+- 追加処理があるもの（View 遷移、出力パース、TUI suspend 等）は対象外
+
+```rust
+fn run_jj_action(
+    &mut self,
+    result: Result<String, JjError>,
+    op_name: &str,        // エラー接頭辞: "{op_name} failed: {e}"
+    success_msg: &str,    // 成功通知メッセージ
+    dirty: DirtyFlags,
+) {
+    match result {
+        Ok(_) => {
+            self.notify_success(success_msg);
+            self.mark_dirty_and_refresh_current(dirty);
+        }
+        Err(e) => {
+            self.set_error(format!("{} failed: {}", op_name, e));
+        }
+    }
+}
+```
+
+### 適用対象（19箇所）
+
+**mod.rs (10箇所):**
+- execute_undo, execute_describe, execute_edit, execute_new_change,
+  execute_new_change_from, execute_commit, execute_abandon, execute_revert,
+  execute_restore_file, execute_restore_all
+
+**bookmark.rs (9箇所):**
+- execute_bookmark_create, execute_bookmark_move, execute_bookmark_delete,
+  execute_bookmark_rename, execute_bookmark_forget, execute_bookmark_move_to_wc,
+  execute_bookmark_move_backwards, execute_untrack, execute_track
+
+### 変換例
+
+```rust
+// Before (6行):
+match self.jj.describe(change_id, message) {
+    Ok(_) => {
+        self.notify_success("Description updated");
+        self.mark_dirty_and_refresh_current(DirtyFlags::log());
+    }
+    Err(e) => {
+        self.set_error(format!("Describe failed: {}", e));
+    }
+}
+
+// After (2行):
+let result = self.jj.describe(change_id, message);
+self.run_jj_action(result, "Describe", "Description updated", DirtyFlags::log());
+```
+
+### 対象外（15箇所）— 理由
+
+| メソッド | 理由 |
+|---------|------|
+| execute_describe_external | TUI suspend + before/after 比較 |
+| execute_squash_into | TUI suspend + interactive |
+| execute_split | TUI suspend + empty guard |
+| execute_diffedit | TUI suspend + file option |
+| execute_redo | ネスト match + redo_target チェック |
+| execute_op_restore | View 遷移あり |
+| execute_next / execute_prev | 出力パース + select_working_copy |
+| duplicate | 出力パース + select_change_by_prefix |
+| execute_absorb | 出力内容で通知種別変更 |
+| execute_simplify_parents | 出力内容で通知種別変更 |
+| execute_parallelize | 専用通知ヘルパー |
+| execute_rebase | retry + fallback (R6 で簡素化済み) |
+| execute_fetch / fetch_with_option / fetch_branch | output 内容で通知分岐 |
+| execute_push* | retry + partial success |
+| execute_resolve_external | TUI suspend |
+
+---
+
+## 実装順序
+
+```
+R5 (diff format helper)     — mod.rs 内の cycle_diff_format 簡素化
+  ↓
+R6 (rebase 統合)             — model 移動 + executor 統合 + actions 簡素化
+  ↓
+R7 (run_jj_action)           — 19 箇所の単純パターン置換
+  ↓
+cargo fmt && cargo clippy && cargo test（各ステップ完了後）
+```
+
+## 検証
+
+各ステップ完了後:
+- `cargo fmt && cargo clippy` — warning 0
+- `cargo test` — 全 620+ テスト通過
+- 振る舞い変更なし（リファクタリングのみ）
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/nakamura.shuta/.REDACTED.jsonl
+
+---
+
+レビュー結果（実装なし）
+
+  1. Medium: JjExecutor の公開APIが破壊的に変更されています
+     src/jj/executor.rs:664 で rebase_unified() に統合されていますが、従
+     来の rebase* 系 pub メソッドが削除されています。
+     内部利用では問題ありませんが、tij をライブラリとして使う外部コード
+     がある場合はコンパイル互換性が壊れます。
+     tests/* は追従済みなのでテストは通りますが、純粋リファクタリング
+     （非破壊）という前提とはズレます。
+  2. Low: 一部エラーメッセージ文言が変わっています
+     src/app/actions/mod.rs:60 の run_jj_action() 導入により、例えば
+
+  - 旧: Failed to update description: ...
+  - 新: Describe failed: ...
+    のように文言が統一されています。
+    機能上は問題ありませんが、UI文言固定の運用/ドキュメント/将来のスナッ
+    プショットに影響する可能性があります。
+
+  総評
+  機能回帰の観点では大きな問題は見当たりません。R5/R6/R7 の目的（重複削
+  減・分岐簡素化）は達成できています。
+  ただし「公開API互換を保つかどうか」だけはリリース方針として明確化した
+  ほうがよいです。
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the conversation:
+
+1. **Initial Request**: The user asked to implement a refactoring plan covering R5, R6, and R7 for the Tij project (a TUI for Jujutsu VCS).
+
+2. **R5: Diff format helper extraction**
+   - Added `fetch_diff_content()` method to `App` in `src/app/actions/mod.rs`
+   - Simplified `cycle_diff_format()` to use the new helper
+   - Changed state mutation order: compute next format first, fetch, then apply only on success
+   - Added imports for `CompareInfo`, `DiffContent`, `DiffDisplayFormat`
+   - Had to fix missing `DiffContent` import
+   - All 620 tests passed
+
+3. **R6: Rebase method unification**
+   - Created `src/model/rebase.rs` with `RebaseMode` enum moved from UI layer
+   - Updated `src/model/mod.rs` to include and re-export `RebaseMode`
+   - Changed `src/ui/views/log/mod.rs` to re-export from model instead of defining
+   - Updated import in `src/app/actions/mod.rs` to use `crate::model::RebaseMode`
+   - Added `rebase_unified()` method to `src/jj/executor.rs`, replacing 10 old methods
+   - Simplified `execute_rebase()` in `src/app/actions/mod.rs`
+   - Updated 4 integration test files to use new API
+   - All 620 tests passed
+
+4. **R7: run_jj_action helper**
+   - Added `run_jj_action()` helper method to `App`
+   - Applied to 17 call sites (10 in mod.rs, 7 in bookmark.rs)
+   - Excluded `execute_bookmark_create` and `execute_bookmark_move_to_wc` due to complex error branching
+   - All 620 tests passed, zero clippy warnings
+
+5. **Review Feedback**: User shared code review results identifying:
+   - Medium: Public API breakage (old rebase methods removed)
+   - Low: Error message wording changes
+
+6. **Error Message Fix (in progress)**:
+   - Changed `run_jj_action` format from `"{op_name} failed: {e}"` to `"{err_prefix}: {e}"`
+   - Started updating all call sites to use original error message prefixes
+   - Completed most but was in the middle of updating bookmark.rs when the summary was requested
+
+Let me check what's been done and what remains for the error message fixes:
+
+**mod.rs updates completed:**
+- Undo: "Undo failed" ✓
+- Describe: "Failed to update description" ✓
+- Edit: "Failed to edit" ✓
+- New change (both): "Failed to create change" ✓
+- Commit: "Commit failed" ✓
+- Abandon: "Abandon failed" ✓
+- Revert: "Revert failed" ✓
+- Restore (both): "Restore failed" ✓
+
+**bookmark.rs updates:**
+- execute_bookmark_move: "Failed to move bookmark" ✓
+- execute_bookmark_delete: "Failed to delete bookmarks" ✓
+- execute_bookmark_rename: Still "Rename" → should be "Rename failed"
+- execute_bookmark_forget: Still "Forget" → should be "Forget failed"
+- execute_bookmark_move_backwards: Still "Move" → should be "Move failed"
+- execute_untrack: Still "Untrack" → should be "Failed to untrack"
+- execute_track: Still "Track" → should be "Failed to track"
+
+So bookmark.rs still has 5 call sites that need updating to match original error messages.
+
+Summary:
+1. Primary Request and Intent:
+   The user requested implementation of a refactoring plan covering R5, R6, and R7 for the Tij project (a TUI application for Jujutsu VCS). The plan was detailed in a structured document with specific code patterns, file changes, and implementation order. All three refactorings were explicitly described as pure refactorings with no behavioral changes. After initial implementation, the user shared code review feedback identifying two issues: (1) public API breakage from removing old rebase methods, and (2) unintended error message wording changes from the `run_jj_action` helper. The user implicitly expected these review findings to be addressed.
+
+2. Key Technical Concepts:
+   - **Tij**: TUI app for Jujutsu (jj) VCS, built with Rust, ratatui 0.30, crossterm 0.29
+   - **R5**: Extract `fetch_diff_content()` helper to eliminate 2×3 branching in `cycle_diff_format()` (normal vs compare × ColorWords/Stat/Git)
+   - **R6**: Unify 10 rebase methods (5 base + 5 with_flags) into single `rebase_unified()`, move `RebaseMode` from UI layer to model layer
+   - **R7**: Add `run_jj_action()` helper to reduce boilerplate in 17 simple Ok/Err match patterns
+   - **State mutation order improvement (R5)**: Compute next format → fetch → apply only on success (eliminates rollback on error)
+   - **DiffDisplayFormat**: Enum with ColorWords, Stat, Git variants; ColorWords returns `DiffContent` directly while others return `String` requiring parsing
+   - **RebaseMode**: Enum with Revision, Source, Branch, InsertAfter, InsertBefore variants
+   - **DirtyFlags**: Flags indicating which views need refresh (log, status, op_log, bookmarks)
+
+3. Files and Code Sections:
+
+   - **`src/app/actions/mod.rs`** (primary file, heavily modified)
+     - Added `fetch_diff_content()` helper for R5
+     - Added `run_jj_action()` helper for R7
+     - Simplified `cycle_diff_format()`, `execute_undo`, `execute_describe`, `execute_edit`, `execute_new_change`, `execute_new_change_from`, `execute_commit`, `execute_abandon`, `execute_revert`, `execute_restore_file`, `execute_restore_all`
+     - Simplified `execute_rebase()` match arms from 5×2 to single `rebase_unified()` call
+     - Changed import from `use crate::ui::views::RebaseMode` to `use crate::model::RebaseMode`
+     - Current `run_jj_action` signature:
+     ```rust
+     fn run_jj_action(
+         &mut self,
+         result: Result<String, crate::jj::JjError>,
+         err_prefix: &str,
+         success_msg: &str,
+         dirty: DirtyFlags,
+     ) {
+         match result {
+             Ok(_) => {
+                 self.notify_success(success_msg);
+                 self.mark_dirty_and_refresh_current(dirty);
+             }
+             Err(e) => {
+                 self.set_error(format!("{}: {}", err_prefix, e));
+             }
+         }
+     }
+     ```
+     - Current `fetch_diff_content` signature:
+     ```rust
+     fn fetch_diff_content(
+         &self,
+         change_id: &str,
+         format: DiffDisplayFormat,
+         compare: Option<&CompareInfo>,
+     ) -> Result<DiffContent, crate::jj::JjError>
+     ```
+
+   - **`src/model/rebase.rs`** (new file for R6)
+     - Contains `RebaseMode` enum moved from UI layer
+     ```rust
+     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+     pub enum RebaseMode {
+         #[default]
+         Revision,
+         Source,
+         Branch,
+         InsertAfter,
+         InsertBefore,
+     }
+     ```
+
+   - **`src/model/mod.rs`** (modified)
+     - Added `mod rebase;` and `pub use rebase::RebaseMode;`
+
+   - **`src/ui/views/log/mod.rs`** (modified)
+     - Replaced `RebaseMode` enum definition with `pub use crate::model::RebaseMode;`
+
+   - **`src/jj/executor.rs`** (modified for R6)
+     - Removed 10 old rebase methods, replaced with single `rebase_unified()`:
+     ```rust
+     pub fn rebase_unified(
+         &self,
+         mode: RebaseMode,
+         source: &str,
+         target: &str,
+         extra_flags: &[&str],
+     ) -> Result<String, JjError>
+     ```
+     - Added `use crate::model::RebaseMode` import
+
+   - **`src/app/actions/bookmark.rs`** (modified for R7)
+     - Simplified 7 methods: `execute_bookmark_move`, `execute_bookmark_delete`, `execute_bookmark_rename`, `execute_bookmark_forget`, `execute_bookmark_move_backwards`, `execute_untrack`, `execute_track`
+     - **Error message fix partially completed**: `execute_bookmark_move` and `execute_bookmark_delete` err_prefix updated, but 5 remaining still need updating
+
+   - **Integration test files** (modified for R6):
+     - `tests/integration_destructive.rs` — added `use tij::model::RebaseMode;`, replaced `.rebase()`, `.rebase_source()`, `.rebase_insert_after()`, `.rebase_insert_before()` with `.rebase_unified()`
+     - `tests/scenario_collaboration.rs` — same pattern
+     - `tests/scenario_mistake_recovery.rs` — same pattern
+     - `tests/scenario_conflict_resolution.rs` — same pattern
+
+4. Errors and fixes:
+   - **Missing `DiffContent` import (R5)**: Added `DiffContent` to the import statement in `mod.rs` after LSP flagged it
+   - **Missing `RebaseMode` import in executor.rs (R6)**: Added `RebaseMode` to the model import in executor.rs
+   - **Old rebase method calls in integration tests (R6)**: Updated 4 test files to use `rebase_unified()` with proper `RebaseMode` variants
+   - **Formatting issues (R7)**: `cargo fmt` needed after bookmark.rs changes (long lines)
+   - **Error message wording changes (review feedback)**: Changed `run_jj_action` format from `"{op_name} failed: {e}"` to `"{err_prefix}: {e}"` pattern, and started updating all call sites to preserve original error messages. This is partially complete.
+
+5. Problem Solving:
+   - R5: Solved the intermediate state risk by computing next format before fetching, only applying on success
+   - R6: Successfully moved `RebaseMode` from UI layer (`ui::views::log`) to model layer (`model::rebase`) with re-export for backward compatibility of import paths
+   - R6: Verified no old-path references remained with `rg "ui::views::RebaseMode|ui::views::log::RebaseMode"`
+   - R7: Identified that 2 of the planned 19 sites (`execute_bookmark_create`, `execute_bookmark_move_to_wc`) should be excluded due to complex error branching, reducing to 17 actual sites
+   - Review feedback: Acknowledged public API breakage is acceptable since tij is a binary crate with no external library consumers
+   - Error message preservation: In progress — changed the helper's format pattern and updating call sites
+
+6. All user messages:
+   - **Message 1**: "Implement the following plan: # リファクタリング R5 + R6 + R7" — Detailed refactoring plan with R5 (diff format helper), R6 (rebase unification), R7 (run_jj_action helper), including exact code snippets, file lists, implementation order, and verification steps
+   - **Message 2**: "レビュー結果（実装なし）" — Code review results identifying: (1) Medium: JjExecutor public API breakage from removing old rebase methods, (2) Low: Error message wording changes from run_jj_action introduction. Included specific examples of changed messages and recommendation to clarify release policy on public API compatibility.
+
+7. Pending Tasks:
+   - **Complete error message fix in bookmark.rs**: 5 remaining call sites need `err_prefix` updated to match original error messages:
+     - `execute_bookmark_rename`: "Rename" → "Rename failed"
+     - `execute_bookmark_forget`: "Forget" → "Forget failed"
+     - `execute_bookmark_move_backwards`: "Move" → "Move failed"
+     - `execute_untrack`: "Untrack" → "Failed to untrack"
+     - `execute_track`: "Track" → "Failed to track"
+   - Run `cargo fmt && cargo clippy && cargo test` after completing the fixes
+
+8. Current Work:
+   Addressing the code review feedback on error message wording changes (Issue #2/Low). The `run_jj_action` helper's error format was changed from `"{op_name} failed: {e}"` to `"{err_prefix}: {e}"` to allow preserving original error messages. All 10 mod.rs call sites and 2 of 7 bookmark.rs call sites have been updated with correct `err_prefix` values. The remaining 5 bookmark.rs call sites still need updating.
+
+   Last completed edits in bookmark.rs:
+   ```rust
+   // Changed from "Move bookmark" to "Failed to move bookmark"
+   self.run_jj_action(result, "Failed to move bookmark", &msg, DirtyFlags::log_and_bookmarks());
+   
+   // Changed from "Delete bookmarks" to "Failed to delete bookmarks"
+   self.run_jj_action(result, "Failed to delete bookmarks", &msg, DirtyFlags::log_and_bookmarks());
+   ```
+
+9. Optional Next Step:
+   Complete the remaining 5 `err_prefix` updates in `src/app/actions/bookmark.rs` to preserve original error messages, then run `cargo fmt && cargo clippy && cargo test` to verify. The specific remaining changes are:
+   - Line 164: `"Rename"` → `"Rename failed"`
+   - Line 172: `"Forget"` → `"Forget failed"`
+   - Line 261: `"Move"` → `"Move failed"`
+   - Line 441: `"Untrack"` → `"Failed to untrack"`
+   - Line 464: `"Track"` → `"Failed to track"`
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/nakamura.shuta/.REDACTED.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+確認内容、問題ありません。
+  エラーメッセージ互換の指摘は解消済みと判断できます。
+
+  残る論点は前回の 公開API互換性（rebase* 削除 → rebase_unified 統合）
+  だけです。
+  tij を外部ライブラリ利用しない前提ならこのままでOKです。
+
+---
+
+コミットお願いします
