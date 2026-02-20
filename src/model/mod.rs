@@ -17,7 +17,9 @@ pub use annotation::{AnnotationContent, AnnotationLine};
 pub use bookmark::{Bookmark, BookmarkInfo};
 pub use change::Change;
 pub use conflict::ConflictFile;
-pub use diff::{CompareInfo, CompareRevisionInfo, DiffContent, DiffLine, DiffLineKind};
+pub use diff::{
+    CompareInfo, CompareRevisionInfo, DiffContent, DiffDisplayFormat, DiffLine, DiffLineKind,
+};
 pub use evolog::EvologEntry;
 pub use file_status::{FileState, FileStatus, Status};
 pub use notification::{Notification, NotificationKind};

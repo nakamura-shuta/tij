@@ -115,6 +115,50 @@ pub enum DiffLineKind {
     Separator,
 }
 
+/// Display format for diff view
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DiffDisplayFormat {
+    /// jj default (color-words style)
+    #[default]
+    ColorWords,
+    /// Histogram overview (--stat)
+    Stat,
+    /// Git unified diff (--git)
+    Git,
+}
+
+impl DiffDisplayFormat {
+    /// Cycle to next format
+    pub fn next(self) -> Self {
+        match self {
+            Self::ColorWords => Self::Stat,
+            Self::Stat => Self::Git,
+            Self::Git => Self::ColorWords,
+        }
+    }
+
+    /// Human-readable label
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::ColorWords => "color-words",
+            Self::Stat => "stat",
+            Self::Git => "git",
+        }
+    }
+
+    /// 1-indexed position in cycle (for notification)
+    pub fn position(&self) -> usize {
+        match self {
+            Self::ColorWords => 1,
+            Self::Stat => 2,
+            Self::Git => 3,
+        }
+    }
+
+    /// Total number of formats
+    pub const COUNT: usize = 3;
+}
+
 /// Info for a revision in a compare diff
 #[derive(Debug, Clone)]
 pub struct CompareRevisionInfo {
@@ -220,5 +264,38 @@ mod tests {
         assert_eq!(DiffLineKind::FileHeader, DiffLineKind::FileHeader);
         assert_ne!(DiffLineKind::FileHeader, DiffLineKind::Added);
         assert_ne!(DiffLineKind::Added, DiffLineKind::Deleted);
+    }
+
+    // =========================================================================
+    // DiffDisplayFormat tests
+    // =========================================================================
+
+    #[test]
+    fn test_display_format_default() {
+        let fmt = DiffDisplayFormat::default();
+        assert_eq!(fmt, DiffDisplayFormat::ColorWords);
+    }
+
+    #[test]
+    fn test_display_format_cycle() {
+        let fmt = DiffDisplayFormat::ColorWords;
+        assert_eq!(fmt.next(), DiffDisplayFormat::Stat);
+        assert_eq!(fmt.next().next(), DiffDisplayFormat::Git);
+        assert_eq!(fmt.next().next().next(), DiffDisplayFormat::ColorWords);
+    }
+
+    #[test]
+    fn test_display_format_labels() {
+        assert_eq!(DiffDisplayFormat::ColorWords.label(), "color-words");
+        assert_eq!(DiffDisplayFormat::Stat.label(), "stat");
+        assert_eq!(DiffDisplayFormat::Git.label(), "git");
+    }
+
+    #[test]
+    fn test_display_format_positions() {
+        assert_eq!(DiffDisplayFormat::ColorWords.position(), 1);
+        assert_eq!(DiffDisplayFormat::Stat.position(), 2);
+        assert_eq!(DiffDisplayFormat::Git.position(), 3);
+        assert_eq!(DiffDisplayFormat::COUNT, 3);
     }
 }

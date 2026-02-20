@@ -65,6 +65,7 @@ impl DiffView {
                     DiffAction::None
                 }
             }
+            keys::DIFF_FORMAT_CYCLE => DiffAction::CycleFormat,
             keys::YANK => DiffAction::CopyToClipboard { full: true },
             keys::YANK_DIFF => DiffAction::CopyToClipboard { full: false },
             keys::WRITE_FILE => DiffAction::ExportToFile,

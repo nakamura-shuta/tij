@@ -53,7 +53,7 @@ Press `?` for help, `q` to quit.
 | Bookmarks | Create / Move to @ (with backward detection) / Delete (multi-select) / Rename / Forget / Track / Untrack / Jump / Bookmark View (`M`) |
 | Git Integration | Fetch (multi-remote selection, branch-specific fetch) / Push (with dry-run preview, force push warnings, protected bookmark detection, multi-remote selection, push-by-change, push-by-revision, bulk options: --all/--tracked/--deleted, auto-retry for private commits and empty descriptions) |
 | Navigation | Next/Prev (`]`/`[` to move @ through history) / Reversed log order (`V`) |
-| Diff | Compare two revisions (`jj diff --from --to`) / Copy to clipboard (`y` full / `Y` diff-only) / Export to `.patch` file (`w`, git unified format) |
+| Diff | Compare two revisions (`jj diff --from --to`) / Display mode cycle (`m`: color-words → stat → git) / Copy to clipboard (`y` full / `Y` diff-only) / Export to `.patch` file (`w`, git unified format) |
 | Usability | Revset filtering / Text search / Adaptive status bar / Dynamic context-aware hints / `--limit 200` default (unlimited with revset) |
 
 ## Revset Examples
@@ -89,7 +89,7 @@ cargo test --tests            # Integration tests only
 cargo insta test              # Snapshot tests
 ```
 
-**Test categories**: Unit (600), Integration (86), Snapshot (17), Property-based (15)
+**Test categories**: Unit (617), Integration (86), Snapshot (20), Property-based (15)
 
 ## Acknowledgments
 

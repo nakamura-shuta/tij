@@ -842,3 +842,214 @@ fn test_parse_diff_body_empty() {
     assert!(!content.has_changes());
     assert_eq!(content.file_count(), 0);
 }
+
+// =========================================================================
+// Stat format parser tests
+// =========================================================================
+
+#[test]
+fn test_parse_show_stat_with_header() {
+    let output = "\
+Commit ID: abc123
+Change ID: xyz789
+Author   : Test User <test@test.com> (2024-01-30 12:00:00)
+Committer: Test User <test@test.com> (2024-01-30 12:00:00)
+
+    Test commit message
+
+src/main.rs | 10 ++++------
+src/lib.rs  |  5 +++++
+2 files changed, 9 insertions(+), 6 deletions(-)";
+
+    let content = Parser::parse_show_stat(output).unwrap();
+    assert_eq!(content.commit_id, "abc123");
+    assert_eq!(content.description, "Test commit message");
+    // Stat lines stored as Context (no line numbers)
+    assert!(content.lines.len() >= 3);
+    for line in &content.lines {
+        assert_eq!(line.kind, DiffLineKind::Context);
+        assert!(line.line_numbers.is_none());
+    }
+}
+
+#[test]
+fn test_parse_show_stat_empty_commit() {
+    let output = "\
+Commit ID: abc123
+Change ID: xyz789
+Author   : Test User <test@test.com> (2024-01-30 12:00:00)
+Committer: Test User <test@test.com> (2024-01-30 12:00:00)
+
+    Empty commit
+";
+
+    let content = Parser::parse_show_stat(output).unwrap();
+    assert_eq!(content.lines.len(), 1);
+    assert_eq!(content.lines[0].content, "(no changes)");
+}
+
+#[test]
+fn test_parse_diff_body_stat() {
+    let output = "\
+src/main.rs | 10 ++++------
+2 files changed, 9 insertions(+), 6 deletions(-)";
+
+    let content = Parser::parse_diff_body_stat(output);
+    assert_eq!(content.lines.len(), 2);
+    assert!(content.lines[0].content.contains("src/main.rs"));
+}
+
+#[test]
+fn test_parse_diff_body_stat_empty() {
+    let content = Parser::parse_diff_body_stat("");
+    assert_eq!(content.lines.len(), 1);
+    assert_eq!(content.lines[0].content, "(no changes)");
+}
+
+// =========================================================================
+// Git format parser tests
+// =========================================================================
+
+#[test]
+fn test_parse_show_git_with_header() {
+    let output = "\
+Commit ID: abc123
+Change ID: xyz789
+Author   : Test User <test@test.com> (2024-01-30 12:00:00)
+Committer: Test User <test@test.com> (2024-01-30 12:00:00)
+
+    Test commit
+
+diff --git a/src/main.rs b/src/main.rs
+index 1234567..abcdefg 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,3 +1,4 @@
+ fn main() {
++    println!(\"hello\");
+-    println!(\"old\");
+ }";
+
+    let content = Parser::parse_show_git(output).unwrap();
+    assert_eq!(content.commit_id, "abc123");
+    assert_eq!(content.description, "Test commit");
+
+    // Check file header
+    let file_headers: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::FileHeader)
+        .collect();
+    assert_eq!(file_headers.len(), 1);
+    assert_eq!(file_headers[0].content, "src/main.rs");
+
+    // Check +/- lines
+    let added: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::Added)
+        .collect();
+    assert_eq!(added.len(), 1);
+    assert_eq!(added[0].content, "    println!(\"hello\");");
+
+    let deleted: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::Deleted)
+        .collect();
+    assert_eq!(deleted.len(), 1);
+    assert_eq!(deleted[0].content, "    println!(\"old\");");
+}
+
+#[test]
+fn test_parse_git_triple_plus_not_added() {
+    // +++ b/src/main.rs should NOT be classified as Added
+    let output = "\
+diff --git a/src/main.rs b/src/main.rs
+index 1234567..abcdefg 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,3 +1,3 @@
+ context
++added line
+-deleted line";
+
+    let content = Parser::parse_diff_body_git(output);
+
+    // +++ should be skipped, not added
+    let added: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::Added)
+        .collect();
+    assert_eq!(added.len(), 1);
+    assert_eq!(added[0].content, "added line");
+
+    // --- should be skipped, not deleted
+    let deleted: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::Deleted)
+        .collect();
+    assert_eq!(deleted.len(), 1);
+    assert_eq!(deleted[0].content, "deleted line");
+}
+
+#[test]
+fn test_parse_git_hunk_header_is_context() {
+    let output = "\
+diff --git a/src/main.rs b/src/main.rs
+@@ -1,3 +1,3 @@
+ context";
+
+    let content = Parser::parse_diff_body_git(output);
+    let hunk_lines: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.content.starts_with("@@ "))
+        .collect();
+    assert_eq!(hunk_lines.len(), 1);
+    assert_eq!(hunk_lines[0].kind, DiffLineKind::Context);
+}
+
+#[test]
+fn test_parse_git_multiple_files() {
+    let output = "\
+diff --git a/src/main.rs b/src/main.rs
+@@ -1,1 +1,1 @@
+-old
++new
+diff --git a/src/lib.rs b/src/lib.rs
+@@ -1,0 +1,1 @@
++added";
+
+    let content = Parser::parse_diff_body_git(output);
+    let file_headers: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::FileHeader)
+        .collect();
+    assert_eq!(file_headers.len(), 2);
+    assert_eq!(file_headers[0].content, "src/main.rs");
+    assert_eq!(file_headers[1].content, "src/lib.rs");
+}
+
+#[test]
+fn test_parse_git_index_line_skipped() {
+    let output = "\
+diff --git a/file.rs b/file.rs
+index 1234567..abcdefg 100644
+--- a/file.rs
++++ b/file.rs
+@@ -1,1 +1,1 @@
++hello";
+
+    let content = Parser::parse_diff_body_git(output);
+    // index line should not appear in output
+    let index_lines: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.content.starts_with("index "))
+        .collect();
+    assert_eq!(index_lines.len(), 0);
+}

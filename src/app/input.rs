@@ -542,6 +542,9 @@ impl App {
             DiffAction::ExportToFile => {
                 self.export_diff_to_file();
             }
+            DiffAction::CycleFormat => {
+                self.cycle_diff_format();
+            }
         }
     }
 

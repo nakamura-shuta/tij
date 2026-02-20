@@ -2759,6 +2759,83 @@ impl App {
         }
     }
 
+    /// Cycle the diff display format and re-fetch content
+    pub(crate) fn cycle_diff_format(&mut self) {
+        use crate::jj::parser::Parser;
+        use crate::model::DiffDisplayFormat;
+
+        let Some(ref mut diff_view) = self.diff_view else {
+            return;
+        };
+
+        let old_format = diff_view.display_format;
+        let new_format = diff_view.cycle_format();
+        let change_id = diff_view.change_id.clone();
+        let compare_info = diff_view.compare_info.clone();
+
+        // Re-fetch content in the new format
+        let result = if let Some(ref ci) = compare_info {
+            // Compare mode
+            match new_format {
+                DiffDisplayFormat::ColorWords => self
+                    .jj
+                    .diff_range(&ci.from.change_id, &ci.to.change_id)
+                    .map(|o| Parser::parse_diff_body(&o)),
+                DiffDisplayFormat::Stat => self
+                    .jj
+                    .diff_range_stat(&ci.from.change_id, &ci.to.change_id)
+                    .map(|o| Parser::parse_diff_body_stat(&o)),
+                DiffDisplayFormat::Git => self
+                    .jj
+                    .diff_range_git(&ci.from.change_id, &ci.to.change_id)
+                    .map(|o| Parser::parse_diff_body_git(&o)),
+            }
+        } else {
+            // Normal mode
+            match new_format {
+                DiffDisplayFormat::ColorWords => {
+                    self.jj.show(&change_id).map(Ok).unwrap_or_else(Err)
+                }
+                DiffDisplayFormat::Stat => self
+                    .jj
+                    .show_stat(&change_id)
+                    .and_then(|o| Parser::parse_show_stat(&o)),
+                DiffDisplayFormat::Git => self
+                    .jj
+                    .show_git(&change_id)
+                    .and_then(|o| Parser::parse_show_git(&o)),
+            }
+        };
+
+        match result {
+            Ok(content) => {
+                let diff_view = self.diff_view.as_mut().unwrap();
+                diff_view.set_content(change_id, content);
+                // Restore compare_info (set_content doesn't touch it, but just in case)
+                diff_view.compare_info = compare_info;
+                // Keep the format we just set (set_content doesn't reset it)
+                diff_view.display_format = new_format;
+
+                self.notification = Some(Notification::info(format!(
+                    "Display: {} ({}/{})",
+                    new_format.label(),
+                    new_format.position(),
+                    DiffDisplayFormat::COUNT,
+                )));
+            }
+            Err(e) => {
+                // Rollback to previous format on error
+                let diff_view = self.diff_view.as_mut().unwrap();
+                diff_view.display_format = old_format;
+                self.error_message = Some(format!(
+                    "Failed to load {} format: {}",
+                    new_format.label(),
+                    e
+                ));
+            }
+        }
+    }
+
     /// Export diff content to a .patch file
     pub(crate) fn export_diff_to_file(&mut self) {
         let Some(ref diff_view) = self.diff_view else {

@@ -115,6 +115,8 @@ pub mod flags {
     pub const REVISIONS: &str = "--revisions";
     /// Git-compatible unified diff format
     pub const GIT_FORMAT: &str = "--git";
+    /// Histogram diff summary
+    pub const STAT: &str = "--stat";
     /// Allow pushing private commits
     pub const ALLOW_PRIVATE: &str = "--allow-private";
     /// Allow pushing commits with no description

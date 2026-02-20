@@ -1,0 +1,24 @@
+---
+source: tests/ui/test_diff.rs
+expression: terminal.backend()
+---
+"┌────────────────────── Tij - Diff View [testchan] [git] ──────────────────────┐"
+"│Commit: abc123def456                                                          │"
+"│Author: Test User <test@example.com>  2024-01-30 12:00:00                     │"
+"│Add new feature                                                               │"
+"│ src/main.rs [1/1]                                                            │"
+"│── src/main.rs ──                                                             │"
+"│ @@ -10,3 +10,3 @@                                                            │"
+"│ fn main() {                                                                  │"
+"│ +    println!("hello");                                                      │"
+"│ -    println!("old");                                                        │"
+"│ }                                                                            │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"

@@ -12,5 +12,8 @@ mod test_help;
 #[path = "ui/test_log.rs"]
 mod test_log;
 
+#[path = "ui/test_diff.rs"]
+mod test_diff;
+
 #[path = "ui/test_status.rs"]
 mod test_status;

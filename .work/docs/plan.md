@@ -53,6 +53,7 @@
 - [x] Phase 25: Rebase拡張 — Branch mode (-b) + --skip-emptied + フォールバック（v0.4.0）
 - [x] Phase 26: Simplify Parents — `i` キーで冗長な親エッジを削除（v0.4.1）
 - [x] Phase 27: Parallelize — `|` キーで線形チェーンを兄弟に変換（v0.4.2）
+- [x] Phase 28: Diff Display Options — `m` キーで color-words/stat/git フォーマット切替（v0.4.3）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
@@ -127,7 +128,7 @@
 ### Medium
 - [x] `jj rebase`: `--branch`（v0.4.0）, `--skip-emptied`（v0.4.0）
 - [ ] `jj rebase`: `--revisions`, `--keep-divergent`
-- [ ] `jj diff/show` 表示オプション拡張
+- [x] `jj diff/show` 表示オプション拡張（Phase 28, v0.4.3）
 
 ### Low
 - [x] `diffedit`（Phase 18.1 完了）

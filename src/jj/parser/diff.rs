@@ -253,6 +253,217 @@ impl Parser {
         })
     }
 
+    /// Parse `jj show --stat` output into DiffContent
+    ///
+    /// The header (Commit ID, Author, etc.) is parsed the same way as `parse_show()`.
+    /// The stat body lines are stored as plain-text DiffLines (no line numbers).
+    pub fn parse_show_stat(output: &str) -> Result<DiffContent, JjError> {
+        let (mut content, body_start) = Self::parse_show_header(output);
+
+        let body = &output[body_start..];
+        let trimmed = body.trim();
+        if trimmed.is_empty() {
+            // Empty commit: no changes
+            content.lines.push(DiffLine {
+                kind: DiffLineKind::Context,
+                line_numbers: None,
+                content: "(no changes)".to_string(),
+            });
+        } else {
+            for line in body.lines() {
+                content.lines.push(DiffLine {
+                    kind: DiffLineKind::Context,
+                    line_numbers: None,
+                    content: line.to_string(),
+                });
+            }
+        }
+
+        Ok(content)
+    }
+
+    /// Parse `jj diff --stat` (no header) output into DiffContent
+    pub fn parse_diff_body_stat(output: &str) -> DiffContent {
+        let mut content = DiffContent::default();
+        let trimmed = output.trim();
+        if trimmed.is_empty() {
+            content.lines.push(DiffLine {
+                kind: DiffLineKind::Context,
+                line_numbers: None,
+                content: "(no changes)".to_string(),
+            });
+        } else {
+            for line in output.lines() {
+                content.lines.push(DiffLine {
+                    kind: DiffLineKind::Context,
+                    line_numbers: None,
+                    content: line.to_string(),
+                });
+            }
+        }
+        content
+    }
+
+    /// Parse `jj show --git` output into DiffContent
+    ///
+    /// The header (Commit ID, Author, etc.) is parsed the same way as `parse_show()`.
+    /// The git diff body is parsed with proper header line detection to avoid
+    /// misclassifying `--- a/...` / `+++ b/...` as Deleted/Added.
+    pub fn parse_show_git(output: &str) -> Result<DiffContent, JjError> {
+        let (mut content, body_start) = Self::parse_show_header(output);
+
+        let body = &output[body_start..];
+        Self::parse_git_diff_lines(body, &mut content);
+
+        Ok(content)
+    }
+
+    /// Parse `jj diff --git --from --to` (no header) output into DiffContent
+    pub fn parse_diff_body_git(output: &str) -> DiffContent {
+        let mut content = DiffContent::default();
+        Self::parse_git_diff_lines(output, &mut content);
+        content
+    }
+
+    /// Parse git unified diff lines into DiffContent
+    ///
+    /// Detection order (important to avoid misclassification):
+    /// 1. `diff --git` → FileHeader
+    /// 2. `index ` → skip
+    /// 3. `--- ` → skip (old file header)
+    /// 4. `+++ ` → skip (new file header)
+    /// 5. `@@ ` → Context (hunk header)
+    /// 6. `+` → Added
+    /// 7. `-` → Deleted
+    /// 8. others → Context
+    fn parse_git_diff_lines(body: &str, content: &mut DiffContent) {
+        let mut file_count = 0;
+
+        for line in body.lines() {
+            if let Some(rest) = line.strip_prefix("diff --git ") {
+                // Extract path from "a/<path> b/<path>"
+                let path = if let Some(b_pos) = rest.find(" b/") {
+                    rest[b_pos + 3..].to_string()
+                } else {
+                    rest.to_string()
+                };
+                if file_count > 0 {
+                    content.lines.push(DiffLine::separator());
+                }
+                content.lines.push(DiffLine::file_header(path));
+                file_count += 1;
+            } else if line.starts_with("index ")
+                || line.starts_with("--- ")
+                || line.starts_with("+++ ")
+            {
+                // Git metadata headers — skip
+            } else if line.starts_with("@@ ") {
+                // Hunk header
+                content.lines.push(DiffLine {
+                    kind: DiffLineKind::Context,
+                    line_numbers: None,
+                    content: line.to_string(),
+                });
+            } else if let Some(rest) = line.strip_prefix('+') {
+                content.lines.push(DiffLine {
+                    kind: DiffLineKind::Added,
+                    line_numbers: None,
+                    content: rest.to_string(),
+                });
+            } else if let Some(rest) = line.strip_prefix('-') {
+                content.lines.push(DiffLine {
+                    kind: DiffLineKind::Deleted,
+                    line_numbers: None,
+                    content: rest.to_string(),
+                });
+            } else {
+                // Context line (leading space stripped if present)
+                let ctx = line.strip_prefix(' ').unwrap_or(line);
+                content.lines.push(DiffLine {
+                    kind: DiffLineKind::Context,
+                    line_numbers: None,
+                    content: ctx.to_string(),
+                });
+            }
+        }
+    }
+
+    /// Extract the header section (Commit ID, Author, Description) from `jj show` output.
+    ///
+    /// Returns (DiffContent with header fields populated, byte offset where body starts).
+    /// Shared between parse_show, parse_show_stat, and parse_show_git.
+    fn parse_show_header(output: &str) -> (DiffContent, usize) {
+        let mut content = DiffContent::default();
+        let mut description_lines = Vec::new();
+        let mut byte_offset = 0;
+
+        for line in output.lines() {
+            // Track byte offset (line + newline)
+            let line_end = byte_offset + line.len() + 1; // +1 for '\n'
+
+            if let Some(commit_id) = line.strip_prefix("Commit ID: ") {
+                content.commit_id = commit_id.trim().to_string();
+                byte_offset = line_end;
+                continue;
+            }
+
+            if let Some(author_line) = line.strip_prefix("Author   : ") {
+                if let Some((author, timestamp)) = Self::parse_author_line(author_line) {
+                    content.author = author;
+                    content.timestamp = timestamp;
+                }
+                byte_offset = line_end;
+                continue;
+            }
+
+            if line.starts_with("Change ID: ")
+                || line.starts_with("Committer: ")
+                || line.starts_with("Bookmarks: ")
+                || line.starts_with("Tags     : ")
+            {
+                byte_offset = line_end;
+                continue;
+            }
+
+            if line.is_empty() {
+                if !description_lines.is_empty() {
+                    description_lines.push(String::new());
+                }
+                byte_offset = line_end;
+                continue;
+            }
+
+            if line.starts_with("    ") {
+                description_lines.push(line.trim_start().to_string());
+                byte_offset = line_end;
+                continue;
+            }
+
+            // Non-header, non-description line — body starts here
+            while description_lines.last().is_some_and(|l| l.is_empty()) {
+                description_lines.pop();
+            }
+            if !description_lines.is_empty() {
+                content.description = description_lines.join("\n");
+            }
+            // byte_offset points to the start of this line (body start)
+            break;
+        }
+
+        // Handle case where output is all header (no body)
+        if !description_lines.is_empty() && content.description.is_empty() {
+            while description_lines.last().is_some_and(|l| l.is_empty()) {
+                description_lines.pop();
+            }
+            content.description = description_lines.join("\n");
+            byte_offset = output.len();
+        }
+
+        // Clamp to output length
+        let body_start = byte_offset.min(output.len());
+        (content, body_start)
+    }
+
     /// Parse line numbers from the prefix part before ':'
     ///
     /// Format: "  old  new" where numbers are right-aligned

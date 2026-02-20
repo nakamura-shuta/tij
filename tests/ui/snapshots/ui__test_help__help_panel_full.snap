@@ -60,6 +60,7 @@ expression: terminal.backend()
 "│  Backspace Delete character                                                  │"
 "│                                                                              │"
 "│Diff View:                                                                    │"
+"│  m         Cycle diff display mode (color-words/stat/git)                    │"
 "│  j/k       Scroll down/up                                                    │"
 "│  d/u       Half page down/up                                                 │"
 "│  g/G       Go to top/bottom                                                  │"
@@ -90,5 +91,4 @@ expression: terminal.backend()
 "│  T         Track remote bookmark                                             │"
 "│  U         Untrack remote bookmark                                           │"
 "│  D         Delete local bookmark                                             │"
-"│  r         Rename bookmark                                                   │"
 "└──────────────────────────────────────────────────────────────────────────────┘"

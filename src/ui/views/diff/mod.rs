@@ -5,7 +5,7 @@
 mod input;
 mod render;
 
-use crate::model::{CompareInfo, DiffContent};
+use crate::model::{CompareInfo, DiffContent, DiffDisplayFormat};
 
 /// Action returned by DiffView key handling
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +25,8 @@ pub enum DiffAction {
     CopyToClipboard { full: bool },
     /// Export diff to .patch file
     ExportToFile,
+    /// Cycle display format (color-words → stat → git → color-words)
+    CycleFormat,
 }
 
 /// Diff view state
@@ -46,6 +48,8 @@ pub struct DiffView {
     visible_height: usize,
     /// Compare info (set when in compare mode, None for normal single-revision diff)
     pub compare_info: Option<CompareInfo>,
+    /// Current display format
+    pub display_format: DiffDisplayFormat,
 }
 
 impl Default for DiffView {
@@ -69,6 +73,7 @@ impl DiffView {
             current_file_index: 0,
             visible_height: Self::DEFAULT_VISIBLE_HEIGHT,
             compare_info: None,
+            display_format: DiffDisplayFormat::default(),
         }
     }
 
@@ -120,6 +125,13 @@ impl DiffView {
         self.file_names.clear();
         self.current_file_index = 0;
         self.visible_height = Self::DEFAULT_VISIBLE_HEIGHT;
+        self.display_format = DiffDisplayFormat::default();
+    }
+
+    /// Cycle to the next display format
+    pub fn cycle_format(&mut self) -> DiffDisplayFormat {
+        self.display_format = self.display_format.next();
+        self.display_format
     }
 
     /// Get current file name for context bar
@@ -677,5 +689,62 @@ mod tests {
         let mut view = DiffView::new("test".to_string(), create_test_content());
         let action = view.handle_key(KeyEvent::from(crossterm::event::KeyCode::Char('w')));
         assert_eq!(action, DiffAction::ExportToFile);
+    }
+
+    #[test]
+    fn test_format_cycle_key_returns_cycle_format() {
+        let mut view = DiffView::new("test".to_string(), create_test_content());
+        let action = view.handle_key(KeyEvent::from(crossterm::event::KeyCode::Char('m')));
+        assert_eq!(action, DiffAction::CycleFormat);
+    }
+
+    #[test]
+    fn test_cycle_format_cycles_through_all() {
+        use crate::model::DiffDisplayFormat;
+
+        let mut view = DiffView::new("test".to_string(), create_test_content());
+        assert_eq!(view.display_format, DiffDisplayFormat::ColorWords);
+
+        let fmt = view.cycle_format();
+        assert_eq!(fmt, DiffDisplayFormat::Stat);
+        assert_eq!(view.display_format, DiffDisplayFormat::Stat);
+
+        let fmt = view.cycle_format();
+        assert_eq!(fmt, DiffDisplayFormat::Git);
+
+        let fmt = view.cycle_format();
+        assert_eq!(fmt, DiffDisplayFormat::ColorWords);
+    }
+
+    #[test]
+    fn test_clear_resets_format() {
+        use crate::model::DiffDisplayFormat;
+
+        let mut view = DiffView::new("test".to_string(), create_test_content());
+        view.cycle_format(); // Now Stat
+        assert_eq!(view.display_format, DiffDisplayFormat::Stat);
+
+        view.clear();
+        assert_eq!(view.display_format, DiffDisplayFormat::ColorWords);
+    }
+
+    #[test]
+    fn test_format_rollback_pattern() {
+        // Verify the old_format / cycle_format / rollback pattern used in App
+        use crate::model::DiffDisplayFormat;
+
+        let mut view = DiffView::new("test".to_string(), create_test_content());
+
+        // Simulate: save old, cycle, then rollback on error
+        let old_format = view.display_format;
+        assert_eq!(old_format, DiffDisplayFormat::ColorWords);
+
+        let new_format = view.cycle_format();
+        assert_eq!(new_format, DiffDisplayFormat::Stat);
+        assert_eq!(view.display_format, DiffDisplayFormat::Stat);
+
+        // Simulate error → rollback
+        view.display_format = old_format;
+        assert_eq!(view.display_format, DiffDisplayFormat::ColorWords);
     }
 }

@@ -233,6 +233,9 @@ pub const YANK_DIFF: KeyCode = KeyCode::Char('Y');
 /// Export diff to file
 pub const WRITE_FILE: KeyCode = KeyCode::Char('w');
 
+/// Cycle diff display format (color-words → stat → git)
+pub const DIFF_FORMAT_CYCLE: KeyCode = KeyCode::Char('m');
+
 // =============================================================================
 // Undo/Redo keys
 // =============================================================================
@@ -464,6 +467,10 @@ pub const INPUT_KEYS: &[KeyBindEntry] = &[
 
 /// Diff view key bindings for help display
 pub const DIFF_KEYS: &[KeyBindEntry] = &[
+    KeyBindEntry {
+        key: "m",
+        description: "Cycle diff display mode (color-words/stat/git)",
+    },
     KeyBindEntry {
         key: "j/k",
         description: "Scroll down/up",
@@ -1064,6 +1071,11 @@ pub const DIFF_VIEW_HINTS: &[KeyHint] = &[
         key: "j/k",
         label: "Scroll",
         color: Color::Cyan,
+    },
+    KeyHint {
+        key: "m",
+        label: "Mode",
+        color: Color::Green,
     },
     KeyHint {
         key: "]/[",

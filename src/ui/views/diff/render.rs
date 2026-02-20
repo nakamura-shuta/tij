@@ -7,7 +7,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::model::{CompareInfo, DiffLine, DiffLineKind, Notification};
+use crate::model::{CompareInfo, DiffDisplayFormat, DiffLine, DiffLineKind, Notification};
 use crate::ui::{components, theme};
 
 use super::DiffView;
@@ -62,6 +62,10 @@ impl DiffView {
 
     /// Render the header (commit info including description)
     fn render_header(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
+        let format_suffix = match self.display_format {
+            DiffDisplayFormat::ColorWords => String::new(),
+            fmt => format!(" [{}]", fmt.label()),
+        };
         let title = Line::from(vec![
             Span::raw(" Tij - Diff View ").bold(),
             Span::raw("["),
@@ -69,7 +73,9 @@ impl DiffView {
                 self.change_id.chars().take(8).collect::<String>(),
                 Style::default().fg(theme::log_view::CHANGE_ID),
             ),
-            Span::raw("] "),
+            Span::raw("]"),
+            Span::styled(format_suffix, Style::default().fg(Color::Yellow).bold()),
+            Span::raw(" "),
         ])
         .centered();
 
@@ -135,7 +141,12 @@ impl DiffView {
         compare_info: &CompareInfo,
         notification: Option<&Notification>,
     ) {
-        let title = Line::from(" Tij - Compare Diff ").bold().cyan().centered();
+        let format_suffix = match self.display_format {
+            DiffDisplayFormat::ColorWords => String::new(),
+            fmt => format!(" [{}]", fmt.label()),
+        };
+        let title_text = format!(" Tij - Compare Diff{} ", format_suffix);
+        let title = Line::from(title_text).bold().cyan().centered();
 
         // Build notification for title bar
         let title_width = title.width();
@@ -236,7 +247,7 @@ impl DiffView {
         // No top/bottom borders, only left/right, so use full height
         let inner_height = area.height as usize;
 
-        if !self.has_changes() {
+        if self.content.lines.is_empty() {
             // Empty state
             let empty_msg = components::no_changes_state().block(components::side_borders_block());
             frame.render_widget(empty_msg, area);
@@ -260,6 +271,8 @@ impl DiffView {
 
     /// Render a single diff line
     fn render_diff_line(&self, line: &DiffLine) -> Line<'static> {
+        let show_line_nums = self.display_format == DiffDisplayFormat::ColorWords;
+
         match line.kind {
             DiffLineKind::FileHeader => Line::from(Span::styled(
                 format!("── {} ──", line.content),
@@ -267,43 +280,61 @@ impl DiffView {
             )),
             DiffLineKind::Separator => Line::from(""),
             DiffLineKind::Context => {
-                let line_nums = self.format_line_numbers(line.line_numbers);
-                Line::from(vec![
-                    Span::styled(
-                        line_nums,
-                        Style::default().fg(theme::diff_view::LINE_NUMBER),
-                    ),
-                    Span::raw("  "),
-                    Span::raw(line.content.clone()),
-                ])
+                if show_line_nums {
+                    let line_nums = self.format_line_numbers(line.line_numbers);
+                    Line::from(vec![
+                        Span::styled(
+                            line_nums,
+                            Style::default().fg(theme::diff_view::LINE_NUMBER),
+                        ),
+                        Span::raw("  "),
+                        Span::raw(line.content.clone()),
+                    ])
+                } else {
+                    Line::from(Span::raw(format!(" {}", line.content)))
+                }
             }
             DiffLineKind::Added => {
-                let line_nums = self.format_line_numbers(line.line_numbers);
-                Line::from(vec![
-                    Span::styled(
-                        line_nums,
-                        Style::default().fg(theme::diff_view::LINE_NUMBER),
-                    ),
-                    Span::styled(" +", Style::default().fg(theme::diff_view::ADDED)),
-                    Span::styled(
-                        line.content.clone(),
+                if show_line_nums {
+                    let line_nums = self.format_line_numbers(line.line_numbers);
+                    Line::from(vec![
+                        Span::styled(
+                            line_nums,
+                            Style::default().fg(theme::diff_view::LINE_NUMBER),
+                        ),
+                        Span::styled(" +", Style::default().fg(theme::diff_view::ADDED)),
+                        Span::styled(
+                            line.content.clone(),
+                            Style::default().fg(theme::diff_view::ADDED),
+                        ),
+                    ])
+                } else {
+                    Line::from(Span::styled(
+                        format!(" +{}", line.content),
                         Style::default().fg(theme::diff_view::ADDED),
-                    ),
-                ])
+                    ))
+                }
             }
             DiffLineKind::Deleted => {
-                let line_nums = self.format_line_numbers(line.line_numbers);
-                Line::from(vec![
-                    Span::styled(
-                        line_nums,
-                        Style::default().fg(theme::diff_view::LINE_NUMBER),
-                    ),
-                    Span::styled(" -", Style::default().fg(theme::diff_view::DELETED)),
-                    Span::styled(
-                        line.content.clone(),
+                if show_line_nums {
+                    let line_nums = self.format_line_numbers(line.line_numbers);
+                    Line::from(vec![
+                        Span::styled(
+                            line_nums,
+                            Style::default().fg(theme::diff_view::LINE_NUMBER),
+                        ),
+                        Span::styled(" -", Style::default().fg(theme::diff_view::DELETED)),
+                        Span::styled(
+                            line.content.clone(),
+                            Style::default().fg(theme::diff_view::DELETED),
+                        ),
+                    ])
+                } else {
+                    Line::from(Span::styled(
+                        format!(" -{}", line.content),
                         Style::default().fg(theme::diff_view::DELETED),
-                    ),
-                ])
+                    ))
+                }
             }
         }
     }

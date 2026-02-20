@@ -222,6 +222,21 @@ impl JjExecutor {
         Parser::parse_show(&output)
     }
 
+    /// Run `jj show --stat` for a specific change (histogram overview)
+    pub fn show_stat(&self, change_id: &str) -> Result<String, JjError> {
+        self.run(&[commands::SHOW, flags::STAT, flags::REVISION, change_id])
+    }
+
+    /// Run `jj show --git` for a specific change (git unified diff)
+    pub fn show_git(&self, change_id: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::SHOW,
+            flags::GIT_FORMAT,
+            flags::REVISION,
+            change_id,
+        ])
+    }
+
     /// Run `jj describe` to update change description
     ///
     /// Uses positional argument format: `jj describe <change-id> -m <message>`
@@ -1507,6 +1522,18 @@ impl JjExecutor {
         self.run(&[
             commands::DIFF,
             flags::GIT_FORMAT,
+            flags::FROM,
+            from,
+            flags::TO,
+            to,
+        ])
+    }
+
+    /// Run `jj diff --stat --from <from> --to <to>` for histogram overview
+    pub fn diff_range_stat(&self, from: &str, to: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::DIFF,
+            flags::STAT,
             flags::FROM,
             from,
             flags::TO,
