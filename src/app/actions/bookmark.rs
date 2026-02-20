@@ -85,16 +85,14 @@ impl App {
 
     /// Execute bookmark move (called after confirmation)
     pub(super) fn execute_bookmark_move(&mut self, name: &str, change_id: &str) {
-        match self.jj.bookmark_set(name, change_id) {
-            Ok(_) => {
-                self.notification =
-                    Some(Notification::success(format!("Moved bookmark: {}", name)));
-                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_bookmarks());
-            }
-            Err(e) => {
-                self.set_error(format!("Failed to move bookmark: {}", e));
-            }
-        }
+        let msg = format!("Moved bookmark: {}", name);
+        let result = self.jj.bookmark_set(name, change_id);
+        self.run_jj_action(
+            result,
+            "Failed to move bookmark",
+            &msg,
+            DirtyFlags::log_and_bookmarks(),
+        );
     }
 
     /// Start bookmark deletion flow (opens dialog)
@@ -141,16 +139,14 @@ impl App {
         }
 
         let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
-        match self.jj.bookmark_delete(&name_refs) {
-            Ok(_) => {
-                let names_str = names.join(", ");
-                self.notify_success(format!("Deleted bookmarks: {}", names_str));
-                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_bookmarks());
-            }
-            Err(e) => {
-                self.set_error(format!("Failed to delete bookmarks: {}", e));
-            }
-        }
+        let msg = format!("Deleted bookmarks: {}", names.join(", "));
+        let result = self.jj.bookmark_delete(&name_refs);
+        self.run_jj_action(
+            result,
+            "Failed to delete bookmarks",
+            &msg,
+            DirtyFlags::log_and_bookmarks(),
+        );
     }
 
     /// Execute bookmark rename
@@ -163,32 +159,27 @@ impl App {
             self.notify_warning("Bookmark name cannot be empty");
             return;
         }
-        match self.jj.bookmark_rename(old_name, new_name) {
-            Ok(_) => {
-                self.notify_success(format!("Renamed bookmark: {} → {}", old_name, new_name));
-                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_bookmarks());
-            }
-            Err(e) => {
-                self.set_error(format!("Rename failed: {}", e));
-            }
-        }
+        let msg = format!("Renamed bookmark: {} → {}", old_name, new_name);
+        let result = self.jj.bookmark_rename(old_name, new_name);
+        self.run_jj_action(
+            result,
+            "Rename failed",
+            &msg,
+            DirtyFlags::log_and_bookmarks(),
+        );
     }
 
     /// Execute bookmark forget
     pub(crate) fn execute_bookmark_forget(&mut self) {
         if let Some(name) = self.pending_forget_bookmark.take() {
-            match self.jj.bookmark_forget(&[&name]) {
-                Ok(_) => {
-                    self.notify_success(format!(
-                        "Forgot bookmark: {} (remote tracking removed)",
-                        name
-                    ));
-                    self.mark_dirty_and_refresh_current(DirtyFlags::log_and_bookmarks());
-                }
-                Err(e) => {
-                    self.set_error(format!("Forget failed: {}", e));
-                }
-            }
+            let msg = format!("Forgot bookmark: {} (remote tracking removed)", name);
+            let result = self.jj.bookmark_forget(&[&name]);
+            self.run_jj_action(
+                result,
+                "Forget failed",
+                &msg,
+                DirtyFlags::log_and_bookmarks(),
+            );
         }
     }
 
@@ -275,15 +266,9 @@ impl App {
 
     /// Execute bookmark move with --allow-backwards (called after re-confirmation)
     pub(super) fn execute_bookmark_move_backwards(&mut self, name: &str) {
-        match self.jj.bookmark_move_allow_backwards(name, "@") {
-            Ok(_) => {
-                self.notify_success(format!("Moved bookmark '{}' to @ (backwards)", name));
-                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_bookmarks());
-            }
-            Err(e) => {
-                self.set_error(format!("Move failed: {}", e));
-            }
-        }
+        let msg = format!("Moved bookmark '{}' to @ (backwards)", name);
+        let result = self.jj.bookmark_move_allow_backwards(name, "@");
+        self.run_jj_action(result, "Move failed", &msg, DirtyFlags::log_and_bookmarks());
     }
 
     /// Start track flow - show dialog with untracked remote bookmarks
@@ -454,21 +439,16 @@ impl App {
 
     /// Execute untrack for a remote bookmark
     pub(crate) fn execute_untrack(&mut self, full_name: &str) {
-        match self.jj.bookmark_untrack(&[full_name]) {
-            Ok(_) => {
-                let display = full_name.split('@').next().unwrap_or(full_name);
-                self.notify_success(format!("Stopped tracking: {}", display));
-                self.mark_dirty_and_refresh_current(DirtyFlags {
-                    log: true,
-                    status: true,
-                    op_log: true,
-                    bookmarks: true,
-                });
-            }
-            Err(e) => {
-                self.set_error(format!("Failed to untrack: {}", e));
-            }
-        }
+        let display = full_name.split('@').next().unwrap_or(full_name);
+        let msg = format!("Stopped tracking: {}", display);
+        let result = self.jj.bookmark_untrack(&[full_name]);
+        let dirty = DirtyFlags {
+            log: true,
+            status: true,
+            op_log: true,
+            bookmarks: true,
+        };
+        self.run_jj_action(result, "Failed to untrack", &msg, dirty);
     }
 
     /// Execute track for selected bookmarks
@@ -478,26 +458,20 @@ impl App {
         }
 
         let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
-        match self.jj.bookmark_track(&name_refs) {
-            Ok(_) => {
-                let display = if names.len() == 1 {
-                    // "feature-x@origin" から "feature-x" を抽出
-                    names[0].split('@').next().unwrap_or(&names[0]).to_string()
-                } else {
-                    format!("{} bookmarks", names.len())
-                };
-                self.notify_success(format!("Started tracking: {}", display));
-                self.mark_dirty_and_refresh_current(DirtyFlags {
-                    log: true,
-                    status: true,
-                    op_log: true,
-                    bookmarks: true,
-                });
-            }
-            Err(e) => {
-                self.set_error(format!("Failed to track: {}", e));
-            }
-        }
+        let display = if names.len() == 1 {
+            names[0].split('@').next().unwrap_or(&names[0]).to_string()
+        } else {
+            format!("{} bookmarks", names.len())
+        };
+        let msg = format!("Started tracking: {}", display);
+        let result = self.jj.bookmark_track(&name_refs);
+        let dirty = DirtyFlags {
+            log: true,
+            status: true,
+            op_log: true,
+            bookmarks: true,
+        };
+        self.run_jj_action(result, "Failed to track", &msg, dirty);
     }
 }
 

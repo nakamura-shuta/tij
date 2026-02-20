@@ -7,6 +7,7 @@ mod common;
 
 use common::TestRepo;
 use tij::jj::JjExecutor;
+use tij::model::RebaseMode;
 
 #[test]
 fn test_abandon_removes_change() {
@@ -79,7 +80,7 @@ fn test_rebase_moves_change() {
     // Move C directly under A (skip B)
     let executor = JjExecutor::with_repo_path(repo.path());
     executor
-        .rebase(&c_id, &a_id)
+        .rebase_unified(RebaseMode::Revision, &c_id, &a_id, &[])
         .expect("rebase should succeed");
 
     // C's parent is now A
@@ -109,7 +110,7 @@ fn test_rebase_with_conflict() {
 
     // Move C under B (should cause conflict)
     let executor = JjExecutor::with_repo_path(repo.path());
-    let result = executor.rebase(&c_id, &b_id);
+    let result = executor.rebase_unified(RebaseMode::Revision, &c_id, &b_id, &[]);
 
     // rebase itself succeeds but creates conflict
     assert!(result.is_ok(), "rebase should complete");
@@ -174,7 +175,7 @@ fn test_rebase_source_moves_descendants() {
     // Move B (with descendants B, C) under D
     let executor = JjExecutor::with_repo_path(repo.path());
     executor
-        .rebase_source(&b_id, &d_id)
+        .rebase_unified(RebaseMode::Source, &b_id, &d_id, &[])
         .expect("rebase_source should succeed");
 
     // Verify B's parent is now D
@@ -236,7 +237,7 @@ fn test_rebase_insert_after() {
     // Insert K after L (K becomes child of L, M becomes child of K)
     let executor = JjExecutor::with_repo_path(repo.path());
     executor
-        .rebase_insert_after(&k_id, &l_id)
+        .rebase_unified(RebaseMode::InsertAfter, &k_id, &l_id, &[])
         .expect("rebase_insert_after should succeed");
 
     // Verify K's parent is now L
@@ -284,7 +285,7 @@ fn test_rebase_insert_before() {
     // Insert K before L (K becomes parent of L, K's parent is J)
     let executor = JjExecutor::with_repo_path(repo.path());
     executor
-        .rebase_insert_before(&k_id, &l_id)
+        .rebase_unified(RebaseMode::InsertBefore, &k_id, &l_id, &[])
         .expect("rebase_insert_before should succeed");
 
     // Verify K's parent is J

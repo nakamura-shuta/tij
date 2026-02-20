@@ -14,7 +14,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use crate::model::{
-    AnnotationContent, Bookmark, BookmarkInfo, Change, ConflictFile, DiffContent, Operation, Status,
+    AnnotationContent, Bookmark, BookmarkInfo, Change, ConflictFile, DiffContent, Operation,
+    RebaseMode, Status,
 };
 
 use super::JjError;
@@ -648,147 +649,43 @@ impl JjExecutor {
         self.run(&args)
     }
 
-    /// Run `jj rebase -r <source> -d <destination>` to move a change
+    /// Unified rebase: run jj rebase with the given mode and optional extra flags
     ///
-    /// Moves the specified change to be a child of the destination.
-    /// Unlike `-s` option, this only moves the single change; descendants
-    /// are rebased onto the original parent.
+    /// Supports all five modes:
+    /// - `Revision` (`-r`): Move single change, descendants rebased onto parent
+    /// - `Source` (`-s`): Move change and all descendants together
+    /// - `Branch` (`-b`): Move entire branch relative to destination's ancestors
+    /// - `InsertAfter` (`-A`): Insert change after target in history
+    /// - `InsertBefore` (`-B`): Insert change before target in history
     ///
-    /// Returns the command output which may contain conflict information.
-    pub fn rebase(&self, source: &str, destination: &str) -> Result<String, JjError> {
-        self.run(&[commands::REBASE, flags::REVISION, source, "-d", destination])
-    }
-
-    /// Run `jj rebase -s <source> -d <destination>` to move a change and its descendants
-    ///
-    /// Moves the specified change and all its descendants to be children of the destination.
-    /// Unlike `-r`, this moves the entire subtree.
+    /// `extra_flags` can include e.g. `--skip-emptied`.
     ///
     /// Returns the command output which may contain conflict information.
-    pub fn rebase_source(&self, source: &str, destination: &str) -> Result<String, JjError> {
-        self.run(&[commands::REBASE, flags::SOURCE, source, "-d", destination])
-    }
-
-    /// Run `jj rebase -r <source> -A <target>` to insert a change after target
-    ///
-    /// Inserts the source change into the history after the target revision.
-    /// The target's children become children of the source instead.
-    ///
-    /// Returns the command output which may contain conflict information.
-    pub fn rebase_insert_after(&self, source: &str, target: &str) -> Result<String, JjError> {
-        self.run(&[
-            commands::REBASE,
-            flags::REVISION,
-            source,
-            flags::INSERT_AFTER,
-            target,
-        ])
-    }
-
-    /// Run `jj rebase -r <source> -B <target>` to insert a change before target
-    ///
-    /// Inserts the source change into the history before the target revision.
-    /// The source becomes a new parent of the target.
-    ///
-    /// Returns the command output which may contain conflict information.
-    pub fn rebase_insert_before(&self, source: &str, target: &str) -> Result<String, JjError> {
-        self.run(&[
-            commands::REBASE,
-            flags::REVISION,
-            source,
-            flags::INSERT_BEFORE,
-            target,
-        ])
-    }
-
-    /// Run `jj rebase -b <source> -d <destination>` to rebase a branch
-    ///
-    /// Moves all commits on the branch (relative to the destination's ancestors)
-    /// to be children of the destination.
-    pub fn rebase_branch(&self, source: &str, destination: &str) -> Result<String, JjError> {
-        self.run(&[
-            commands::REBASE,
-            flags::BRANCH_SHORT,
-            source,
-            "-d",
-            destination,
-        ])
-    }
-
-    /// Run `jj rebase -r` with extra flags (e.g. --skip-emptied)
-    pub fn rebase_with_flags(
+    pub fn rebase_unified(
         &self,
-        source: &str,
-        destination: &str,
-        extra_flags: &[&str],
-    ) -> Result<String, JjError> {
-        let mut args = vec![commands::REBASE, flags::REVISION, source, "-d", destination];
-        args.extend_from_slice(extra_flags);
-        self.run(&args)
-    }
-
-    /// Run `jj rebase -s` with extra flags
-    pub fn rebase_source_with_flags(
-        &self,
-        source: &str,
-        destination: &str,
-        extra_flags: &[&str],
-    ) -> Result<String, JjError> {
-        let mut args = vec![commands::REBASE, flags::SOURCE, source, "-d", destination];
-        args.extend_from_slice(extra_flags);
-        self.run(&args)
-    }
-
-    /// Run `jj rebase -b` with extra flags
-    pub fn rebase_branch_with_flags(
-        &self,
-        source: &str,
-        destination: &str,
-        extra_flags: &[&str],
-    ) -> Result<String, JjError> {
-        let mut args = vec![
-            commands::REBASE,
-            flags::BRANCH_SHORT,
-            source,
-            "-d",
-            destination,
-        ];
-        args.extend_from_slice(extra_flags);
-        self.run(&args)
-    }
-
-    /// Run `jj rebase -r -A` with extra flags
-    pub fn rebase_insert_after_with_flags(
-        &self,
+        mode: RebaseMode,
         source: &str,
         target: &str,
         extra_flags: &[&str],
     ) -> Result<String, JjError> {
-        let mut args = vec![
-            commands::REBASE,
-            flags::REVISION,
-            source,
-            flags::INSERT_AFTER,
-            target,
-        ];
-        args.extend_from_slice(extra_flags);
-        self.run(&args)
-    }
-
-    /// Run `jj rebase -r -B` with extra flags
-    pub fn rebase_insert_before_with_flags(
-        &self,
-        source: &str,
-        target: &str,
-        extra_flags: &[&str],
-    ) -> Result<String, JjError> {
-        let mut args = vec![
-            commands::REBASE,
-            flags::REVISION,
-            source,
-            flags::INSERT_BEFORE,
-            target,
-        ];
+        let mut args = vec![commands::REBASE];
+        match mode {
+            RebaseMode::Revision => {
+                args.extend_from_slice(&[flags::REVISION, source, "-d", target]);
+            }
+            RebaseMode::Source => {
+                args.extend_from_slice(&[flags::SOURCE, source, "-d", target]);
+            }
+            RebaseMode::Branch => {
+                args.extend_from_slice(&[flags::BRANCH_SHORT, source, "-d", target]);
+            }
+            RebaseMode::InsertAfter => {
+                args.extend_from_slice(&[flags::REVISION, source, flags::INSERT_AFTER, target]);
+            }
+            RebaseMode::InsertBefore => {
+                args.extend_from_slice(&[flags::REVISION, source, flags::INSERT_BEFORE, target]);
+            }
+        }
         args.extend_from_slice(extra_flags);
         self.run(&args)
     }

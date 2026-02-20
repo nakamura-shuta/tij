@@ -12,6 +12,7 @@ mod common;
 
 use common::TestRepo;
 use tij::jj::JjExecutor;
+use tij::model::RebaseMode;
 
 #[test]
 fn story_mistake_recovery() {
@@ -81,7 +82,7 @@ fn story_undo_wrong_rebase() {
 
     // Accidentally rebase C to A (wrong parent)
     executor
-        .rebase(&c_id, &a_id)
+        .rebase_unified(RebaseMode::Revision, &c_id, &a_id, &[])
         .expect("rebase should succeed");
 
     // Verify wrong state

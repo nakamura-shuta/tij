@@ -12,6 +12,7 @@ mod evolog;
 mod file_status;
 mod notification;
 mod operation;
+mod rebase;
 
 pub use annotation::{AnnotationContent, AnnotationLine};
 pub use bookmark::{Bookmark, BookmarkInfo};
@@ -24,3 +25,4 @@ pub use evolog::EvologEntry;
 pub use file_status::{FileState, FileStatus, Status};
 pub use notification::{Notification, NotificationKind};
 pub use operation::Operation;
+pub use rebase::RebaseMode;

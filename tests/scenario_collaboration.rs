@@ -12,6 +12,7 @@ mod common;
 
 use common::{RemoteRepo, TestRepo};
 use tij::jj::JjExecutor;
+use tij::model::RebaseMode;
 
 #[test]
 fn story_team_collaboration() {
@@ -118,7 +119,7 @@ fn story_pull_and_rebase_local_work() {
 
     // Bob rebases his work onto updated main
     bob_executor
-        .rebase(&bob_feature, "main@origin")
+        .rebase_unified(RebaseMode::Revision, &bob_feature, "main@origin", &[])
         .expect("rebase should succeed");
 
     // Verify: Bob's work is now on top of Alice's v2

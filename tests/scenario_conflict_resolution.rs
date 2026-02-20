@@ -10,7 +10,7 @@ mod common;
 
 use common::TestRepo;
 use tij::jj::JjExecutor;
-use tij::model::FileState;
+use tij::model::{FileState, RebaseMode};
 
 #[test]
 fn story_rebase_creates_conflict() {
@@ -34,7 +34,7 @@ fn story_rebase_creates_conflict() {
     let branch_b_id = repo.current_change_id();
 
     // Rebase B onto A (should cause conflict)
-    let result = executor.rebase(&branch_b_id, &branch_a_id);
+    let result = executor.rebase_unified(RebaseMode::Revision, &branch_b_id, &branch_a_id, &[]);
     assert!(result.is_ok(), "rebase should succeed even with conflict");
 
     // Check if conflict exists using has_conflict
@@ -70,7 +70,7 @@ fn story_detect_conflict_via_status() {
 
     // Rebase B onto A
     executor
-        .rebase(&b_id, &a_id)
+        .rebase_unified(RebaseMode::Revision, &b_id, &a_id, &[])
         .expect("rebase should succeed");
 
     // Check status for conflict marker
@@ -111,7 +111,7 @@ fn story_conflict_then_abandon() {
 
     // Rebase (creates conflict)
     executor
-        .rebase(&our_id, &their_id)
+        .rebase_unified(RebaseMode::Revision, &our_id, &their_id, &[])
         .expect("rebase should succeed");
 
     // Alternative to resolving: just abandon the conflicting change
@@ -148,7 +148,7 @@ fn story_conflict_resolution_via_new_commit() {
 
     // Rebase B onto A (conflict)
     executor
-        .rebase(&b_id, &a_id)
+        .rebase_unified(RebaseMode::Revision, &b_id, &a_id, &[])
         .expect("rebase should succeed");
 
     // Instead of using resolve tool, just edit the file directly

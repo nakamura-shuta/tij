@@ -4,9 +4,8 @@ mod bookmark;
 mod dialog;
 mod push;
 
-use crate::model::Notification;
+use crate::model::{CompareInfo, DiffContent, DiffDisplayFormat, Notification, RebaseMode};
 use crate::ui::components::{Dialog, DialogCallback, SelectItem};
-use crate::ui::views::RebaseMode;
 
 use super::state::{App, DirtyFlags, View};
 
@@ -54,17 +53,33 @@ impl App {
         self.error_message = Some(msg.into());
     }
 
-    /// Execute undo operation
-    pub(crate) fn execute_undo(&mut self) {
-        match self.jj.undo() {
+    /// Handle a simple jj action result: notify on success, set error on failure
+    ///
+    /// For the common pattern: Ok → notify_success + mark_dirty, Err → set_error.
+    /// `err_prefix` is prepended to the error: `"{err_prefix}: {e}"`.
+    /// Not suitable for actions that parse output, branch on result, or have side-effects.
+    fn run_jj_action(
+        &mut self,
+        result: Result<String, crate::jj::JjError>,
+        err_prefix: &str,
+        success_msg: &str,
+        dirty: DirtyFlags,
+    ) {
+        match result {
             Ok(_) => {
-                self.notify_success("Undo complete");
-                self.mark_dirty_and_refresh_current(DirtyFlags::all());
+                self.notify_success(success_msg);
+                self.mark_dirty_and_refresh_current(dirty);
             }
             Err(e) => {
-                self.set_error(format!("Undo failed: {}", e));
+                self.set_error(format!("{}: {}", err_prefix, e));
             }
         }
+    }
+
+    /// Execute undo operation
+    pub(crate) fn execute_undo(&mut self) {
+        let result = self.jj.undo();
+        self.run_jj_action(result, "Undo failed", "Undo complete", DirtyFlags::all());
     }
 
     /// Start describe input mode by fetching the full description
@@ -155,69 +170,55 @@ impl App {
 
     /// Execute describe operation
     pub(crate) fn execute_describe(&mut self, change_id: &str, message: &str) {
-        match self.jj.describe(change_id, message) {
-            Ok(_) => {
-                self.notify_success("Description updated");
-                self.mark_dirty_and_refresh_current(DirtyFlags::log());
-            }
-            Err(e) => {
-                self.set_error(format!("Failed to update description: {}", e));
-            }
-        }
+        let result = self.jj.describe(change_id, message);
+        self.run_jj_action(
+            result,
+            "Failed to update description",
+            "Description updated",
+            DirtyFlags::log(),
+        );
     }
 
     /// Execute edit operation (set working-copy to specified change)
     pub(crate) fn execute_edit(&mut self, change_id: &str) {
-        match self.jj.edit(change_id) {
-            Ok(_) => {
-                let short_id = &change_id[..8.min(change_id.len())];
-                self.notification =
-                    Some(Notification::success(format!("Now editing: {}", short_id)));
-                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
-            }
-            Err(e) => {
-                self.set_error(format!("Failed to edit: {}", e));
-            }
-        }
+        let short_id = &change_id[..8.min(change_id.len())];
+        let msg = format!("Now editing: {}", short_id);
+        let result = self.jj.edit(change_id);
+        self.run_jj_action(result, "Failed to edit", &msg, DirtyFlags::log_and_status());
     }
 
     /// Execute new change operation
     pub(crate) fn execute_new_change(&mut self) {
-        match self.jj.new_change() {
-            Ok(_) => {
-                self.notify_success("Created new change");
-                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
-            }
-            Err(e) => {
-                self.set_error(format!("Failed to create change: {}", e));
-            }
-        }
+        let result = self.jj.new_change();
+        self.run_jj_action(
+            result,
+            "Failed to create change",
+            "Created new change",
+            DirtyFlags::log_and_status(),
+        );
     }
 
     /// Execute new change from specified parent
     pub(crate) fn execute_new_change_from(&mut self, parent_id: &str, display_name: &str) {
-        match self.jj.new_change_from(parent_id) {
-            Ok(_) => {
-                self.notify_success(format!("Created new change from {}", display_name));
-                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
-            }
-            Err(e) => {
-                self.set_error(format!("Failed to create change: {}", e));
-            }
-        }
+        let msg = format!("Created new change from {}", display_name);
+        let result = self.jj.new_change_from(parent_id);
+        self.run_jj_action(
+            result,
+            "Failed to create change",
+            &msg,
+            DirtyFlags::log_and_status(),
+        );
     }
 
     /// Execute commit operation (describe current change + create new change)
     pub(crate) fn execute_commit(&mut self, message: &str) {
-        match self.jj.commit(message) {
-            Ok(_) => {
-                self.notify_success("Changes committed");
-                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
-            }
-            Err(e) => {
-                self.set_error(format!("Commit failed: {}", e));
-            }
-        }
+        let result = self.jj.commit(message);
+        self.run_jj_action(
+            result,
+            "Commit failed",
+            "Changes committed",
+            DirtyFlags::log_and_status(),
+        );
     }
 
     /// Execute squash into target (requires terminal control transfer)
@@ -272,30 +273,18 @@ impl App {
             return;
         }
 
-        match self.jj.abandon(change_id) {
-            Ok(_) => {
-                let short_id = &change_id[..8.min(change_id.len())];
-                self.notify_success(format!("Abandoned {} (undo: u)", short_id));
-                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
-            }
-            Err(e) => {
-                self.set_error(format!("Abandon failed: {}", e));
-            }
-        }
+        let short_id = &change_id[..8.min(change_id.len())];
+        let msg = format!("Abandoned {} (undo: u)", short_id);
+        let result = self.jj.abandon(change_id);
+        self.run_jj_action(result, "Abandon failed", &msg, DirtyFlags::log_and_status());
     }
 
     /// Execute revert operation (creates reverse-diff commit)
     pub(crate) fn execute_revert(&mut self, change_id: &str) {
-        match self.jj.revert(change_id) {
-            Ok(_) => {
-                let short_id = &change_id[..8.min(change_id.len())];
-                self.notify_success(format!("Reverted {} (undo: u)", short_id));
-                self.mark_dirty_and_refresh_current(DirtyFlags::log());
-            }
-            Err(e) => {
-                self.set_error(format!("Revert failed: {}", e));
-            }
-        }
+        let short_id = &change_id[..8.min(change_id.len())];
+        let msg = format!("Reverted {} (undo: u)", short_id);
+        let result = self.jj.revert(change_id);
+        self.run_jj_action(result, "Revert failed", &msg, DirtyFlags::log());
     }
 
     /// Execute redo operation
@@ -419,28 +408,20 @@ impl App {
 
     /// Execute restore for a single file
     pub(crate) fn execute_restore_file(&mut self, file_path: &str) {
-        match self.jj.restore_file(file_path) {
-            Ok(_) => {
-                self.notify_success(format!("Restored: {}", file_path));
-                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
-            }
-            Err(e) => {
-                self.set_error(format!("Restore failed: {}", e));
-            }
-        }
+        let msg = format!("Restored: {}", file_path);
+        let result = self.jj.restore_file(file_path);
+        self.run_jj_action(result, "Restore failed", &msg, DirtyFlags::log_and_status());
     }
 
     /// Execute restore for all files
     pub(crate) fn execute_restore_all(&mut self) {
-        match self.jj.restore_all() {
-            Ok(_) => {
-                self.notify_success("All files restored");
-                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
-            }
-            Err(e) => {
-                self.set_error(format!("Restore failed: {}", e));
-            }
-        }
+        let result = self.jj.restore_all();
+        self.run_jj_action(
+            result,
+            "Restore failed",
+            "All files restored",
+            DirtyFlags::log_and_status(),
+        );
     }
 
     /// Execute `jj next --edit` and refresh
@@ -921,38 +902,9 @@ impl App {
             vec![]
         };
 
-        let result = if extra_flags.is_empty() {
-            // No extra flags: use original methods (no allocation overhead)
-            match mode {
-                RebaseMode::Revision => self.jj.rebase(source, destination),
-                RebaseMode::Source => self.jj.rebase_source(source, destination),
-                RebaseMode::Branch => self.jj.rebase_branch(source, destination),
-                RebaseMode::InsertAfter => self.jj.rebase_insert_after(source, destination),
-                RebaseMode::InsertBefore => self.jj.rebase_insert_before(source, destination),
-            }
-        } else {
-            match mode {
-                RebaseMode::Revision => {
-                    self.jj.rebase_with_flags(source, destination, &extra_flags)
-                }
-                RebaseMode::Source => {
-                    self.jj
-                        .rebase_source_with_flags(source, destination, &extra_flags)
-                }
-                RebaseMode::Branch => {
-                    self.jj
-                        .rebase_branch_with_flags(source, destination, &extra_flags)
-                }
-                RebaseMode::InsertAfter => {
-                    self.jj
-                        .rebase_insert_after_with_flags(source, destination, &extra_flags)
-                }
-                RebaseMode::InsertBefore => {
-                    self.jj
-                        .rebase_insert_before_with_flags(source, destination, &extra_flags)
-                }
-            }
-        };
+        let result = self
+            .jj
+            .rebase_unified(mode, source, destination, &extra_flags);
 
         match result {
             Ok(output) => {
@@ -963,15 +915,7 @@ impl App {
 
                 if skip_emptied && is_rebase_flag_unsupported(&err_msg) {
                     // --skip-emptied (or mode flag) caused failure, retry without it
-                    let retry = match mode {
-                        RebaseMode::Revision => self.jj.rebase(source, destination),
-                        RebaseMode::Source => self.jj.rebase_source(source, destination),
-                        RebaseMode::Branch => self.jj.rebase_branch(source, destination),
-                        RebaseMode::InsertAfter => self.jj.rebase_insert_after(source, destination),
-                        RebaseMode::InsertBefore => {
-                            self.jj.rebase_insert_before(source, destination)
-                        }
-                    };
+                    let retry = self.jj.rebase_unified(mode, source, destination, &[]);
                     match retry {
                         Ok(output) => {
                             self.notify_rebase_success(&output, destination, mode, false);
@@ -1197,24 +1141,21 @@ impl App {
         }
     }
 
-    /// Cycle the diff display format and re-fetch content
-    pub(crate) fn cycle_diff_format(&mut self) {
+    /// Fetch diff content in the specified format
+    ///
+    /// Handles the difference between normal and compare modes,
+    /// and between ColorWords (which returns DiffContent directly via `jj show`)
+    /// and Stat/Git (which return String and need parsing).
+    fn fetch_diff_content(
+        &self,
+        change_id: &str,
+        format: DiffDisplayFormat,
+        compare: Option<&CompareInfo>,
+    ) -> Result<DiffContent, crate::jj::JjError> {
         use crate::jj::parser::Parser;
-        use crate::model::DiffDisplayFormat;
 
-        let Some(ref mut diff_view) = self.diff_view else {
-            return;
-        };
-
-        let old_format = diff_view.display_format;
-        let new_format = diff_view.cycle_format();
-        let change_id = diff_view.change_id.clone();
-        let compare_info = diff_view.compare_info.clone();
-
-        // Re-fetch content in the new format
-        let result = if let Some(ref ci) = compare_info {
-            // Compare mode
-            match new_format {
+        if let Some(ci) = compare {
+            match format {
                 DiffDisplayFormat::ColorWords => self
                     .jj
                     .diff_range(&ci.from.change_id, &ci.to.change_id)
@@ -1229,29 +1170,38 @@ impl App {
                     .map(|o| Parser::parse_diff_body_git(&o)),
             }
         } else {
-            // Normal mode
-            match new_format {
-                DiffDisplayFormat::ColorWords => {
-                    self.jj.show(&change_id).map(Ok).unwrap_or_else(Err)
-                }
+            match format {
+                DiffDisplayFormat::ColorWords => self.jj.show(change_id),
                 DiffDisplayFormat::Stat => self
                     .jj
-                    .show_stat(&change_id)
+                    .show_stat(change_id)
                     .and_then(|o| Parser::parse_show_stat(&o)),
                 DiffDisplayFormat::Git => self
                     .jj
-                    .show_git(&change_id)
+                    .show_git(change_id)
                     .and_then(|o| Parser::parse_show_git(&o)),
             }
+        }
+    }
+
+    /// Cycle the diff display format and re-fetch content
+    pub(crate) fn cycle_diff_format(&mut self) {
+        use crate::model::DiffDisplayFormat;
+
+        let Some(ref diff_view) = self.diff_view else {
+            return;
         };
 
-        match result {
+        let old_format = diff_view.display_format;
+        let new_format = old_format.next();
+        let change_id = diff_view.change_id.clone();
+        let compare_info = diff_view.compare_info.clone();
+
+        match self.fetch_diff_content(&change_id, new_format, compare_info.as_ref()) {
             Ok(content) => {
                 let diff_view = self.diff_view.as_mut().unwrap();
                 diff_view.set_content(change_id, content);
-                // Restore compare_info (set_content doesn't touch it, but just in case)
                 diff_view.compare_info = compare_info;
-                // Keep the format we just set (set_content doesn't reset it)
                 diff_view.display_format = new_format;
 
                 self.notify_info(format!(
@@ -1262,9 +1212,6 @@ impl App {
                 ));
             }
             Err(e) => {
-                // Rollback to previous format on error
-                let diff_view = self.diff_view.as_mut().unwrap();
-                diff_view.display_format = old_format;
                 self.set_error(format!(
                     "Failed to load {} format: {}",
                     new_format.label(),
