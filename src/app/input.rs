@@ -4,7 +4,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::state::{App, View};
 use crate::keys;
-use crate::model::Notification;
 use crate::ui::views::{
     BlameAction, BookmarkAction, DiffAction, EvologAction, InputMode, LogAction, OperationAction,
     RenameState, ResolveAction, StatusAction, StatusInputMode,
@@ -289,124 +288,112 @@ impl App {
     fn handle_log_action(&mut self, action: LogAction) {
         match action {
             LogAction::None => {}
-            LogAction::OpenDiff(change_id) => {
-                self.open_diff(&change_id);
+
+            // Navigation
+            LogAction::OpenDiff(_)
+            | LogAction::ExecuteRevset(_)
+            | LogAction::ClearRevset
+            | LogAction::OpenBookmarkView
+            | LogAction::OpenEvolog(_)
+            | LogAction::OpenResolveList { .. } => {
+                self.handle_log_navigation(action);
             }
-            LogAction::ExecuteRevset(revset) => {
-                self.refresh_log(Some(&revset));
+
+            // Editing
+            LogAction::StartDescribe(_)
+            | LogAction::Describe { .. }
+            | LogAction::DescribeExternal(_)
+            | LogAction::Edit(_)
+            | LogAction::NewChange
+            | LogAction::NewChangeFrom { .. }
+            | LogAction::NewChangeFromCurrent
+            | LogAction::SquashInto { .. }
+            | LogAction::Abandon(_)
+            | LogAction::Split(_)
+            | LogAction::Duplicate(_)
+            | LogAction::DiffEdit(_)
+            | LogAction::Revert(_)
+            | LogAction::SimplifyParents(_) => {
+                self.handle_log_editing(action);
             }
-            LogAction::ClearRevset => {
-                self.refresh_log(None);
+
+            // Bookmark
+            LogAction::CreateBookmark { .. }
+            | LogAction::StartBookmarkDelete
+            | LogAction::StartBookmarkJump => {
+                self.handle_log_bookmark(action);
             }
-            LogAction::StartDescribe(change_id) => {
-                self.start_describe_input(&change_id);
+
+            // Git
+            LogAction::Fetch | LogAction::StartPush | LogAction::StartTrack => {
+                self.handle_log_git(action);
             }
+
+            // Rebase / Parallelize
+            LogAction::Rebase { .. }
+            | LogAction::Absorb
+            | LogAction::StartParallelize(_)
+            | LogAction::Parallelize { .. }
+            | LogAction::ParallelizeSameRevision => {
+                self.handle_log_rebase(action);
+            }
+
+            // Compare
+            LogAction::StartCompare(_)
+            | LogAction::Compare { .. }
+            | LogAction::CompareSameRevision => {
+                self.handle_log_compare(action);
+            }
+
+            // Misc
+            LogAction::NextChange | LogAction::PrevChange | LogAction::ToggleReversed => {
+                self.handle_log_misc(action);
+            }
+        }
+    }
+
+    fn handle_log_navigation(&mut self, action: LogAction) {
+        match action {
+            LogAction::OpenDiff(change_id) => self.open_diff(&change_id),
+            LogAction::ExecuteRevset(revset) => self.refresh_log(Some(&revset)),
+            LogAction::ClearRevset => self.refresh_log(None),
+            LogAction::OpenBookmarkView => self.open_bookmark_view(),
+            LogAction::OpenEvolog(change_id) => self.open_evolog(&change_id),
+            LogAction::OpenResolveList {
+                change_id,
+                is_working_copy,
+            } => self.open_resolve_view(&change_id, is_working_copy),
+            _ => {}
+        }
+    }
+
+    fn handle_log_editing(&mut self, action: LogAction) {
+        use crate::ui::components::{Dialog, DialogCallback};
+
+        match action {
+            LogAction::StartDescribe(change_id) => self.start_describe_input(&change_id),
             LogAction::Describe { change_id, message } => {
                 self.execute_describe(&change_id, &message);
             }
-            LogAction::DescribeExternal(change_id) => {
-                self.execute_describe_external(&change_id);
-            }
-            LogAction::Edit(change_id) => {
-                self.execute_edit(&change_id);
-            }
-            LogAction::NewChange => {
-                self.execute_new_change();
-            }
+            LogAction::DescribeExternal(change_id) => self.execute_describe_external(&change_id),
+            LogAction::Edit(change_id) => self.execute_edit(&change_id),
+            LogAction::NewChange => self.execute_new_change(),
             LogAction::NewChangeFrom {
                 change_id,
                 display_name,
-            } => {
-                self.execute_new_change_from(&change_id, &display_name);
-            }
+            } => self.execute_new_change_from(&change_id, &display_name),
             LogAction::NewChangeFromCurrent => {
-                self.notification =
-                    Some(Notification::info("Use 'c' to create from current change"));
+                self.notify_info("Use 'c' to create from current change");
             }
             LogAction::SquashInto {
                 source,
                 destination,
-            } => {
-                self.execute_squash_into(&source, &destination);
-            }
-            LogAction::Abandon(change_id) => {
-                self.execute_abandon(&change_id);
-            }
-            LogAction::Split(change_id) => {
-                self.execute_split(&change_id);
-            }
-            LogAction::CreateBookmark { change_id, name } => {
-                self.execute_bookmark_create(&change_id, &name);
-            }
-            LogAction::StartBookmarkDelete => {
-                self.start_bookmark_delete();
-            }
-            LogAction::Rebase {
-                source,
-                destination,
-                mode,
-                skip_emptied,
-            } => {
-                self.execute_rebase(&source, &destination, mode, skip_emptied);
-            }
-            LogAction::Absorb => {
-                self.execute_absorb();
-            }
-            LogAction::OpenResolveList {
-                change_id,
-                is_working_copy,
-            } => {
-                self.open_resolve_view(&change_id, is_working_copy);
-            }
-            LogAction::Fetch => {
-                self.start_fetch();
-            }
-            LogAction::StartPush => {
-                self.start_push();
-            }
-            LogAction::StartTrack => {
-                self.start_track();
-            }
-            LogAction::StartBookmarkJump => {
-                self.start_bookmark_jump();
-            }
-            LogAction::StartCompare(from_id) => {
-                self.notification = Some(Notification::info(format!(
-                    "From: {}. Select 'To' and press Enter",
-                    from_id
-                )));
-            }
-            LogAction::Compare { ref from, ref to } => {
-                let msg = format!("Comparing {} -> {}", from, to);
-                self.open_compare_diff(from, to);
-                // Show notification only if diff opened successfully (no error_message)
-                if self.error_message.is_none() {
-                    self.notification = Some(Notification::info(&msg));
-                }
-            }
-            LogAction::CompareSameRevision => {
-                self.notification = Some(Notification::info("Cannot compare revision with itself"));
-            }
-            LogAction::OpenBookmarkView => {
-                self.open_bookmark_view();
-            }
-            LogAction::NextChange => {
-                self.execute_next();
-            }
-            LogAction::PrevChange => {
-                self.execute_prev();
-            }
-            LogAction::Duplicate(change_id) => {
-                self.duplicate(&change_id);
-            }
-            LogAction::DiffEdit(change_id) => {
-                self.execute_diffedit(&change_id, None);
-            }
-            LogAction::OpenEvolog(change_id) => {
-                self.open_evolog(&change_id);
-            }
+            } => self.execute_squash_into(&source, &destination),
+            LogAction::Abandon(change_id) => self.execute_abandon(&change_id),
+            LogAction::Split(change_id) => self.execute_split(&change_id),
+            LogAction::Duplicate(change_id) => self.duplicate(&change_id),
+            LogAction::DiffEdit(change_id) => self.execute_diffedit(&change_id, None),
             LogAction::Revert(change_id) => {
-                use crate::ui::components::{Dialog, DialogCallback};
                 let short_id = &change_id[..8.min(change_id.len())];
                 self.active_dialog = Some(Dialog::confirm(
                     "Revert Change",
@@ -419,7 +406,6 @@ impl App {
                 ));
             }
             LogAction::SimplifyParents(change_id) => {
-                use crate::ui::components::{Dialog, DialogCallback};
                 let short_id = &change_id[..8.min(change_id.len())];
                 self.active_dialog = Some(Dialog::confirm(
                     "Simplify Parents",
@@ -428,14 +414,45 @@ impl App {
                     DialogCallback::SimplifyParents { change_id },
                 ));
             }
+            _ => {}
+        }
+    }
+
+    fn handle_log_bookmark(&mut self, action: LogAction) {
+        match action {
+            LogAction::CreateBookmark { change_id, name } => {
+                self.execute_bookmark_create(&change_id, &name);
+            }
+            LogAction::StartBookmarkDelete => self.start_bookmark_delete(),
+            LogAction::StartBookmarkJump => self.start_bookmark_jump(),
+            _ => {}
+        }
+    }
+
+    fn handle_log_git(&mut self, action: LogAction) {
+        match action {
+            LogAction::Fetch => self.start_fetch(),
+            LogAction::StartPush => self.start_push(),
+            LogAction::StartTrack => self.start_track(),
+            _ => {}
+        }
+    }
+
+    fn handle_log_rebase(&mut self, action: LogAction) {
+        use crate::ui::components::{Dialog, DialogCallback};
+
+        match action {
+            LogAction::Rebase {
+                source,
+                destination,
+                mode,
+                skip_emptied,
+            } => self.execute_rebase(&source, &destination, mode, skip_emptied),
+            LogAction::Absorb => self.execute_absorb(),
             LogAction::StartParallelize(from_id) => {
-                self.notification = Some(Notification::info(format!(
-                    "From: {}. Select end and press Enter",
-                    from_id
-                )));
+                self.notify_info(format!("From: {}. Select end and press Enter", from_id));
             }
             LogAction::Parallelize { from, to } => {
-                use crate::ui::components::{Dialog, DialogCallback};
                 let from_short = &from[..8.min(from.len())];
                 let to_short = &to[..8.min(to.len())];
                 self.active_dialog = Some(Dialog::confirm(
@@ -446,15 +463,40 @@ impl App {
                 ));
             }
             LogAction::ParallelizeSameRevision => {
-                self.notification = Some(Notification::info("Cannot parallelize single revision"));
+                self.notify_info("Cannot parallelize single revision");
             }
+            _ => {}
+        }
+    }
+
+    fn handle_log_compare(&mut self, action: LogAction) {
+        match action {
+            LogAction::StartCompare(from_id) => {
+                self.notify_info(format!("From: {}. Select 'To' and press Enter", from_id));
+            }
+            LogAction::Compare { ref from, ref to } => {
+                let msg = format!("Comparing {} -> {}", from, to);
+                self.open_compare_diff(from, to);
+                if self.error_message.is_none() {
+                    self.notify_info(&msg);
+                }
+            }
+            LogAction::CompareSameRevision => {
+                self.notify_info("Cannot compare revision with itself");
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_log_misc(&mut self, action: LogAction) {
+        match action {
+            LogAction::NextChange => self.execute_next(),
+            LogAction::PrevChange => self.execute_prev(),
             LogAction::ToggleReversed => {
-                // Preserve selection by change_id across toggle
                 let selected_id = self.log_view.selected_change().map(|c| c.change_id.clone());
                 self.log_view.reversed = !self.log_view.reversed;
                 let revset = self.log_view.current_revset.clone();
                 self.refresh_log(revset.as_deref());
-                // Try to restore selection; fallback to working copy
                 if let Some(ref id) = selected_id
                     && !self.log_view.select_change_by_id(id)
                 {
@@ -465,8 +507,9 @@ impl App {
                 } else {
                     "newest first"
                 };
-                self.notification = Some(Notification::info(format!("Log order: {}", label)));
+                self.notify_info(format!("Log order: {}", label));
             }
+            _ => {}
         }
     }
 
@@ -515,9 +558,7 @@ impl App {
                 self.start_bookmark_move(&name);
             }
             BookmarkAction::MoveUnavailable => {
-                self.notification = Some(Notification::info(
-                    "Move is available only for local bookmarks",
-                ));
+                self.notify_info("Move is available only for local bookmarks");
             }
         }
     }
@@ -534,7 +575,7 @@ impl App {
                 self.open_blame(&file_path, revision.as_deref());
             }
             DiffAction::ShowNotification(message) => {
-                self.notification = Some(Notification::info(&message));
+                self.notify_info(&message);
             }
             DiffAction::CopyToClipboard { full } => {
                 self.copy_diff_to_clipboard(full);

@@ -16,7 +16,7 @@ impl App {
                 self.error_message = None;
             }
             Err(e) => {
-                self.error_message = Some(format!("Failed to load diff: {}", e));
+                self.set_error(format!("Failed to load diff: {}", e));
             }
         }
     }
@@ -33,7 +33,7 @@ impl App {
                 self.error_message = None;
             }
             Err(e) => {
-                self.error_message = Some(format!("Failed to load diff: {}", e));
+                self.set_error(format!("Failed to load diff: {}", e));
             }
         }
     }
@@ -51,7 +51,7 @@ impl App {
                 self.error_message = None;
             }
             Err(e) => {
-                self.error_message = Some(format!("Failed to load blame: {}", e));
+                self.set_error(format!("Failed to load blame: {}", e));
             }
         }
     }
@@ -62,7 +62,7 @@ impl App {
         let diff_output = match self.jj.diff_range(from, to) {
             Ok(output) => output,
             Err(e) => {
-                self.error_message = Some(format!("Failed to load diff: {}", e));
+                self.set_error(format!("Failed to load diff: {}", e));
                 return;
             }
         };
@@ -83,7 +83,7 @@ impl App {
                 description,
             },
             Err(e) => {
-                self.error_message = Some(format!("Failed to load from revision: {}", e));
+                self.set_error(format!("Failed to load from revision: {}", e));
                 return;
             }
         };
@@ -97,7 +97,7 @@ impl App {
                 description,
             },
             Err(e) => {
-                self.error_message = Some(format!("Failed to load to revision: {}", e));
+                self.set_error(format!("Failed to load to revision: {}", e));
                 return;
             }
         };
@@ -135,7 +135,7 @@ impl App {
                 }
             }
             Err(e) => {
-                self.error_message = Some(format!("Failed to load evolog: {}", e));
+                self.set_error(format!("Failed to load evolog: {}", e));
             }
         }
     }
@@ -147,7 +147,7 @@ impl App {
         match self.jj.resolve_list(Some(change_id)) {
             Ok(files) => {
                 if files.is_empty() {
-                    self.notification = Some(Notification::info("No conflicts in this change"));
+                    self.notify_info("No conflicts in this change");
                 } else {
                     self.resolve_view = Some(ResolveView::new(
                         change_id.to_string(),
@@ -158,7 +158,7 @@ impl App {
                 }
             }
             Err(e) => {
-                self.error_message = Some(format!("Failed to list conflicts: {}", e));
+                self.set_error(format!("Failed to list conflicts: {}", e));
             }
         }
     }

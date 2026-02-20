@@ -55,6 +55,9 @@
 - [x] Phase 27: Parallelize — `|` キーで線形チェーンを兄弟に変換（v0.4.2）
 - [x] Phase 28: Diff Display Options — `m` キーで color-words/stat/git フォーマット切替（v0.4.3）
 
+- [x] Refactoring R1-R4, R8: notification helpers, suspend_tui, handler splits, actions.rs file split（v0.4.4）
+- [x] Ctrl+E fix: immutable pre-check, `--editor` flag, startup preview load（v0.4.4）
+
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
 - [ ] Phase 13: ワークフローエンジン（後段）

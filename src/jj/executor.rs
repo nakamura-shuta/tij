@@ -262,6 +262,19 @@ impl JjExecutor {
         Ok(output)
     }
 
+    /// Check if a revision is immutable
+    pub fn is_immutable(&self, change_id: &str) -> bool {
+        self.run(&[
+            commands::LOG,
+            flags::NO_GRAPH,
+            flags::REVISION,
+            change_id,
+            flags::TEMPLATE,
+            r#"if(immutable, "true", "false")"#,
+        ])
+        .is_ok_and(|output| output.trim() == "true")
+    }
+
     /// Run `jj edit` to set working-copy revision
     pub fn edit(&self, change_id: &str) -> Result<String, JjError> {
         self.run(&[commands::EDIT, change_id])

@@ -294,6 +294,9 @@ impl App {
     pub fn new() -> Self {
         let mut app = Self::init();
         app.refresh_log(None);
+        // Load preview for the initially selected revision (avoid "No preview available" flash)
+        app.update_preview_if_needed();
+        app.resolve_pending_preview();
         app
     }
 

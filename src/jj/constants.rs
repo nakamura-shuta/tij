@@ -91,8 +91,10 @@ pub mod flags {
     pub const FROM: &str = "--from";
     /// Diff to revision
     pub const TO: &str = "--to";
-    /// Open editor for interactive editing (e.g., jj describe --edit)
+    /// Open editor for interactive editing (e.g., jj next --edit, jj prev --edit)
     pub const EDIT_FLAG: &str = "--edit";
+    /// Open editor for describe (jj describe --editor, replaces deprecated --edit)
+    pub const EDITOR_FLAG: &str = "--editor";
     /// Limit number of results
     pub const LIMIT: &str = "--limit";
     /// Reversed display order (oldest first)

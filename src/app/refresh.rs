@@ -9,7 +9,6 @@
 //! navigation via `go_to_view()`. This design (from Phase 17.1 DirtyFlags)
 //! makes parallel refresh unnecessary for the current architecture.
 
-use crate::model::Notification;
 use crate::ui::views::ResolveView;
 
 use super::state::{App, DirtyFlags, View};
@@ -73,7 +72,7 @@ impl App {
                 self.error_message = None;
             }
             Err(e) => {
-                self.error_message = Some(format!("jj error: {}", e));
+                self.set_error(format!("jj error: {}", e));
             }
         }
     }
@@ -86,7 +85,7 @@ impl App {
                 self.error_message = None;
             }
             Err(e) => {
-                self.error_message = Some(format!("jj status error: {}", e));
+                self.set_error(format!("jj status error: {}", e));
             }
         }
     }
@@ -99,7 +98,7 @@ impl App {
                 self.error_message = None;
             }
             Err(e) => {
-                self.error_message = Some(format!("jj op log error: {}", e));
+                self.set_error(format!("jj op log error: {}", e));
             }
         }
     }
@@ -110,7 +109,7 @@ impl App {
             Ok(files) => {
                 if files.is_empty() {
                     // All resolved - go back (simple message for Log View title bar)
-                    self.notification = Some(Notification::success("All conflicts resolved!"));
+                    self.notify_success("All conflicts resolved!");
                     self.resolve_view = None;
                     self.go_back();
                     // Refresh log to update conflict indicators
@@ -131,13 +130,13 @@ impl App {
                 let err_msg = e.to_string();
                 if err_msg.contains("No conflicts") {
                     // All resolved - simple message for Log View title bar
-                    self.notification = Some(Notification::success("All conflicts resolved!"));
+                    self.notify_success("All conflicts resolved!");
                     self.resolve_view = None;
                     self.go_back();
                     let revset = self.log_view.current_revset.clone();
                     self.refresh_log(revset.as_deref());
                 } else {
-                    self.error_message = Some(format!("Failed to refresh conflicts: {}", e));
+                    self.set_error(format!("Failed to refresh conflicts: {}", e));
                 }
             }
         }
@@ -156,17 +155,17 @@ impl App {
                 let revset = self.log_view.current_revset.clone();
                 self.refresh_log(revset.as_deref());
                 self.dirty.log = false;
-                self.notification = Some(Notification::info("Refreshed"));
+                self.notify_info("Refreshed");
             }
             View::Status => {
                 self.refresh_status();
                 self.dirty.status = false;
-                self.notification = Some(Notification::info("Refreshed"));
+                self.notify_info("Refreshed");
             }
             View::Operation => {
                 self.refresh_operation_log();
                 self.dirty.op_log = false;
-                self.notification = Some(Notification::info("Refreshed"));
+                self.notify_info("Refreshed");
             }
             View::Diff => {
                 // Only refresh if diff_view is loaded
@@ -181,7 +180,7 @@ impl App {
                         let change_id = diff_view.change_id.clone();
                         self.open_diff(&change_id);
                     }
-                    self.notification = Some(Notification::info("Refreshed"));
+                    self.notify_info("Refreshed");
                 }
                 // If diff_view is None, do nothing (no notification)
             }
@@ -191,13 +190,13 @@ impl App {
                     let change_id = resolve_view.change_id.clone();
                     let is_wc = resolve_view.is_working_copy;
                     self.refresh_resolve_list(&change_id, is_wc);
-                    self.notification = Some(Notification::info("Refreshed"));
+                    self.notify_info("Refreshed");
                 }
             }
             View::Bookmark => {
                 self.refresh_bookmark_view();
                 self.dirty.bookmarks = false;
-                self.notification = Some(Notification::info("Refreshed"));
+                self.notify_info("Refreshed");
             }
             View::Blame => {
                 // Only refresh if blame_view is loaded
@@ -205,7 +204,7 @@ impl App {
                     let file_path = blame_view.file_path().to_string();
                     let revision = blame_view.revision().map(|s| s.to_string());
                     self.open_blame(&file_path, revision.as_deref());
-                    self.notification = Some(Notification::info("Refreshed"));
+                    self.notify_info("Refreshed");
                 }
             }
             View::Evolog => {
@@ -215,7 +214,7 @@ impl App {
                     self.open_evolog(&change_id);
                     // Only show "Refreshed" if open_evolog didn't set an error/notification
                     if self.error_message.is_none() && self.notification.is_none() {
-                        self.notification = Some(Notification::info("Refreshed"));
+                        self.notify_info("Refreshed");
                     }
                 }
             }

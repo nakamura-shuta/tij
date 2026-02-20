@@ -53,7 +53,7 @@ impl JjExecutor {
             cmd.arg(flags::REPO_PATH).arg(repo_path);
         }
 
-        cmd.args([commands::DESCRIBE, "-r", change_id, flags::EDIT_FLAG])
+        cmd.args([commands::DESCRIBE, "-r", change_id, flags::EDITOR_FLAG])
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
