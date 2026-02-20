@@ -1,0 +1,55 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "68b88a394690",
+  "strategy": "manual-commit",
+  "checkpoints_count": 24,
+  "files_touched": [
+    ".work/docs/plan.md",
+    ".work/docs/spec-detail/phase27-parallelize.md",
+    ".work/docs/spec-detail/phase28-diff-display-options.md",
+    ".work/docs/spec-detail/refactoring-v1.md",
+    "Cargo.toml",
+    "README.md",
+    "src/app/actions.rs",
+    "src/app/actions/bookmark.rs",
+    "src/app/actions/dialog.rs",
+    "src/app/actions/mod.rs",
+    "src/app/actions/push.rs",
+    "src/app/input.rs",
+    "src/app/state.rs",
+    "src/jj/constants.rs",
+    "src/jj/executor.rs",
+    "src/jj/interactive.rs",
+    "src/jj/parser/diff.rs",
+    "src/jj/parser/tests.rs",
+    "src/keys.rs",
+    "src/model/diff.rs",
+    "src/model/mod.rs",
+    "src/ui/components/dialog/mod.rs",
+    "src/ui/views/diff/input.rs",
+    "src/ui/views/diff/mod.rs",
+    "src/ui/views/diff/render.rs",
+    "src/ui/views/log/input.rs",
+    "src/ui/views/log/mod.rs",
+    "src/ui/views/log/render.rs",
+    "src/ui/views/log/tests.rs",
+    "tests/ui.rs",
+    "tests/ui/test_diff.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/68/b88a394690/0/metadata.json",
+      "transcript": "/68/b88a394690/0/full.jsonl",
+      "context": "/68/b88a394690/0/context.md",
+      "content_hash": "/68/b88a394690/0/content_hash.txt",
+      "prompt": "/68/b88a394690/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 4098,
+    "cache_creation_tokens": 953624,
+    "cache_read_tokens": 63396667,
+    "output_tokens": 34050,
+    "api_call_count": 587
+  }
+}
