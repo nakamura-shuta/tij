@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "3c79e00521d9",
+  "session_id": "19512375-5c9f-4947-a8a2-72c341bdfe21",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-24T04:48:02.265023Z",
+  "checkpoints_count": 6,
+  "files_touched": [
+    ".work/docs/plan.md",
+    ".work/docs/spec-detail/phase30-fetch-tracked.md",
+    "Cargo.toml",
+    "README.md",
+    "src/app/actions/mod.rs",
+    "src/app/input.rs",
+    "src/app/render.rs",
+    "src/jj/executor.rs",
+    "src/keys.rs",
+    "src/ui/views/log/input.rs",
+    "src/ui/views/log/mod.rs",
+    "src/ui/views/log/render.rs",
+    "src/ui/views/log/tests.rs"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 133,
+    "cache_creation_tokens": 643988,
+    "cache_read_tokens": 10575036,
+    "output_tokens": 4015,
+    "api_call_count": 102
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-24T04:48:01.623438Z",
+    "agent_lines": 398,
+    "human_added": 0,
+    "human_modified": 1,
+    "human_removed": 128,
+    "total_committed": 399,
+    "agent_percentage": 99.74937343358395
+  }
+}
