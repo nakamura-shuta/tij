@@ -671,6 +671,11 @@ impl App {
                             value: "__all_remotes__".to_string(),
                             selected: false,
                         },
+                        SelectItem {
+                            label: "Tracked bookmarks only".to_string(),
+                            value: "__tracked__".to_string(),
+                            selected: false,
+                        },
                     ];
                     for remote in &remotes {
                         items.push(SelectItem {
@@ -705,6 +710,7 @@ impl App {
         let result = match option {
             "__default__" => self.jj.git_fetch(),
             "__all_remotes__" => self.jj.git_fetch_all_remotes(),
+            "__tracked__" => self.jj.git_fetch_tracked(),
             remote => self.jj.git_fetch_remote(remote),
         };
         match result {
@@ -712,14 +718,19 @@ impl App {
                 self.mark_dirty_and_refresh_current(DirtyFlags::all());
 
                 let notification = if output.trim().is_empty() {
-                    Notification::info("Already up to date")
+                    let msg = match option {
+                        "__tracked__" => "Tracked bookmarks: already up to date",
+                        _ => "Already up to date",
+                    };
+                    Notification::info(msg)
                 } else {
                     let source = match option {
                         "__default__" => "default remotes",
                         "__all_remotes__" => "all remotes",
+                        "__tracked__" => "tracked bookmarks",
                         remote => remote,
                     };
-                    Notification::success(format!("Fetched from {}", source))
+                    Notification::success(format!("Fetched {}", source))
                 };
                 self.notification = Some(notification);
             }

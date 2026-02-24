@@ -58,6 +58,7 @@
 - [x] Refactoring R1-R4, R8: notification helpers, suspend_tui, handler splits, actions.rs file split（v0.4.4）
 - [x] Ctrl+E fix: immutable pre-check, `--editor` flag, startup preview load（v0.4.4）
 - [x] Phase 29: Rebase revset 入力 — `:` キーで revset テキスト指定による複数リビジョン一括 rebase（v0.4.5）
+- [x] Phase 30: Fetch --tracked — 追跡中 bookmark のみ fetch するオプション（v0.4.6）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
@@ -126,7 +127,7 @@
   - [x] `--revisions`（Phase 21 完了）
 - [x] `jj git fetch`: `--branch`（Phase 24 完了）
   - [x] `--remote`（Phase 15.3 完了）
-  - [ ] `--tracked`
+  - [x] `--tracked`（Phase 30, v0.4.6）
 - [x] `jj bookmark`: `move`（v0.3.30 完了）
 
 ### Medium

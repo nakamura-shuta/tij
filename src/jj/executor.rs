@@ -853,6 +853,25 @@ impl JjExecutor {
         self.run(&[commands::GIT, commands::GIT_FETCH, flags::REMOTE, remote])
     }
 
+    /// Run `jj git fetch --tracked`
+    ///
+    /// Fetches only bookmarks that are already tracked from the default remote(s).
+    /// `flags::TRACKED` (`"--tracked"`) is the same string for both fetch and push.
+    pub fn git_fetch_tracked(&self) -> Result<String, JjError> {
+        self.run(&[commands::GIT, commands::GIT_FETCH, flags::TRACKED])
+    }
+
+    /// Run `jj git fetch --tracked --remote <name>`
+    pub fn git_fetch_tracked_remote(&self, remote: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::GIT,
+            commands::GIT_FETCH,
+            flags::TRACKED,
+            flags::REMOTE,
+            remote,
+        ])
+    }
+
     /// Run `jj git remote list` to get all remote names
     pub fn git_remote_list(&self) -> Result<Vec<String>, JjError> {
         let output = self.run(&[
