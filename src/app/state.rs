@@ -663,4 +663,67 @@ mod tests {
         // Entry evicted because it only matches a graph-only line
         assert_eq!(cache.len(), 0);
     }
+
+    // =========================================================================
+    // update_preview_if_needed scheduling tests
+    // =========================================================================
+
+    #[test]
+    fn update_preview_schedules_pending_on_cache_miss() {
+        let mut app = App::new_for_test();
+        app.log_view.set_changes(vec![Change {
+            change_id: "aaa".to_string(),
+            commit_id: "c1".to_string(),
+            ..Change::default()
+        }]);
+        app.preview_enabled = true;
+
+        assert!(app.preview_pending_id.is_none());
+        app.update_preview_if_needed();
+        assert_eq!(app.preview_pending_id.as_deref(), Some("aaa"));
+    }
+
+    #[test]
+    fn update_preview_skips_when_cache_hit() {
+        let mut app = App::new_for_test();
+        app.log_view.set_changes(vec![Change {
+            change_id: "aaa".to_string(),
+            commit_id: "c1".to_string(),
+            ..Change::default()
+        }]);
+        app.preview_enabled = true;
+        app.preview_cache.insert(make_entry("aaa", "c1"));
+
+        app.update_preview_if_needed();
+        assert!(app.preview_pending_id.is_none());
+    }
+
+    #[test]
+    fn update_preview_schedules_on_stale_commit_id() {
+        let mut app = App::new_for_test();
+        app.log_view.set_changes(vec![Change {
+            change_id: "aaa".to_string(),
+            commit_id: "c2".to_string(), // new commit_id
+            ..Change::default()
+        }]);
+        app.preview_enabled = true;
+        app.preview_cache.insert(make_entry("aaa", "c1")); // old commit_id
+
+        app.update_preview_if_needed();
+        assert_eq!(app.preview_pending_id.as_deref(), Some("aaa"));
+    }
+
+    #[test]
+    fn update_preview_noop_when_disabled() {
+        let mut app = App::new_for_test();
+        app.log_view.set_changes(vec![Change {
+            change_id: "aaa".to_string(),
+            commit_id: "c1".to_string(),
+            ..Change::default()
+        }]);
+        app.preview_enabled = false;
+
+        app.update_preview_if_needed();
+        assert!(app.preview_pending_id.is_none());
+    }
 }

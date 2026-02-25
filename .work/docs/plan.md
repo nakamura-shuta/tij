@@ -59,6 +59,8 @@
 - [x] Ctrl+E fix: immutable pre-check, `--editor` flag, startup preview load（v0.4.4）
 - [x] Phase 29: Rebase revset 入力 — `:` キーで revset テキスト指定による複数リビジョン一括 rebase（v0.4.5）
 - [x] Phase 30: Fetch --tracked — 追跡中 bookmark のみ fetch するオプション（v0.4.6）
+- [x] Phase 31: Fix — `f` キーで設定済みコードフォーマッタを適用（v0.4.7）
+- [x] Bugfix: Fix通知 commit_id比較による正確な判定 + ダイアログ後プレビュー再取得（v0.4.8）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
@@ -143,7 +145,8 @@
 - [x] `revert`（Phase 19 完了）
 - [x] `simplify-parents`（Phase 26, v0.4.1）
 - [x] `parallelize`（Phase 27, v0.4.2）
-- [ ] `metaedit`, `tag`, `workspace`, `sparse`, `bisect`, `fix`, `sign/unsign`
+- [x] `fix`（Phase 31, v0.4.7）
+- [ ] `metaedit`, `tag`, `workspace`, `sparse`, `bisect`, `sign/unsign`
 
 ## 6. jj log 方針
 - [x] `--limit`（デフォルト表示のみ 200）

@@ -604,14 +604,31 @@ impl App {
 
     /// Execute fix: apply configured code formatters to revision and descendants
     pub(crate) fn execute_fix(&mut self, change_id: &str) {
+        // Capture commit_id before fix to detect if changes were made
+        let commit_id_before = self
+            .log_view
+            .changes
+            .iter()
+            .find(|c| c.change_id == change_id)
+            .map(|c| c.commit_id.clone());
+
         match self.jj.fix(change_id) {
-            Ok(output) => {
+            Ok(_) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
-                let notification = if output.trim().is_empty() {
+                let short_id = &change_id[..8.min(change_id.len())];
+
+                // Compare commit_id after refresh to detect actual changes
+                let commit_id_after = self
+                    .log_view
+                    .changes
+                    .iter()
+                    .find(|c| c.change_id == change_id)
+                    .map(|c| c.commit_id.clone());
+
+                let notification = if commit_id_before == commit_id_after {
                     Notification::info("No fixes needed")
                 } else {
-                    let short_id = &change_id[..8.min(change_id.len())];
                     Notification::success(format!(
                         "Applied fix to {} and descendants (undo: u)",
                         short_id

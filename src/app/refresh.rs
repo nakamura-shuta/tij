@@ -37,6 +37,10 @@ impl App {
                 let revset = self.log_view.current_revset.clone();
                 self.refresh_log(revset.as_deref());
                 self.dirty.log = false;
+                // Schedule preview update so it loads on next idle tick.
+                // Without this, dialog-based operations (fix, abandon, etc.)
+                // leave "No preview available" until the user presses j/k.
+                self.update_preview_if_needed();
             }
             View::Status if self.dirty.status => {
                 self.refresh_status();
@@ -155,6 +159,7 @@ impl App {
                 let revset = self.log_view.current_revset.clone();
                 self.refresh_log(revset.as_deref());
                 self.dirty.log = false;
+                self.update_preview_if_needed();
                 self.notify_info("Refreshed");
             }
             View::Status => {
