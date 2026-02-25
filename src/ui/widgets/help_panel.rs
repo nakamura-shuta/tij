@@ -12,6 +12,41 @@ use ratatui::{
 
 use crate::keys;
 
+/// Synonym map for keyword-linked highlighting.
+/// When a search query matches a trigger keyword (prefix match supported),
+/// the expansion terms are also used as additional search queries.
+const SYNONYM_MAP: &[(&str, &[&str])] = &[
+    ("commit", &["describe", "message", "new", "squash"]),
+    ("rebase", &["move", "insert", "source", "destination"]),
+    (
+        "bookmark",
+        &["branch", "track", "untrack", "forget", "rename"],
+    ),
+    ("undo", &["redo", "restore", "operation"]),
+    ("diff", &["show", "compare", "blame", "export"]),
+    ("search", &["filter", "revset"]),
+    ("conflict", &["resolve", "merge"]),
+    ("push", &["remote", "git"]),
+    ("copy", &["clipboard", "export", "patch"]),
+    ("navigate", &["next", "prev", "jump"]),
+    ("edit", &["describe", "diffedit", "split", "fix", "editor"]),
+];
+
+/// Expand a query into additional search terms via the synonym map.
+/// Supports prefix matching: "reb" matches "rebase" entry.
+fn expand_synonyms(query_lower: &str) -> Vec<&'static str> {
+    if query_lower.is_empty() {
+        return Vec::new();
+    }
+    let mut expansions = Vec::new();
+    for &(trigger, terms) in SYNONYM_MAP {
+        if trigger.starts_with(query_lower) || query_lower.starts_with(trigger) {
+            expansions.extend_from_slice(terms);
+        }
+    }
+    expansions
+}
+
 /// A single line in the help panel (used for both rendering and search)
 #[allow(dead_code)]
 pub struct HelpLine {
@@ -29,6 +64,10 @@ pub struct HelpLine {
 /// are rendered with a highlight style.
 pub fn build_help_lines(search_query: Option<&str>) -> Vec<HelpLine> {
     let query_lower = search_query.map(|q| q.to_lowercase());
+    let synonyms = query_lower
+        .as_deref()
+        .map(expand_synonyms)
+        .unwrap_or_default();
 
     let mut lines = Vec::new();
 
@@ -49,48 +88,56 @@ pub fn build_help_lines(search_query: Option<&str>) -> Vec<HelpLine> {
         "Global",
         keys::GLOBAL_KEYS,
         query_lower.as_deref(),
+        &synonyms,
     );
     push_section(
         &mut lines,
         "Navigation",
         keys::NAV_KEYS,
         query_lower.as_deref(),
+        &synonyms,
     );
     push_section(
         &mut lines,
         "Log View",
         keys::LOG_KEYS,
         query_lower.as_deref(),
+        &synonyms,
     );
     push_section(
         &mut lines,
         "Input Mode",
         keys::INPUT_KEYS,
         query_lower.as_deref(),
+        &synonyms,
     );
     push_section(
         &mut lines,
         "Diff View",
         keys::DIFF_KEYS,
         query_lower.as_deref(),
+        &synonyms,
     );
     push_section(
         &mut lines,
         "Status View",
         keys::STATUS_KEYS,
         query_lower.as_deref(),
+        &synonyms,
     );
     push_section(
         &mut lines,
         "Bookmark View",
         keys::BOOKMARK_KEYS,
         query_lower.as_deref(),
+        &synonyms,
     );
     push_section(
         &mut lines,
         "Operation View",
         keys::OPERATION_KEYS,
         query_lower.as_deref(),
+        &synonyms,
     );
 
     lines
@@ -101,6 +148,7 @@ fn push_section(
     title: &str,
     entries: &[keys::KeyBindEntry],
     query_lower: Option<&str>,
+    synonyms: &[&str],
 ) {
     // Section title line
     lines.push(HelpLine {
@@ -111,7 +159,13 @@ fn push_section(
 
     for entry in entries {
         let matched = query_lower.is_some_and(|q| {
-            entry.key.to_lowercase().contains(q) || entry.description.to_lowercase().contains(q)
+            let key_lc = entry.key.to_lowercase();
+            let desc_lc = entry.description.to_lowercase();
+            key_lc.contains(q)
+                || desc_lc.contains(q)
+                || synonyms
+                    .iter()
+                    .any(|s| key_lc.contains(s) || desc_lc.contains(s))
         });
 
         let style = if matched {
@@ -283,5 +337,93 @@ mod tests {
         let lines = build_help_lines(None);
         let entries: Vec<_> = lines.iter().filter(|l| l.is_entry).collect();
         assert!(entries.len() > 20, "Should have many key binding entries");
+    }
+
+    // --- Synonym expansion unit tests ---
+
+    #[test]
+    fn expand_synonyms_commit_returns_related() {
+        let result = expand_synonyms("commit");
+        assert!(result.contains(&"describe"), "should contain describe");
+        assert!(result.contains(&"new"), "should contain new");
+        assert!(result.contains(&"squash"), "should contain squash");
+    }
+
+    #[test]
+    fn expand_synonyms_prefix_match() {
+        let result = expand_synonyms("reb");
+        assert!(result.contains(&"move"), "should contain move");
+        assert!(result.contains(&"source"), "should contain source");
+    }
+
+    #[test]
+    fn expand_synonyms_empty_returns_empty() {
+        let result = expand_synonyms("");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn expand_synonyms_no_match_returns_empty() {
+        let result = expand_synonyms("zzz");
+        assert!(result.is_empty());
+    }
+
+    // --- Synonym search integration tests ---
+
+    #[test]
+    fn build_help_lines_commit_highlights_describe() {
+        let lines = build_help_lines(Some("commit"));
+        let matched_descs: Vec<_> = lines
+            .iter()
+            .filter(|l| l.matched && l.is_entry)
+            .filter_map(|l| l.line.spans.get(1).map(|s| s.content.to_lowercase()))
+            .collect();
+        assert!(
+            matched_descs.iter().any(|d| d.contains("describe")),
+            "commit search should highlight Describe entry via synonyms, got: {matched_descs:?}"
+        );
+    }
+
+    #[test]
+    fn build_help_lines_rebase_prefix_highlights_move() {
+        let lines = build_help_lines(Some("reb"));
+        let matched_descs: Vec<_> = lines
+            .iter()
+            .filter(|l| l.matched && l.is_entry)
+            .filter_map(|l| l.line.spans.get(1).map(|s| s.content.to_lowercase()))
+            .collect();
+        assert!(
+            matched_descs.iter().any(|d| d.contains("move")),
+            "reb search should highlight Move entries via rebase synonyms, got: {matched_descs:?}"
+        );
+    }
+
+    #[test]
+    fn build_help_lines_original_search_unaffected() {
+        let lines = build_help_lines(Some("quit"));
+        let matched: Vec<_> = lines.iter().filter(|l| l.matched).collect();
+        assert!(
+            !matched.is_empty(),
+            "quit should still match via original substring search"
+        );
+    }
+
+    #[test]
+    fn matching_line_indices_includes_synonyms() {
+        let commit_indices = matching_line_indices("commit");
+        let describe_indices = matching_line_indices("describe");
+        // "commit" should pick up at least one "describe" match via synonyms
+        assert!(
+            !describe_indices.is_empty(),
+            "describe should match at least one entry"
+        );
+        let overlap = describe_indices
+            .iter()
+            .filter(|idx| commit_indices.contains(idx))
+            .count();
+        assert!(
+            overlap > 0,
+            "commit search should include at least one describe match via synonyms"
+        );
     }
 }

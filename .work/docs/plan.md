@@ -61,6 +61,7 @@
 - [x] Phase 30: Fetch --tracked — 追跡中 bookmark のみ fetch するオプション（v0.4.6）
 - [x] Phase 31: Fix — `f` キーで設定済みコードフォーマッタを適用（v0.4.7）
 - [x] Bugfix: Fix通知 commit_id比較による正確な判定 + ダイアログ後プレビュー再取得（v0.4.8）
+- [x] Phase 32: Help キーワード連動ハイライト — 同義語マップによる検索展開（v0.4.9）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
@@ -179,13 +180,13 @@
 ## 11. UXアイデア（候補）
 
 ### 11.1 ヘルプ/ヒントのキーワード連動ハイライト
-- [ ] `?` ヘルプ画面で `/` キーワード入力によるハイライト
-- [ ] 例: `commit` 入力時に `Describe` / `Commit` / 関連キーを強調
+- [x] `?` ヘルプ画面で `/` キーワード入力による同義語展開ハイライト（Phase 32, v0.4.9）
+- [x] 例: `commit` 入力時に `Describe` / `New` / `Squash` 等を強調
 - [ ] ステータスバーは初期段階では「一致項目を先頭表示」の軽量方式で検証
-- [ ] 関連語辞書（同義語マップ）を小規模に導入
-  - [ ] 例: `commit` → `describe`, `message`, `new`, `push`
-  - [ ] 例: `rebase` → `move`, `insert-after`, `insert-before`
+- [x] 関連語辞書（同義語マップ）を小規模に導入（11エントリ）
+  - [x] 例: `commit` → `describe`, `message`, `new`, `squash`
+  - [x] 例: `rebase` → `move`, `source`, `destination`
 
 ### 11.2 導入方針
-- [ ] Step 1: ヘルプ画面のみ実装（低リスク）
+- [x] Step 1: ヘルプ画面のみ実装（Phase 32, v0.4.9）
 - [ ] Step 2: 効果確認後にステータスバーへ拡張
