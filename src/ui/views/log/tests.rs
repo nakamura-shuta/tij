@@ -2351,3 +2351,37 @@ fn test_rebase_revset_backspace() {
     assert_eq!(view.rebase_source, Some("ab".to_string()));
     assert!(view.rebase_use_revset);
 }
+
+// =============================================================================
+// Fix tests (f key)
+// =============================================================================
+
+#[test]
+fn test_fix_key_dispatches_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    let action = press_key(&mut view, keys::FIX);
+    assert_eq!(action, LogAction::Fix("abc12345".to_string()));
+}
+
+#[test]
+fn test_fix_key_no_selection() {
+    let mut view = LogView::new();
+    // Empty changes
+    let action = press_key(&mut view, keys::FIX);
+    assert_eq!(action, LogAction::None);
+}
+
+#[test]
+fn test_fix_key_ignored_in_rebase_select_mode() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+
+    let action = press_key(&mut view, keys::FIX);
+    assert_eq!(action, LogAction::None);
+}

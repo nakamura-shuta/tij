@@ -53,6 +53,7 @@ expression: terminal.backend()
 "│  Z         Revert change (create reverse-diff commit)                        │"
 "│  i         Simplify parents (remove redundant parent edges)                  │"
 "│  |         Parallelize commits (convert linear chain to siblings)            │"
+"│  f         Fix (apply configured code formatters to revision and descendants)│"
 "│                                                                              │"
 "│Input Mode:                                                                   │"
 "│  Enter     Submit input                                                      │"
@@ -90,5 +91,4 @@ expression: terminal.backend()
 "│  Enter     Jump to bookmark in log                                           │"
 "│  T         Track remote bookmark                                             │"
 "│  U         Untrack remote bookmark                                           │"
-"│  D         Delete local bookmark                                             │"
 "└──────────────────────────────────────────────────────────────────────────────┘"

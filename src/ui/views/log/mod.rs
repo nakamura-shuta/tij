@@ -144,6 +144,8 @@ pub enum LogAction {
     SimplifyParents(String),
     /// Parallelize commits (convert linear chain to siblings)
     Parallelize { from: String, to: String },
+    /// Fix (apply configured code formatters to revision and descendants)
+    Fix(String),
     /// Entered parallelize mode (notification with from_id)
     StartParallelize(String),
     /// Parallelize blocked: same revision selected

@@ -223,6 +223,13 @@ impl LogView {
                     LogAction::None
                 }
             }
+            k if k == keys::FIX => {
+                if let Some(change) = self.selected_change() {
+                    LogAction::Fix(change.change_id.clone())
+                } else {
+                    LogAction::None
+                }
+            }
             k if k == keys::PARALLELIZE => {
                 if self.start_parallelize_select() {
                     let from_id = self.parallelize_from.as_ref().unwrap().clone();

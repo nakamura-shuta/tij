@@ -726,6 +726,14 @@ impl JjExecutor {
         self.run(&[commands::SIMPLIFY_PARENTS, flags::REVISION, change_id])
     }
 
+    /// Run `jj fix -s <change_id>`
+    ///
+    /// Applies configured code formatters to the specified revision
+    /// and its descendants. Requires `[fix.tools.*]` in jj config.
+    pub fn fix(&self, change_id: &str) -> Result<String, JjError> {
+        self.run(&[commands::FIX, flags::SOURCE, change_id])
+    }
+
     /// Run `jj parallelize` to convert a linear chain into parallel (sibling) commits
     ///
     /// Uses the revset `from::to | to::from` to handle both directions

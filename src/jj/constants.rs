@@ -49,6 +49,7 @@ pub mod commands {
     pub const REVERT: &str = "revert";
     pub const SIMPLIFY_PARENTS: &str = "simplify-parents";
     pub const PARALLELIZE: &str = "parallelize";
+    pub const FIX: &str = "fix";
     pub const GIT_REMOTE: &str = "remote";
     pub const GIT_REMOTE_LIST: &str = "list";
 }

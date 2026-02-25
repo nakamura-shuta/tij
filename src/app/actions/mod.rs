@@ -602,6 +602,36 @@ impl App {
         }
     }
 
+    /// Execute fix: apply configured code formatters to revision and descendants
+    pub(crate) fn execute_fix(&mut self, change_id: &str) {
+        match self.jj.fix(change_id) {
+            Ok(output) => {
+                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
+
+                let notification = if output.trim().is_empty() {
+                    Notification::info("No fixes needed")
+                } else {
+                    let short_id = &change_id[..8.min(change_id.len())];
+                    Notification::success(format!(
+                        "Applied fix to {} and descendants (undo: u)",
+                        short_id
+                    ))
+                };
+                self.notification = Some(notification);
+            }
+            Err(e) => {
+                let err_msg = e.to_string();
+                // jj actual error: "Config error: No `fix.tools` are configured"
+                // Match on "fix.tools" only — specific to this error, avoids false positives
+                if err_msg.contains("fix.tools") {
+                    self.set_error("Fix failed: no fix.tools configured in jj config");
+                } else {
+                    self.set_error(format!("Fix failed: {}", e));
+                }
+            }
+        }
+    }
+
     /// Execute parallelize: convert linear chain to parallel (sibling) commits
     pub(crate) fn execute_parallelize(&mut self, from: &str, to: &str) {
         match self.jj.parallelize(from, to) {

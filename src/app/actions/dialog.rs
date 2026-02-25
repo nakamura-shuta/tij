@@ -53,7 +53,8 @@ impl App {
                 | DialogCallback::RestoreAll
                 | DialogCallback::Revert { .. }
                 | DialogCallback::SimplifyParents { .. }
-                | DialogCallback::Parallelize { .. } => {
+                | DialogCallback::Parallelize { .. }
+                | DialogCallback::Fix { .. } => {
                     self.handle_misc_dialog(callback, values);
                 }
             },
@@ -92,7 +93,8 @@ impl App {
             | DialogCallback::RestoreAll
             | DialogCallback::Revert { .. }
             | DialogCallback::SimplifyParents { .. }
-            | DialogCallback::Parallelize { .. } => {}
+            | DialogCallback::Parallelize { .. }
+            | DialogCallback::Fix { .. } => {}
         }
     }
 
@@ -217,6 +219,9 @@ impl App {
             }
             DialogCallback::Parallelize { from, to } => {
                 self.execute_parallelize(&from, &to);
+            }
+            DialogCallback::Fix { change_id } => {
+                self.execute_fix(&change_id);
             }
             _ => {}
         }

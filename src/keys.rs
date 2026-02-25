@@ -187,6 +187,9 @@ pub const REVERT: KeyCode = KeyCode::Char('Z');
 /// Simplify parents (remove redundant parent edges)
 pub const SIMPLIFY_PARENTS: KeyCode = KeyCode::Char('i');
 
+/// Fix (apply configured code formatters, Log View Normal mode only)
+pub const FIX: KeyCode = KeyCode::Char('f');
+
 /// Parallelize commits (convert linear chain to siblings)
 pub const PARALLELIZE: KeyCode = KeyCode::Char('|');
 
@@ -446,6 +449,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "|",
         description: "Parallelize commits (convert linear chain to siblings)",
+    },
+    KeyBindEntry {
+        key: "f",
+        description: "Fix (apply configured code formatters to revision and descendants)",
     },
 ];
 

@@ -313,7 +313,8 @@ impl App {
             | LogAction::Duplicate(_)
             | LogAction::DiffEdit(_)
             | LogAction::Revert(_)
-            | LogAction::SimplifyParents(_) => {
+            | LogAction::SimplifyParents(_)
+            | LogAction::Fix(_) => {
                 self.handle_log_editing(action);
             }
 
@@ -412,6 +413,19 @@ impl App {
                     format!("Simplify parents for {}?", short_id),
                     None,
                     DialogCallback::SimplifyParents { change_id },
+                ));
+            }
+            LogAction::Fix(change_id) => {
+                if self.jj.is_immutable(&change_id) {
+                    self.set_error("Cannot fix: commit is immutable");
+                    return;
+                }
+                let short_id = &change_id[..8.min(change_id.len())];
+                self.active_dialog = Some(Dialog::confirm(
+                    "Fix",
+                    format!("Apply code formatters to {} and descendants?", short_id),
+                    None,
+                    DialogCallback::Fix { change_id },
                 ));
             }
             _ => {}
