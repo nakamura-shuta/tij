@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "299d99cce90b",
+  "strategy": "manual-commit",
+  "checkpoints_count": 5,
+  "files_touched": [
+    ".work/docs/plan.md",
+    "Cargo.toml",
+    "src/app/actions/mod.rs",
+    "src/app/refresh.rs",
+    "src/app/state.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/29/9d99cce90b/0/metadata.json",
+      "transcript": "/29/9d99cce90b/0/full.jsonl",
+      "context": "/29/9d99cce90b/0/context.md",
+      "content_hash": "/29/9d99cce90b/0/content_hash.txt",
+      "prompt": "/29/9d99cce90b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 102,
+    "cache_creation_tokens": 91866,
+    "cache_read_tokens": 6895629,
+    "output_tokens": 3313,
+    "api_call_count": 74
+  }
+}
