@@ -8,7 +8,7 @@ use ratatui::{
 
 use super::state::{App, View};
 use crate::keys::{self, BookmarkKind, DialogHintKind, HintContext};
-use crate::model::{DiffContent, DiffLineKind};
+use crate::model::{DiffContent, DiffLineKind, FileOperation};
 use crate::ui::components::dialog::DialogKind;
 use crate::ui::widgets::{
     render_blame_status_bar, render_diff_status_bar, render_error_banner, render_help_panel,
@@ -415,23 +415,22 @@ impl App {
     }
 }
 
-/// Per-file summary extracted from diff lines (approximate: see SoW phase14-4)
+/// Per-file summary extracted from diff lines
 struct FileSummaryEntry {
     path: String,
-    op: char, // 'M', 'A', 'D'
+    op: FileOperation,
     insertions: usize,
     deletions: usize,
 }
 
 /// Extract per-file summaries from diff lines.
 ///
-/// Operation type is inferred (approximate):
-/// - Added only (no deletions) → 'A'
-/// - Deleted only (no additions) → 'D'
-/// - Otherwise → 'M'
+/// Uses `file_op` from the DiffLine if available (from `parse_show` / `parse_diff_body`).
+/// Falls back to `infer_file_op` heuristic when `file_op` is None (git format / stat format).
 fn extract_file_summaries(lines: &[crate::model::DiffLine]) -> Vec<FileSummaryEntry> {
     let mut summaries = Vec::new();
     let mut current_path: Option<String> = None;
+    let mut current_file_op: Option<FileOperation> = None;
     let mut insertions = 0usize;
     let mut deletions = 0usize;
 
@@ -440,7 +439,8 @@ fn extract_file_summaries(lines: &[crate::model::DiffLine]) -> Vec<FileSummaryEn
             DiffLineKind::FileHeader => {
                 // Flush previous file
                 if let Some(path) = current_path.take() {
-                    let op = infer_file_op(insertions, deletions);
+                    let op =
+                        current_file_op.unwrap_or_else(|| infer_file_op(insertions, deletions));
                     summaries.push(FileSummaryEntry {
                         path,
                         op,
@@ -449,6 +449,7 @@ fn extract_file_summaries(lines: &[crate::model::DiffLine]) -> Vec<FileSummaryEn
                     });
                 }
                 current_path = Some(line.content.clone());
+                current_file_op = line.file_op;
                 insertions = 0;
                 deletions = 0;
             }
@@ -459,7 +460,7 @@ fn extract_file_summaries(lines: &[crate::model::DiffLine]) -> Vec<FileSummaryEn
     }
     // Flush last file
     if let Some(path) = current_path {
-        let op = infer_file_op(insertions, deletions);
+        let op = current_file_op.unwrap_or_else(|| infer_file_op(insertions, deletions));
         summaries.push(FileSummaryEntry {
             path,
             op,
@@ -471,14 +472,18 @@ fn extract_file_summaries(lines: &[crate::model::DiffLine]) -> Vec<FileSummaryEn
     summaries
 }
 
-/// Infer file operation from line counts (approximate).
-fn infer_file_op(insertions: usize, deletions: usize) -> char {
+/// Infer file operation from line counts (fallback heuristic).
+///
+/// Only used when `file_op` is not available on the DiffLine (e.g. git format
+/// parsed via `parse_git_diff_lines`). This heuristic can misclassify
+/// modifications that have only additions or only deletions.
+fn infer_file_op(insertions: usize, deletions: usize) -> FileOperation {
     if deletions == 0 && insertions > 0 {
-        'A'
+        FileOperation::Added
     } else if insertions == 0 && deletions > 0 {
-        'D'
+        FileOperation::Deleted
     } else {
-        'M'
+        FileOperation::Modified
     }
 }
 
@@ -594,9 +599,9 @@ fn build_preview_lines(
 /// Format a single file summary line with path truncation and right-aligned stats.
 fn format_file_summary_line(entry: &FileSummaryEntry, max_width: usize) -> Line<'static> {
     let (op_color, op_char) = match entry.op {
-        'A' => (Color::Green, 'A'),
-        'D' => (Color::Red, 'D'),
-        _ => (Color::Yellow, 'M'),
+        FileOperation::Added => (Color::Green, 'A'),
+        FileOperation::Deleted => (Color::Red, 'D'),
+        FileOperation::Modified => (Color::Yellow, 'M'),
     };
 
     // Build stats string: "+N -N", "+N", or "-N" (omit zero side)
@@ -716,6 +721,7 @@ mod tests {
                     kind: DiffLineKind::Added,
                     line_numbers: Some((None, Some(1))),
                     content: "fn main() {}".to_string(),
+                    file_op: None,
                 },
             ],
             ..DiffContent::default()
@@ -738,6 +744,7 @@ mod tests {
                 kind: DiffLineKind::Added,
                 line_numbers: Some((None, Some(1))),
                 content: "content".to_string(),
+                file_op: None,
             });
         }
         let content = DiffContent {
@@ -779,6 +786,7 @@ mod tests {
                     kind: DiffLineKind::Added,
                     line_numbers: Some((None, Some(1))),
                     content: "new".to_string(),
+                    file_op: None,
                 },
             ],
             ..DiffContent::default()
@@ -815,6 +823,7 @@ mod tests {
                     kind: DiffLineKind::Added,
                     line_numbers: Some((None, Some(1))),
                     content: "new".to_string(),
+                    file_op: None,
                 },
                 DiffLine::separator(),
                 DiffLine::file_header("src/b.rs"),
@@ -822,6 +831,7 @@ mod tests {
                     kind: DiffLineKind::Added,
                     line_numbers: Some((None, Some(1))),
                     content: "new".to_string(),
+                    file_op: None,
                 },
             ],
             ..DiffContent::default()
@@ -882,6 +892,7 @@ mod tests {
                 kind: DiffLineKind::Added,
                 line_numbers: Some((None, Some(1))),
                 content: "line".to_string(),
+                file_op: None,
             });
         }
         let content = DiffContent {
@@ -905,11 +916,13 @@ mod tests {
                 kind: DiffLineKind::Added,
                 line_numbers: Some((None, Some(1))),
                 content: "new".to_string(),
+                file_op: None,
             },
             DiffLine {
                 kind: DiffLineKind::Deleted,
                 line_numbers: Some((Some(1), None)),
                 content: "old".to_string(),
+                file_op: None,
             },
             DiffLine::separator(),
             // File 2: Added (only added lines)
@@ -918,6 +931,7 @@ mod tests {
                 kind: DiffLineKind::Added,
                 line_numbers: Some((None, Some(1))),
                 content: "fn new()".to_string(),
+                file_op: None,
             },
             DiffLine::separator(),
             // File 3: Deleted (only deleted lines)
@@ -926,6 +940,7 @@ mod tests {
                 kind: DiffLineKind::Deleted,
                 line_numbers: Some((Some(1), None)),
                 content: "fn old()".to_string(),
+                file_op: None,
             },
         ];
 
@@ -933,17 +948,17 @@ mod tests {
         assert_eq!(summaries.len(), 3);
 
         assert_eq!(summaries[0].path, "src/main.rs");
-        assert_eq!(summaries[0].op, 'M');
+        assert_eq!(summaries[0].op, FileOperation::Modified);
         assert_eq!(summaries[0].insertions, 1);
         assert_eq!(summaries[0].deletions, 1);
 
         assert_eq!(summaries[1].path, "src/new.rs");
-        assert_eq!(summaries[1].op, 'A');
+        assert_eq!(summaries[1].op, FileOperation::Added);
         assert_eq!(summaries[1].insertions, 1);
         assert_eq!(summaries[1].deletions, 0);
 
         assert_eq!(summaries[2].path, "src/old.rs");
-        assert_eq!(summaries[2].op, 'D');
+        assert_eq!(summaries[2].op, FileOperation::Deleted);
         assert_eq!(summaries[2].insertions, 0);
         assert_eq!(summaries[2].deletions, 1);
     }
@@ -979,10 +994,10 @@ mod tests {
 
     #[test]
     fn test_infer_file_op() {
-        assert_eq!(infer_file_op(5, 0), 'A');
-        assert_eq!(infer_file_op(0, 3), 'D');
-        assert_eq!(infer_file_op(3, 2), 'M');
-        assert_eq!(infer_file_op(0, 0), 'M'); // empty file → M (fallback)
+        assert_eq!(infer_file_op(5, 0), FileOperation::Added);
+        assert_eq!(infer_file_op(0, 3), FileOperation::Deleted);
+        assert_eq!(infer_file_op(3, 2), FileOperation::Modified);
+        assert_eq!(infer_file_op(0, 0), FileOperation::Modified); // empty file → M (fallback)
     }
 
     #[test]
@@ -993,16 +1008,19 @@ mod tests {
                 kind: DiffLineKind::Added,
                 line_numbers: Some((None, Some(1))),
                 content: "new line".to_string(),
+                file_op: None,
             },
             DiffLine {
                 kind: DiffLineKind::Added,
                 line_numbers: Some((None, Some(2))),
                 content: "another new".to_string(),
+                file_op: None,
             },
             DiffLine {
                 kind: DiffLineKind::Deleted,
                 line_numbers: Some((Some(1), None)),
                 content: "old line".to_string(),
+                file_op: None,
             },
             DiffLine::separator(),
             DiffLine::file_header("src/lib.rs"),
@@ -1010,6 +1028,7 @@ mod tests {
                 kind: DiffLineKind::Added,
                 line_numbers: Some((None, Some(1))),
                 content: "pub fn hello()".to_string(),
+                file_op: None,
             },
         ];
         let summaries = extract_file_summaries(&lines);
@@ -1059,5 +1078,145 @@ mod tests {
         }];
         cache.validate(&changes_stale);
         assert_eq!(cache.len(), 0);
+    }
+
+    // =========================================================================
+    // file_op boundary case tests (bug fix verification)
+    // =========================================================================
+
+    #[test]
+    fn test_extract_file_summaries_modified_with_only_adds() {
+        // Bug fix: Modified file with only additions was misclassified as 'A'
+        let lines = vec![
+            DiffLine::file_header_with_op("src/main.rs", FileOperation::Modified),
+            DiffLine {
+                kind: DiffLineKind::Added,
+                line_numbers: Some((None, Some(5))),
+                content: "new line".to_string(),
+                file_op: None,
+            },
+        ];
+        let summaries = extract_file_summaries(&lines);
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].op, FileOperation::Modified);
+    }
+
+    #[test]
+    fn test_extract_file_summaries_modified_with_only_deletes() {
+        // Bug fix: Modified file with only deletions was misclassified as 'D'
+        let lines = vec![
+            DiffLine::file_header_with_op("src/main.rs", FileOperation::Modified),
+            DiffLine {
+                kind: DiffLineKind::Deleted,
+                line_numbers: Some((Some(5), None)),
+                content: "old line".to_string(),
+                file_op: None,
+            },
+        ];
+        let summaries = extract_file_summaries(&lines);
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].op, FileOperation::Modified);
+    }
+
+    #[test]
+    fn test_extract_file_summaries_added_file() {
+        let lines = vec![
+            DiffLine::file_header_with_op("src/new.rs", FileOperation::Added),
+            DiffLine {
+                kind: DiffLineKind::Added,
+                line_numbers: Some((None, Some(1))),
+                content: "fn new() {}".to_string(),
+                file_op: None,
+            },
+        ];
+        let summaries = extract_file_summaries(&lines);
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].op, FileOperation::Added);
+    }
+
+    #[test]
+    fn test_extract_file_summaries_deleted_file() {
+        let lines = vec![
+            DiffLine::file_header_with_op("src/old.rs", FileOperation::Deleted),
+            DiffLine {
+                kind: DiffLineKind::Deleted,
+                line_numbers: Some((Some(1), None)),
+                content: "fn old() {}".to_string(),
+                file_op: None,
+            },
+        ];
+        let summaries = extract_file_summaries(&lines);
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].op, FileOperation::Deleted);
+    }
+
+    #[test]
+    fn test_extract_file_summaries_fallback_without_file_op() {
+        // When file_op is None (e.g. git format), infer_file_op is used as fallback
+        let lines = vec![
+            DiffLine::file_header("src/main.rs"), // no file_op
+            DiffLine {
+                kind: DiffLineKind::Added,
+                line_numbers: None,
+                content: "added".to_string(),
+                file_op: None,
+            },
+            DiffLine {
+                kind: DiffLineKind::Deleted,
+                line_numbers: None,
+                content: "deleted".to_string(),
+                file_op: None,
+            },
+        ];
+        let summaries = extract_file_summaries(&lines);
+        assert_eq!(summaries.len(), 1);
+        // Both additions and deletions → fallback infers Modified
+        assert_eq!(summaries[0].op, FileOperation::Modified);
+    }
+
+    #[test]
+    fn test_extract_file_summaries_rename_is_modified() {
+        // Rename shows as Modified in the file_op
+        let lines = vec![
+            DiffLine::file_header_with_op("src/renamed.rs", FileOperation::Modified),
+            DiffLine {
+                kind: DiffLineKind::Added,
+                line_numbers: Some((None, Some(1))),
+                content: "content".to_string(),
+                file_op: None,
+            },
+        ];
+        let summaries = extract_file_summaries(&lines);
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].op, FileOperation::Modified);
+    }
+
+    #[test]
+    fn test_parse_show_to_file_summaries_preserves_file_op() {
+        // Integration: parse_show output → extract_file_summaries should preserve file_op
+        use crate::jj::parser::Parser;
+
+        let output = "\
+Commit ID: abc123
+Change ID: xyz789
+Author   : Test <test@example.com> (2024-01-30 12:00:00)
+Committer: Test <test@example.com> (2024-01-30 12:00:00)
+
+    Append only
+
+Modified regular file src/main.rs:
+   10   10:     fn main() {
+        11: +       println!(\"new line\");
+   11   12:     }
+";
+        let content = Parser::parse_show(output).unwrap();
+        let summaries = extract_file_summaries(&content.lines);
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].path, "src/main.rs");
+        // Key assertion: file_op from parse_show prevents misclassification as 'A'
+        assert_eq!(summaries[0].op, FileOperation::Modified);
+        assert_eq!(summaries[0].insertions, 1);
+        assert_eq!(summaries[0].deletions, 0);
     }
 }

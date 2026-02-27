@@ -1,9 +1,8 @@
 //! Diff output parser (jj show)
 
 use super::super::JjError;
-use super::FileOperation;
 use super::Parser;
-use crate::model::{DiffContent, DiffLine, DiffLineKind};
+use crate::model::{DiffContent, DiffLine, DiffLineKind, FileOperation};
 
 impl Parser {
     /// Parse `jj show` output into DiffContent
@@ -94,7 +93,9 @@ impl Parser {
                 if file_count > 0 {
                     content.lines.push(DiffLine::separator());
                 }
-                content.lines.push(DiffLine::file_header(path));
+                content
+                    .lines
+                    .push(DiffLine::file_header_with_op(path, file_op));
                 file_count += 1;
                 continue;
             }
@@ -135,7 +136,9 @@ impl Parser {
                 if file_count > 0 {
                     content.lines.push(DiffLine::separator());
                 }
-                content.lines.push(DiffLine::file_header(path));
+                content
+                    .lines
+                    .push(DiffLine::file_header_with_op(path, file_op));
                 file_count += 1;
                 continue;
             }
@@ -250,6 +253,7 @@ impl Parser {
             kind,
             line_numbers: Some((old_line, new_line)),
             content,
+            file_op: None,
         })
     }
 
@@ -268,6 +272,7 @@ impl Parser {
                 kind: DiffLineKind::Context,
                 line_numbers: None,
                 content: "(no changes)".to_string(),
+                file_op: None,
             });
         } else {
             for line in body.lines() {
@@ -275,6 +280,7 @@ impl Parser {
                     kind: DiffLineKind::Context,
                     line_numbers: None,
                     content: line.to_string(),
+                    file_op: None,
                 });
             }
         }
@@ -291,6 +297,7 @@ impl Parser {
                 kind: DiffLineKind::Context,
                 line_numbers: None,
                 content: "(no changes)".to_string(),
+                file_op: None,
             });
         } else {
             for line in output.lines() {
@@ -298,6 +305,7 @@ impl Parser {
                     kind: DiffLineKind::Context,
                     line_numbers: None,
                     content: line.to_string(),
+                    file_op: None,
                 });
             }
         }
@@ -363,18 +371,21 @@ impl Parser {
                     kind: DiffLineKind::Context,
                     line_numbers: None,
                     content: line.to_string(),
+                    file_op: None,
                 });
             } else if let Some(rest) = line.strip_prefix('+') {
                 content.lines.push(DiffLine {
                     kind: DiffLineKind::Added,
                     line_numbers: None,
                     content: rest.to_string(),
+                    file_op: None,
                 });
             } else if let Some(rest) = line.strip_prefix('-') {
                 content.lines.push(DiffLine {
                     kind: DiffLineKind::Deleted,
                     line_numbers: None,
                     content: rest.to_string(),
+                    file_op: None,
                 });
             } else {
                 // Context line (leading space stripped if present)
@@ -383,6 +394,7 @@ impl Parser {
                     kind: DiffLineKind::Context,
                     line_numbers: None,
                     content: ctx.to_string(),
+                    file_op: None,
                 });
             }
         }

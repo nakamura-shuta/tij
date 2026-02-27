@@ -1,5 +1,5 @@
 use super::*;
-use crate::model::{DiffLineKind, FileState};
+use crate::model::{DiffLineKind, FileOperation, FileState};
 
 #[test]
 fn test_parse_log_record() {

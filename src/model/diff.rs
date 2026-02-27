@@ -44,15 +44,28 @@ pub struct DiffLine {
     pub line_numbers: Option<(Option<usize>, Option<usize>)>,
     /// Content of the line
     pub content: String,
+    /// File operation (only set for FileHeader lines from parsers that know the operation)
+    pub file_op: Option<FileOperation>,
 }
 
 impl DiffLine {
-    /// Create a file header line
+    /// Create a file header line (no file operation info — for git parser etc.)
     pub fn file_header(path: impl Into<String>) -> Self {
         Self {
             kind: DiffLineKind::FileHeader,
             line_numbers: None,
             content: path.into(),
+            file_op: None,
+        }
+    }
+
+    /// Create a file header line with known file operation
+    pub fn file_header_with_op(path: impl Into<String>, op: FileOperation) -> Self {
+        Self {
+            kind: DiffLineKind::FileHeader,
+            line_numbers: None,
+            content: path.into(),
+            file_op: Some(op),
         }
     }
 
@@ -62,6 +75,7 @@ impl DiffLine {
             kind: DiffLineKind::Separator,
             line_numbers: None,
             content: String::new(),
+            file_op: None,
         }
     }
 
@@ -76,6 +90,7 @@ impl DiffLine {
             kind: DiffLineKind::Context,
             line_numbers: Some((old_line, new_line)),
             content: content.into(),
+            file_op: None,
         }
     }
 
@@ -86,6 +101,7 @@ impl DiffLine {
             kind: DiffLineKind::Added,
             line_numbers: Some((None, Some(new_line))),
             content: content.into(),
+            file_op: None,
         }
     }
 
@@ -96,6 +112,7 @@ impl DiffLine {
             kind: DiffLineKind::Deleted,
             line_numbers: Some((Some(old_line), None)),
             content: content.into(),
+            file_op: None,
         }
     }
 }
@@ -113,6 +130,14 @@ pub enum DiffLineKind {
     Deleted,
     /// Separator between files
     Separator,
+}
+
+/// File operation type (from jj diff output header lines)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileOperation {
+    Added,
+    Modified,
+    Deleted,
 }
 
 /// Display format for diff view
@@ -297,5 +322,25 @@ mod tests {
         assert_eq!(DiffDisplayFormat::Stat.position(), 2);
         assert_eq!(DiffDisplayFormat::Git.position(), 3);
         assert_eq!(DiffDisplayFormat::COUNT, 3);
+    }
+
+    // =========================================================================
+    // FileOperation + DiffLine file_op tests
+    // =========================================================================
+
+    #[test]
+    fn test_diff_line_file_header_with_op() {
+        let line = DiffLine::file_header_with_op("src/main.rs", FileOperation::Modified);
+        assert_eq!(line.kind, DiffLineKind::FileHeader);
+        assert_eq!(line.content, "src/main.rs");
+        assert_eq!(line.file_op, Some(FileOperation::Modified));
+    }
+
+    #[test]
+    fn test_diff_line_file_header_no_op() {
+        let line = DiffLine::file_header("src/main.rs");
+        assert_eq!(line.kind, DiffLineKind::FileHeader);
+        assert_eq!(line.content, "src/main.rs");
+        assert_eq!(line.file_op, None);
     }
 }

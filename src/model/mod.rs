@@ -20,6 +20,7 @@ pub use change::Change;
 pub use conflict::ConflictFile;
 pub use diff::{
     CompareInfo, CompareRevisionInfo, DiffContent, DiffDisplayFormat, DiffLine, DiffLineKind,
+    FileOperation,
 };
 pub use evolog::EvologEntry;
 pub use file_status::{FileState, FileStatus, Status};

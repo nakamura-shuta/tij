@@ -23,21 +23,25 @@ fn create_colorwords_content() -> DiffContent {
         kind: DiffLineKind::Context,
         line_numbers: Some((Some(10), Some(10))),
         content: "fn main() {".to_string(),
+        file_op: None,
     });
     content.lines.push(DiffLine {
         kind: DiffLineKind::Added,
         line_numbers: Some((None, Some(11))),
         content: "    println!(\"hello\");".to_string(),
+        file_op: None,
     });
     content.lines.push(DiffLine {
         kind: DiffLineKind::Deleted,
         line_numbers: Some((Some(11), None)),
         content: "    println!(\"old\");".to_string(),
+        file_op: None,
     });
     content.lines.push(DiffLine {
         kind: DiffLineKind::Context,
         line_numbers: Some((Some(12), Some(12))),
         content: "}".to_string(),
+        file_op: None,
     });
 
     content
@@ -55,16 +59,19 @@ fn create_stat_content() -> DiffContent {
                 kind: DiffLineKind::Context,
                 line_numbers: None,
                 content: "src/main.rs | 10 ++++------".to_string(),
+                file_op: None,
             },
             DiffLine {
                 kind: DiffLineKind::Context,
                 line_numbers: None,
                 content: "src/lib.rs  |  5 +++++".to_string(),
+                file_op: None,
             },
             DiffLine {
                 kind: DiffLineKind::Context,
                 line_numbers: None,
                 content: "2 files changed, 9 insertions(+), 6 deletions(-)".to_string(),
+                file_op: None,
             },
         ],
     }
@@ -83,26 +90,31 @@ fn create_git_content() -> DiffContent {
                 kind: DiffLineKind::Context,
                 line_numbers: None,
                 content: "@@ -10,3 +10,3 @@".to_string(),
+                file_op: None,
             },
             DiffLine {
                 kind: DiffLineKind::Context,
                 line_numbers: None,
                 content: "fn main() {".to_string(),
+                file_op: None,
             },
             DiffLine {
                 kind: DiffLineKind::Added,
                 line_numbers: None,
                 content: "    println!(\"hello\");".to_string(),
+                file_op: None,
             },
             DiffLine {
                 kind: DiffLineKind::Deleted,
                 line_numbers: None,
                 content: "    println!(\"old\");".to_string(),
+                file_op: None,
             },
             DiffLine {
                 kind: DiffLineKind::Context,
                 line_numbers: None,
                 content: "}".to_string(),
+                file_op: None,
             },
         ],
     }

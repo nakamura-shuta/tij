@@ -43,13 +43,5 @@ static RESOLVE_LIST_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(.+?)\s{2,}(\d+-sided\s+conflict)$").expect("Invalid resolve list regex")
 });
 
-/// File operation type from jj show output
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FileOperation {
-    Added,
-    Modified,
-    Deleted,
-}
-
 /// Parser for jj command output
 pub struct Parser;
