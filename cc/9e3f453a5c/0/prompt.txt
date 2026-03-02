@@ -1,0 +1,703 @@
+Implement the following plan:
+
+# Fix: プレビューペインのファイル操作 A/M/D 誤表示
+
+## Context
+
+tij のプレビューペインで、既存ファイルへの追記のみの変更が `A`（Added）、削除のみの変更が `D`（Deleted）と誤表示される。
+`jj st` では正しく `M`（Modified）。
+
+**根本原因**: `src/app/render.rs` の `infer_file_op()` が diff の行数カウントからファイル操作を推定しており、`parse_show()` で正確に取得済みの `FileOperation` 情報が `DiffLine` に保持されず捨てられている。
+
+## 変更ファイル
+
+| ファイル | 変更内容 |
+|---------|---------|
+| `src/model/diff.rs` | `FileOperation` enum 追加 + `DiffLine` に `file_op` フィールド追加 + `file_header_with_op()` コンストラクタ |
+| `src/model/mod.rs` | `FileOperation` を re-export |
+| `src/jj/parser/mod.rs` | private `FileOperation` 削除 → `use crate::model::FileOperation` |
+| `src/jj/parser/diff.rs` | `parse_show()` / `parse_diff_body()` で `file_header_with_op()` 使用、他パーサーに `file_op: None` 追加 |
+| `src/jj/parser/tests.rs` | import パス更新 |
+| `src/app/render.rs` | `extract_file_summaries()` を `file_op` 優先に変更、`FileSummaryEntry.op` を `FileOperation` 型に、`infer_file_op` はフォールバック専用 |
+| テスト各所 | `DiffLine` struct literal に `file_op: None` 追加 |
+
+## 実装詳細
+
+### Step 1: `src/model/diff.rs` — FileOperation 追加 + DiffLine 拡張
+
+`DiffLineKind` の直後（L116 付近）に追加:
+
+```rust
+/// File operation type (from jj diff output header lines)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileOperation {
+    Added,
+    Modified,
+    Deleted,
+}
+```
+
+`DiffLine` に `file_op` フィールド追加:
+
+```rust
+pub struct DiffLine {
+    pub kind: DiffLineKind,
+    pub line_numbers: Option<(Option<usize>, Option<usize>)>,
+    pub content: String,
+    /// File operation (only set for FileHeader lines from parsers that know the operation)
+    pub file_op: Option<FileOperation>,
+}
+```
+
+コンストラクタ追加・更新:
+- `file_header()` — 既存を維持、`file_op: None` 付与（git パーサー等の互換用）
+- `file_header_with_op(path, op)` — **新規**、`file_op: Some(op)`
+- `separator()`, `context()`, `added()`, `deleted()` — 全て `file_op: None` 追加
+
+### Step 2: `src/model/mod.rs` — re-export
+
+```rust
+pub use diff::{..., FileOperation};
+```
+
+### Step 3: `src/jj/parser/mod.rs` — private enum 削除
+
+L46-52 の `enum FileOperation` を削除し、`use crate::model::FileOperation;` に置換。
+
+### Step 4: `src/jj/parser/diff.rs` — パーサー更新
+
+import 変更: `use super::FileOperation` → `use crate::model::FileOperation`
+
+**parse_show() / parse_diff_body()**: `DiffLine::file_header(path)` → `DiffLine::file_header_with_op(path, file_op)`
+
+**parse_diff_line()**: 返り値に `file_op: None` 追加
+
+**parse_show_stat() / parse_diff_body_stat()**: 全 `DiffLine` struct literal に `file_op: None` 追加
+
+**parse_git_diff_lines()**: `DiffLine::file_header(path)` はそのまま（FileOperation 情報なし）、struct literal に `file_op: None` 追加
+
+### Step 5: `src/app/render.rs` — 表示ロジック修正（バグ修正本体）
+
+`FileSummaryEntry.op` を `char` → `FileOperation` に変更:
+
+```rust
+struct FileSummaryEntry {
+    path: String,
+    op: FileOperation,  // was: char
+    insertions: usize,
+    deletions: usize,
+}
+```
+
+`extract_file_summaries()`: `file_op` があればそれを使い、なければ `infer_file_op` フォールバック:
+
+```rust
+let op = line.file_op.unwrap_or_else(|| infer_file_op(insertions, deletions));
+```
+
+`infer_file_op()` の返り値を `FileOperation` に変更（フォールバック専用）。
+
+`format_file_summary_line()`: `match entry.op` を `FileOperation` の match に変更。
+
+### Step 6: テスト修正
+
+**全ファイルの `DiffLine` struct literal** に `file_op: None` 追加（コンパイラが全箇所を検出）。
+
+**render.rs の既存テスト**: `assert_eq!(summaries[0].op, 'M')` → `assert_eq!(summaries[0].op, FileOperation::Modified)` 等。
+
+### Step 7: 境界ケーステスト追加（render.rs）
+
+| # | テスト名 | 内容 |
+|---|---------|------|
+| 1 | `test_extract_file_summaries_modified_with_only_adds` | Modified + 追加行のみ → `M`（旧来バグ: `A` になっていた） |
+| 2 | `test_extract_file_summaries_modified_with_only_deletes` | Modified + 削除行のみ → `M`（旧来バグ: `D` になっていた） |
+| 3 | `test_extract_file_summaries_added_file` | Added ファイル → `A` |
+| 4 | `test_extract_file_summaries_deleted_file` | Deleted ファイル → `D` |
+| 5 | `test_extract_file_summaries_fallback_without_file_op` | file_op=None → infer_file_op フォールバック |
+| 6 | `test_extract_file_summaries_rename_is_modified` | Rename → `M` |
+
+model/diff.rs にも:
+| 7 | `test_diff_line_file_header_with_op` | file_header_with_op で file_op が Some |
+| 8 | `test_diff_line_file_header_no_op` | file_header で file_op が None |
+
+## 既知の制限
+
+`file_op=None` 経路（git フォーマット / stat フォーマット）では `infer_file_op()` フォールバックが動くため、今回と同種の A/D 誤判定が残る。
+
+- **git フォーマット**: `diff --git` ヘッダーにはファイル操作種別が含まれない。`---/+++` や `new file mode`/`deleted file mode` からの推定は可能だが、本修正のスコープ外
+- **stat フォーマット**: FileHeader 自体が生成されないため `extract_file_summaries()` は空を返す（影響なし）
+- **影響**: プレビューペインのデフォルト表示（color-words = `jj show`）は修正される。`m` キーで git 表示に切り替えた場合のみ制限が残る
+
+この制限は `infer_file_op()` の doc コメントに明記する。
+
+## Step 7 追加: parse→表示 統合テスト
+
+境界ケース単体テストに加え、`parse_show()` の出力を `extract_file_summaries()` に通す統合テストを 1 本追加:
+
+| # | テスト名 | 内容 |
+|---|---------|------|
+| 9 | `test_parse_show_to_file_summaries_preserves_file_op` | `parse_show()` で "Modified regular file" + 追加行のみの出力を作り、`extract_file_summaries()` で `M` になることを確認 |
+
+## 検証
+
+```bash
+cargo fmt && cargo clippy && cargo test
+```
+
+- 全テスト pass（既存 647+ に新規 9 追加）
+- clippy 0 warnings
+- 手動確認: 既存ファイルへの追記のみの変更が `M` と表示されること
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/nakamura.shuta/.REDACTED.jsonl
+
+---
+
+<task-notification>
+<task-id>bcc4dbd</task-id>
+<output-file>/private/tmp/claude-501/-Users-nakamura-shuta-dev-playground-tij/tasks/bcc4dbd.output</output-file>
+<status>completed</status>
+<summary>Background command "Run all tests and check summary" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: /private/tmp/claude-501/-Users-nakamura-shuta-dev-playground-tij/tasks/bcc4dbd.output
+
+---
+
+<task-notification>
+<task-id>b94ff1d</task-id>
+<output-file>REDACTED.output</output-file>
+<status>completed</status>
+<summary>Background command "Run tests single-threaded to get summary" completed (exit code 0)</summary>
+</task-notification>
+Read the output file to retrieve the result: REDACTED.output
+
+---
+
+plan.md,README更新後にcommit,push,publishして
+
+---
+
+削除したファイルもちゃんと検出されますか？pwd
+/Users/nakamura.shuta/dev/playground/anything/mytest-private-repositoryでその状態作成してくだっさい
+
+---
+
+削除したファイルもちゃんと検出されますか？pwd
+/Users/nakamura.shuta/dev/playground/anything/mytest-private-repositoryでその状態作成してくだっさい
+
+---
+
+wtksutxp
+Author: Nakamura Shuta <nakamura.shuta@classmethod.jp>  2026-03-01 16:41:35                                                                     │
+│test: verify A/M/D detection in preview pane                                                                                                    │
+│3 files changed, +2, -4                                                                                                                         │
+│                                                                                                                                                │
+│ M file.txt                                                                                                                                  +2 │
+│ M hello.py                                                                                                                                  -3 │
+│ D rebase_a.txt                                                                                                                              -1 │
+│
+
+---
+
+次の実装候補教えて下さい
+
+---
+
+追加お願いします
+
+---
+
+commit,pushはして。publishはしないでよい
+
+---
+
+次の実装候補教えて下さい
+
+---
+
+#: 1                                                                
+  候補: jj tag サポート                                               
+  概要: タグ一覧表示 / 作成。リリース管理で実用的
+
+SoW作成お願いします
+
+---
+
+[Request interrupted by user]
+
+---
+
+#: 1                                                                
+  候補: jj tag サポート                                               
+  概要: タグ一覧表示 / 作成。リリース管理で実用的
+
+SoW作成お願いします
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the conversation:
+
+1. User asked to implement a plan to fix preview pane file operation A/M/D misclassification in tij (a TUI for jujutsu VCS).
+
+2. The plan involved:
+   - Adding `FileOperation` enum to `src/model/diff.rs`
+   - Adding `file_op` field to `DiffLine` struct
+   - Moving `FileOperation` from parser/mod.rs to model
+   - Updating parsers to propagate file_op
+   - Updating render.rs to use file_op instead of inferring from line counts
+   - Adding tests
+
+3. I implemented all changes across 7 files, all tests passed (656 unit + integration + snapshot).
+
+4. User asked to update plan.md, README, commit, push, and publish. I bumped version to 0.4.10, updated docs, and did the full release flow (jj describe, bookmark set, push, git tag, git push tag).
+
+5. User asked to verify the fix works with real deleted files. I created a test scenario in mytest-private-repository with 3 cases (append-only=M, delete-only=M, file deleted=D). User confirmed it works.
+
+6. User said "なんかテストが甘い気がする" (tests seem weak). I did a gap analysis and identified 6 gaps. User confirmed wanting the additional tests.
+
+7. I added 8 more tests covering the gaps (parser file_op verification, mixed operations, integration tests, git format fallback). All 664 tests passed.
+
+8. User asked to commit and push (but NOT publish). Done.
+
+9. User asked for next implementation candidates. I presented a prioritized list.
+
+10. User chose "#1: jj tag サポート" and asked for SoW creation. This is the current pending task.
+
+Key files modified:
+- src/model/diff.rs - FileOperation enum, DiffLine.file_op field
+- src/model/mod.rs - re-export FileOperation
+- src/jj/parser/mod.rs - removed private FileOperation
+- src/jj/parser/diff.rs - use file_header_with_op, file_op: None
+- src/jj/parser/tests.rs - import update + 5 new tests
+- src/app/render.rs - FileSummaryEntry.op changed to FileOperation, extract_file_summaries uses file_op, 10 new tests
+- tests/ui/test_diff.rs - file_op: None added to struct literals
+
+Summary:
+1. Primary Request and Intent:
+   - **Main task (COMPLETED)**: Fix preview pane file operation A/M/D misclassification in tij. Files with only additions were shown as `A` (Added) instead of `M` (Modified), and files with only deletions were shown as `D` (Deleted) instead of `M`.
+   - **Root cause**: `infer_file_op()` in render.rs used line count heuristics instead of the actual `FileOperation` already parsed by `parse_show()`.
+   - **Solution**: Propagate `FileOperation` from parser through `DiffLine.file_op` field to `extract_file_summaries()`.
+   - **Release**: v0.4.10 published to crates.io/GitHub/Homebrew.
+   - **Test strengthening (COMPLETED)**: User noted tests were insufficient. Added 8 more tests covering parser-level file_op verification, mixed operations, integration paths, and git format fallback.
+   - **Current request (PENDING)**: User chose "jj tag サポート" as next feature and asked for SoW (Statement of Work) creation.
+
+2. Key Technical Concepts:
+   - tij: TUI app for Jujutsu (jj) version control, built with Rust + ratatui
+   - `FileOperation` enum: `Added`, `Modified`, `Deleted` - represents file operation type from jj diff headers
+   - `DiffLine.file_op`: Optional field carrying file operation from parser to renderer
+   - `file_header_with_op()`: New constructor that preserves operation info
+   - `infer_file_op()`: Fallback heuristic for git format (where operation info unavailable)
+   - `extract_file_summaries()`: Now uses `file_op` first, falls back to `infer_file_op`
+   - jj release workflow: jj describe → bookmark set → git push → git tag → git push tag
+   - Project version: now at v0.4.10 (published), with test-only commit on top of main
+
+3. Files and Code Sections:
+   - **`src/model/diff.rs`**
+     - Core model file. Added `FileOperation` enum and `file_op: Option<FileOperation>` to `DiffLine`.
+     - Added `file_header_with_op()` constructor.
+     - Updated all existing constructors (`file_header`, `separator`, `context`, `added`, `deleted`) with `file_op: None`.
+     - Added 2 tests: `test_diff_line_file_header_with_op`, `test_diff_line_file_header_no_op`.
+     ```rust
+     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+     pub enum FileOperation {
+         Added,
+         Modified,
+         Deleted,
+     }
+     
+     pub struct DiffLine {
+         pub kind: DiffLineKind,
+         pub line_numbers: Option<(Option<usize>, Option<usize>)>,
+         pub content: String,
+         pub file_op: Option<FileOperation>,
+     }
+     
+     pub fn file_header_with_op(path: impl Into<String>, op: FileOperation) -> Self {
+         Self {
+             kind: DiffLineKind::FileHeader,
+             line_numbers: None,
+             content: path.into(),
+             file_op: Some(op),
+         }
+     }
+     ```
+
+   - **`src/model/mod.rs`**
+     - Re-exports `FileOperation` from diff module.
+
+   - **`src/jj/parser/mod.rs`**
+     - Removed private `enum FileOperation` (was lines 46-52). Now uses `crate::model::FileOperation` via diff.rs's own import.
+
+   - **`src/jj/parser/diff.rs`**
+     - Changed import from `use super::FileOperation` to `use crate::model::{..., FileOperation}`.
+     - `parse_show()` and `parse_diff_body()`: Changed `DiffLine::file_header(path)` → `DiffLine::file_header_with_op(path, file_op)`.
+     - `parse_diff_line()`: Added `file_op: None` to return struct.
+     - `parse_show_stat()`, `parse_diff_body_stat()`: Added `file_op: None` to all DiffLine struct literals.
+     - `parse_git_diff_lines()`: Kept `DiffLine::file_header(path)` (no op info available), added `file_op: None` to all other struct literals.
+
+   - **`src/jj/parser/tests.rs`**
+     - Added `use crate::model::FileOperation` import.
+     - Added 5 new tests:
+       - `test_parse_show_file_op_set_on_headers` - verifies Added/Modified/Deleted file_op on parse_show output
+       - `test_parse_diff_body_file_op_set_on_headers` - same for parse_diff_body (compare diff path)
+       - `test_parse_diff_body_conflict_file_op` - conflict headers set file_op=Modified
+       - `test_parse_git_diff_file_op_is_none` - git format intentionally has file_op=None
+       - `test_parse_diff_line_file_op_is_none` - individual diff lines have file_op=None
+
+   - **`src/app/render.rs`**
+     - **Bug fix core**: Changed `FileSummaryEntry.op` from `char` to `FileOperation`.
+     - `extract_file_summaries()`: Now tracks `current_file_op` from file headers, uses `file_op.unwrap_or_else(|| infer_file_op(...))`.
+     - `infer_file_op()`: Return type changed from `char` to `FileOperation`. Added doc comment noting it's fallback-only.
+     - `format_file_summary_line()`: Match on `FileOperation` variants instead of chars.
+     - Updated all test assertions from `'M'`/`'A'`/`'D'` to `FileOperation::Modified`/etc.
+     - Added `file_op: None` to all DiffLine struct literals in tests.
+     - Added 10 new tests total (7 boundary + 3 strengthening):
+       - `test_extract_file_summaries_modified_with_only_adds` - the original bug case
+       - `test_extract_file_summaries_modified_with_only_deletes` - the original bug case
+       - `test_extract_file_summaries_added_file`
+       - `test_extract_file_summaries_deleted_file`
+       - `test_extract_file_summaries_fallback_without_file_op`
+       - `test_extract_file_summaries_rename_is_modified`
+       - `test_parse_show_to_file_summaries_preserves_file_op` - integration test
+       - `test_extract_file_summaries_mixed_operations` - 4 files with A+M+M+D in one commit
+       - `test_parse_diff_body_to_file_summaries_preserves_file_op` - compare diff integration
+       - `test_git_format_falls_back_to_infer` - git format fallback path
+
+   - **`tests/ui/test_diff.rs`**
+     - Added `file_op: None` to all DiffLine struct literals (colorwords, stat, git content creators).
+
+   - **`Cargo.toml`** - Version bumped from 0.4.9 to 0.4.10.
+   - **`.work/docs/plan.md`** - Added bugfix entry for v0.4.10.
+   - **`README.md`** - Updated test count from 647 to 656.
+
+4. Errors and fixes:
+   - **Unused import warning**: After removing private `FileOperation` from parser/mod.rs and replacing with `use crate::model::FileOperation;`, this import was actually unused (diff.rs imports directly). Removed it.
+   - **Wrong import path in integration test**: Used `crate::jj::Parser` but Parser is not re-exported at that level. Fixed to `crate::jj::parser::Parser`.
+   - **User feedback "テストが甘い"**: User felt test coverage was insufficient after the initial implementation. Performed gap analysis via Explore agent, identified 6 gaps, and added 8 more tests covering parser-level file_op verification, mixed operations, integration paths (parse_diff_body → extract_file_summaries), and git format fallback.
+
+5. Problem Solving:
+   - Solved the A/M/D misclassification bug by propagating FileOperation from parser through DiffLine to renderer.
+   - Maintained backward compatibility: git format and stat format still work via `infer_file_op()` fallback.
+   - Verified fix manually by creating test scenario in mytest-private-repository with 3 file change patterns.
+   - Strengthened test coverage after user feedback.
+
+6. All user messages:
+   - "Implement the following plan: # Fix: プレビューペインのファイル操作 A/M/D 誤表示 [detailed plan]"
+   - (Background task completion notification)
+   - "plan.md,README更新後にcommit,push,publishして"
+   - "削除したファイルもちゃんと検出されますか？pwd /Users/nakamura.shuta/dev/playground/anything/mytest-private-repository でその状態作成してください"
+   - (Showed tij output confirming M/M/D display was correct)
+   - "次の実装候補教えて下さい"
+   - "なんかテストが甘い気がする" (tests seem weak)
+   - "追加お願いします" (please add them)
+   - "commit,pushはして。publishはしないでよい" (commit and push, but don't publish)
+   - "次の実装候補教えて下さい" (next implementation candidates)
+   - "#1 jj tag サポート - SoW作成お願いします" (create SoW for jj tag support)
+
+7. Pending Tasks:
+   - **Create SoW for "jj tag サポート"** - The user selected candidate #1 (jj tag support: tag listing/creation for release management) and requested a Statement of Work document.
+
+8. Current Work:
+   The user just selected "jj tag サポート" as the next feature to implement and asked: "SoW作成お願いします" (please create SoW). This is the immediate pending task - creating a detailed specification/statement of work for jj tag support in tij.
+
+9. Optional Next Step:
+   Create a SoW document for jj tag support at `.work/docs/spec-detail/` (following the project's convention for detailed specs). This should cover:
+   - `jj tag list` - tag listing/display
+   - `jj tag create` - tag creation  
+   - Integration with existing tij views
+   - Key bindings
+   - UI design
+
+   User's exact quote: "#1 jj tag サポート 概要: タグ一覧表示 / 作成。リリース管理で実用的 SoW作成お願いします"
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/nakamura.shuta/.REDACTED.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+1. High: T キーは既に Log View で Track remote bookmarks に使われて
+     います
+     src/keys.rs:134 に pub const TRACK: KeyCode = KeyCode::Char('T');
+     があり、SoW の T = Tag View は衝突します。
+     このままだと既存機能を壊します。Tag View のキーは別案に変える必要
+     があります。
+  2. Medium: ファイル構成の記述が現状コードとズレています
+     SoW では src/app/actions.rs と src/jj/commands.rs を前提にしてい
+     ますが、現状は src/app/actions/ 配下の分割構成で、jj の定数も
+     src/jj/constants.rs です。
+     実装起点の記述を現状に合わせて直したほうがよいです。今のままだと
+     作業者が迷います。
+  3. Medium: 「ローカルタグのみ表示」と「remote タグも全表示」の記述が
+     矛盾しています
+     Tag View の説明で
+
+  - 「Remote タグはフィルタせず全て表示する」
+  - 直後に「ローカルタグのみ表示をデフォルト」
+    が併記されていて整合していません。
+    初期スコープを「ローカルのみ」か「全表示」かで固定してください。
+
+  4. Medium: ソート仕様が不安定です
+     SoW では「タグ名の降順」「jj tag list のデフォルト順を使用」
+     「SemVer 的に降順表示するにはリバース」と複数の説明が混ざっていま
+     す。
+     名前順をそのまま使うのか、表示側で reverse するのかを明示してくだ
+     さい。v0.4.10 と v0.4.9 は文字列順だと期待どおりにならない場合が
+     あります。
+  5. Low: Tag View c = @ に作成 は誤操作しやすいです
+     Tag View からの c が常に @ 対象だと、一覧を見ている流れで「選択中
+     タグの位置に作る」と誤解しやすいです。
+     SoW に「@ 固定であることをダイアログ文言に明示する」か、「選択中
+     タグの target に作る」かを決めたほうがよいです。
+
+---
+
+実装お願いします
+
+---
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Analysis:
+Let me chronologically analyze the conversation:
+
+1. **Context from previous session**: The user had previously completed a fix for preview pane file operation A/M/D misclassification (v0.4.10), added tests, and then asked for next implementation candidates. They chose "#1: jj tag サポート" and asked for a SoW.
+
+2. **SoW Creation**: I created the SoW at `.work/docs/spec-detail/phase32-tag-support.md` covering Tag View, tag creation, and tag deletion.
+
+3. **User Review of SoW**: The user provided 5 specific issues with the SoW:
+   - High: `T` key conflicts with `keys::TRACK` in Log View (line 134)
+   - Medium: File structure references wrong (`actions.rs` vs `actions/`, `commands.rs` vs `constants.rs`)
+   - Medium: Contradictory statements about remote tag display
+   - Medium: Sort specification is unclear
+   - Low: Tag View `c` targeting `@` could cause confusion
+
+4. **SoW Revision**: I verified the conflicts by checking keys.rs, found `T` is used in both Log View and Bookmark View for Track. Revised the SoW to use `t` (lowercase) for Tag View, fixed file paths, resolved contradictions, clarified sort order, and addressed the `@` targeting concern.
+
+5. **Implementation Request**: User said "実装お願いします" (please implement).
+
+6. **Implementation Progress**: I created task items and began implementing:
+   - Step 1 (COMPLETED): Data model (`src/model/tag.rs`) + parser (`src/jj/parser/tag.rs`) + re-exports
+   - Step 2 (COMPLETED): Constants (`src/jj/constants.rs`) + executor methods (`src/jj/executor.rs`)
+   - Step 3 (COMPLETED): TagView module (`src/ui/views/tag/mod.rs`, `input.rs`, `render.rs`)
+   - Step 4-6 (IN PROGRESS): App integration - I was in the middle of:
+     - state.rs: View::Tag + tag_view field ✓
+     - input.rs: View::Tag handling + handle_tag_action ✓
+     - DialogCallback: TagCreate + TagDelete variants ✓
+     - dialog.rs: routing for tag callbacks ✓
+     - actions/tag.rs: open_tag_view, handle_tag_dialog, execute_tag_create, execute_tag_delete ✓
+     - render.rs: View::Tag rendering ✓
+     - log/mod.rs: LogAction::OpenTagView ✓
+     - log/input.rs: `t` key → OpenTagView ✓
+     - keys.rs: TAG_VIEW constant, hint constants, tag_view_hints function, current_hints routing ✓
+     - **STILL NEEDED**: Add Tag View key binding entry to LOG_KEYS help panel list, and TAG_KEYS help panel list
+
+7. **Where I left off**: I was about to add the Tag View key binding to the Help panel's LOG_KEYS list in keys.rs. I had just found where "Bookmark view" is in LOG_KEYS (line 416-418) and was about to add the "t" → "Tag view" entry. I also need to add a TAG_KEYS constant for the help panel and wire it into the Help view rendering.
+
+Let me also check what else needs to be done:
+- Help panel: Need to add TAG_KEYS array and wire it into help view
+- Need to verify the `go_to_view` function handles View::Tag properly (back navigation)
+- Need to run `cargo fmt && cargo clippy && cargo test` to verify everything compiles
+- The `Dialog::input` call in handle_tag_action needs to be verified - does it exist?
+
+Let me trace through the remaining items more carefully:
+- keys.rs LOG_KEYS: Need to add tag view entry after bookmark view
+- keys.rs: May need TAG_KEYS array for help panel
+- Help view rendering: Need to check if it needs explicit View::Tag support
+- Integration test considerations
+
+The parser has a subtle issue - jj's `separate()` skips empty fields, which means the field count varies. I handled this with match on 5/6/7 fields with disambiguation logic for the 6-field case.
+
+Summary:
+1. Primary Request and Intent:
+   - User selected "jj tag サポート" (jj tag support) as the next feature to implement for tij
+   - User first asked for SoW creation at `.work/docs/spec-detail/`
+   - User reviewed the SoW and provided 5 specific issues (T key conflict, file structure errors, remote tag contradictions, sort ambiguity, `@` targeting confusion)
+   - User requested SoW revision to fix all 5 issues
+   - User then requested implementation: "実装お願いします" (please implement)
+
+2. Key Technical Concepts:
+   - **jj tag commands**: `jj tag list` (CommitRef template with `normal_target`), `jj tag set <name> -r <rev>`, `jj tag delete <name>`
+   - **Template**: `separate("\t", name, if(remote, remote, ""), if(present, "true", "false"), if(tracked, "true", "false"), normal_target.change_id().short(8), normal_target.commit_id().short(8), normal_target.description().first_line()) ++ "\n"`
+   - **1-stage query**: Unlike bookmarks (2-stage: list + log), tags use `normal_target` to get commit info directly
+   - **jj's `separate()` skips empty fields**: Field count varies (5-7) depending on local/remote and description presence
+   - **Key binding**: `t` (lowercase) for Tag View from Log View, following `o`/`s` pattern for view keys
+   - **Key conflict avoidance**: `T` is used by `keys::TRACK` in both Log View and Bookmark View
+   - **DialogCallback pattern**: TagCreate (input dialog) and TagDelete (confirm dialog) 
+   - **Tag creation target**: Always `@` (working copy), shown explicitly in dialog text "Create tag on @ (working copy)"
+
+3. Files and Code Sections:
+
+   - **`.work/docs/spec-detail/phase32-tag-support.md`** (CREATED, then REWRITTEN)
+     - Full SoW for tag support feature
+     - Revised to fix 5 issues from user review
+     - Key decisions: `t` key, local tags only, jj default sort, `@` fixed target with explicit dialog text
+
+   - **`src/model/tag.rs`** (NEW)
+     - TagInfo struct with name, remote, present, change_id, commit_id, description
+     - Methods: `full_name()`, `is_local()`, `is_jumpable()`
+     - 4 unit tests
+
+   - **`src/model/mod.rs`** (EDITED)
+     - Added `mod tag;` and `pub use tag::TagInfo;`
+
+   - **`src/jj/parser/tag.rs`** (NEW)
+     - `parse_tag_list()` function handling 5/6/7 field variants from jj's `separate()` behavior
+     - 6-field disambiguation: checks if `parts[1]` is "true"/"false" (local tag with description) or a remote name
+     - `non_empty()` helper for empty string → None conversion
+     - 8 unit tests covering local/remote/empty/malformed cases
+
+   - **`src/jj/parser/mod.rs`** (EDITED)
+     - Added `mod tag;` and `pub use tag::parse_tag_list;`
+
+   - **`src/jj/constants.rs`** (EDITED)
+     - Added `TAG`, `TAG_LIST`, `TAG_SET`, `TAG_DELETE` to `commands` module
+
+   - **`src/jj/executor.rs`** (EDITED)
+     - Added `TagInfo` to imports
+     - Added `tag_list()` method with TAG_LIST_TEMPLATE
+     - Added `tag_set(name, revision)` method
+     - Added `tag_delete(name)` method
+
+   - **`src/ui/views/tag/mod.rs`** (NEW)
+     - `TagAction` enum: None, Jump(String), StartCreate, Delete(String)
+     - `TagView` struct: tags, selected, scroll_offset
+     - Methods: new(), set_tags(), selected_tag(), tag_count(), select_next/prev/first/last()
+     - 14 unit tests
+
+   - **`src/ui/views/tag/input.rs`** (NEW)
+     - `handle_key()` implementation: j/k/g/G navigation, Enter jump, c create, D delete
+
+   - **`src/ui/views/tag/render.rs`** (NEW)
+     - `render()` method with notification title bar, scroll, "No tags found" empty state
+     - `build_tag_line()` with tag name (green, max 20 chars), change_id (yellow), description
+     - Selection highlighting using theme::selection colors
+
+   - **`src/ui/views/mod.rs`** (EDITED)
+     - Added `mod tag;` and `pub use tag::{TagAction, TagView};`
+
+   - **`src/app/state.rs`** (EDITED)
+     - Added `TagView` import
+     - Added `Tag` variant to `View` enum
+     - Added `pub tag_view: TagView` field to `App` struct
+     - Added `tag_view: TagView::new()` to `init()`
+
+   - **`src/app/input.rs`** (EDITED)
+     - Added `TagAction` import
+     - Added `View::Tag` match arm calling `handle_tag_action()`
+     - Added `LogAction::OpenTagView` to navigation match arm
+     - Added `LogAction::OpenTagView => self.open_tag_view()` to handle_log_navigation
+     - Added `handle_tag_action()` method with Jump/StartCreate/Delete handling
+
+   - **`src/ui/components/dialog/mod.rs`** (EDITED)
+     - Added `TagCreate` and `TagDelete { name: String }` variants to `DialogCallback`
+
+   - **`src/app/actions/dialog.rs`** (EDITED)
+     - Added Tag dialog routing in `handle_dialog_result()`: `DialogCallback::TagCreate | DialogCallback::TagDelete { .. } => self.handle_tag_dialog(callback, values)`
+     - Added `TagCreate` and `TagDelete` to cancel handler (no cleanup needed)
+
+   - **`src/app/actions/tag.rs`** (NEW)
+     - `open_tag_view()`: calls `jj.tag_list()`, sets tags, switches to View::Tag
+     - `refresh_tag_view()`: refreshes tag data without view switch
+     - `handle_tag_dialog()`: routes TagCreate/TagDelete dialog results
+     - `execute_tag_create(name)`: calls `jj.tag_set(name, "@")`, notifies, refreshes, marks dirty
+     - `execute_tag_delete(name)`: calls `jj.tag_delete(name)`, notifies, refreshes, marks dirty
+
+   - **`src/app/actions/mod.rs`** (EDITED)
+     - Added `mod tag;`
+
+   - **`src/app/render.rs`** (EDITED)
+     - Added `View::Tag => self.render_tag_view(frame, notification.as_ref())` to main render match
+     - Added `View::Tag` case to `get_current_status_bar_height()` using `HintContext::default()`
+     - Added `render_tag_view()` method (following bookmark_view pattern)
+
+   - **`src/ui/views/log/mod.rs`** (EDITED)
+     - Added `OpenTagView` variant to `LogAction` enum
+
+   - **`src/ui/views/log/input.rs`** (EDITED)
+     - Added `k if k == keys::TAG_VIEW => LogAction::OpenTagView` after bookmark view key
+
+   - **`src/keys.rs`** (EDITED)
+     - Added `pub const TAG_VIEW: KeyCode = KeyCode::Char('t');`
+     - Added `HINT_TAG_VIEW`, `HINT_TAG_CREATE`, `HINT_TAG_DELETE` constants
+     - Added `View::Tag => tag_view_hints()` to `current_hints()`
+     - Added `fn tag_view_hints()` function returning Navigate, Jump, Create, Delete, Undo, Refresh, Back
+
+4. Errors and Fixes:
+   - **SoW Review Issues (from user)**:
+     - `T` key conflict: User pointed out `keys::TRACK = KeyCode::Char('T')` at keys.rs:134 is used in Log View. Fixed by using `t` (lowercase) instead.
+     - File structure mismatch: User noted `src/app/actions.rs` should be `src/app/actions/` (directory) and `src/jj/commands.rs` should be `src/jj/constants.rs`. Fixed all references.
+     - Remote tag display contradiction: "Remote tags not filtered" contradicted "local only default". Fixed to consistently say "local tags only".
+     - Sort ambiguity: Multiple conflicting sort descriptions. Fixed to "use jj default output order (name ascending), no display-side changes".
+     - Tag View `c` = `@` confusion: Fixed by specifying dialog text "Create tag on @ (working copy)" to make target explicit.
+
+5. Problem Solving:
+   - Resolved key binding conflict by verifying actual usage of `T` in both Log View (log/input.rs:172 → `LogAction::StartTrack`) and Bookmark View
+   - Identified `t` as available in Log View (only used in Resolve View for `:theirs`)
+   - Handled jj `separate()` field-skipping behavior in parser with 5/6/7 field matching and disambiguation logic for 6-field case
+   - Used 1-stage query instead of bookmark's 2-stage pattern since `normal_target` provides direct commit access
+
+6. All User Messages:
+   - "#: 1 候補: jj tag サポート 概要: タグ一覧表示 / 作成。リリース管理で実用的 SoW作成を/Users/nakamura.shuta/dev/playground/tij/.work/docs/spec-detailに作成お願いします"
+   - 5-point SoW review with specific issues: (1) T key conflict with Track, (2) file structure mismatch with actual code, (3) remote tag display contradiction, (4) sort specification ambiguity, (5) Tag View c = @ misuse risk
+   - "実装お願いします" (please implement)
+
+7. Pending Tasks:
+   - Task #5 (IN PROGRESS): Step 4-6 App統合 + Log View + keys.rs — mostly done but need:
+     - Add Tag View entry to LOG_KEYS help panel array in keys.rs (after "Bookmark view" entry at line ~416-418)
+     - Add TAG_KEYS constant array for tag view help display
+     - Wire TAG_KEYS into the Help view rendering (check how BOOKMARK_KEYS is rendered)
+   - Task #6 (PENDING): Step 7 テスト + ビルド確認 — run `cargo fmt && cargo clippy && cargo test`
+   - Verify `Dialog::input()` exists with the signature used in handle_tag_action
+
+8. Current Work:
+   I was in the middle of Step 4-6 (App integration, Log View, keys.rs). All major integration code has been written across 17 files. I had just finished adding the `tag_view_hints()` function and `View::Tag` routing in `current_hints()` in keys.rs. I was about to add the Tag View key binding entry to the LOG_KEYS help panel array, which I had located at keys.rs line 416-418 (after "Bookmark view" entry). I also need to add a TAG_KEYS help panel array similar to BOOKMARK_KEYS.
+
+9. Optional Next Step:
+   Continue with the remaining keys.rs help panel work:
+   1. Add `KeyBindEntry { key: "t", description: "Tag view" }` to LOG_KEYS after the "M" → "Bookmark view" entry
+   2. Add `TAG_KEYS` constant array for help panel display (j/k, g/G, Enter, c, D, q)
+   3. Wire TAG_KEYS into the Help view rendering
+   4. Verify `Dialog::input()` constructor exists and matches the call in handle_tag_action
+   5. Run `cargo fmt && cargo clippy && cargo test` to verify compilation and all tests pass
+   
+   This directly continues the user's "実装お願いします" request for implementing the tag support feature per the revised SoW.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/nakamura.shuta/.REDACTED.jsonl
+Please continue the conversation from where we left off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+---
+
+この機能によって何ができるようになるか教えて下さい。あと、pwd
+/Users/nakamura.shuta/dev/playground/anything/mytest-private-repository
+で動作確認する手順教えて下さい
+
+---
+
+1. Medium: Tag View の Enter ジャンプが、現在の revset 外タグで期待
+     どおり動きません
+     src/app/input.rs:588 で TagAction::Jump は
+     execute_bookmark_jump() を再利用していますが、src/app/actions/
+     bookmark.rs:405 の実装は「現在の log view に見えている change_id
+     を選択するだけ」です。
+     そのため、タグ先が現在の revset に含まれない場合は jump_to_log()
+     のような拡張探索をせず、警告を出してから View::Log に戻るだけにな
+     ります。
+     SoW の「Enter で Log View の該当コミットに移動」とはズレるので、
+     Tag View からは jump_to_log() を使う方が仕様に合っています。
+
+---
+
+1点だけ注意:
+
+  - jump_to_log() は通知文言が「Press J again to search full log」なの
+    で、Tag View から Enter した直後に J を押す必要があるUXになりま
+    す。
+    仕様として許容なら問題ありませんが、Tag View 文脈だと少し唐突なの
+    で、将来は「Enter again」系に寄せる余地はあります。
+
+---
+
+plan.md,README更新後にcommit,push,publishして

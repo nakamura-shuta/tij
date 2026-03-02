@@ -1,0 +1,56 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "cc9e3f453a5c",
+  "strategy": "manual-commit",
+  "checkpoints_count": 9,
+  "files_touched": [
+    ".work/docs/plan.md",
+    ".work/docs/spec-detail/phase32-tag-support.md",
+    "Cargo.toml",
+    "README.md",
+    "src/app/actions/bookmark.rs",
+    "src/app/actions/dialog.rs",
+    "src/app/actions/mod.rs",
+    "src/app/actions/tag.rs",
+    "src/app/input.rs",
+    "src/app/refresh.rs",
+    "src/app/render.rs",
+    "src/app/state.rs",
+    "src/jj/constants.rs",
+    "src/jj/executor.rs",
+    "src/jj/parser/diff.rs",
+    "src/jj/parser/mod.rs",
+    "src/jj/parser/tag.rs",
+    "src/jj/parser/tests.rs",
+    "src/keys.rs",
+    "src/model/diff.rs",
+    "src/model/mod.rs",
+    "src/model/tag.rs",
+    "src/ui/components/dialog/input.rs",
+    "src/ui/components/dialog/mod.rs",
+    "src/ui/views/log/input.rs",
+    "src/ui/views/log/mod.rs",
+    "src/ui/views/mod.rs",
+    "src/ui/views/tag/input.rs",
+    "src/ui/views/tag/mod.rs",
+    "src/ui/views/tag/render.rs",
+    "src/ui/widgets/help_panel.rs",
+    "tests/ui/test_diff.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/cc/9e3f453a5c/0/metadata.json",
+      "transcript": "/cc/9e3f453a5c/0/full.jsonl",
+      "context": "/cc/9e3f453a5c/0/context.md",
+      "content_hash": "/cc/9e3f453a5c/0/content_hash.txt",
+      "prompt": "/cc/9e3f453a5c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 316,
+    "cache_creation_tokens": 788480,
+    "cache_read_tokens": 31872143,
+    "output_tokens": 23674,
+    "api_call_count": 280
+  }
+}
