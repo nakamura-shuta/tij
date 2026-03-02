@@ -86,7 +86,17 @@ impl App {
     /// Execute bookmark move (called after confirmation)
     pub(super) fn execute_bookmark_move(&mut self, name: &str, change_id: &str) {
         let msg = format!("Moved bookmark: {}", name);
-        let result = self.jj.bookmark_set(name, change_id);
+        let result = self.run_and_record(
+            "Bookmark set",
+            &[
+                "bookmark",
+                "set",
+                name,
+                "-r",
+                change_id,
+                "--allow-backwards",
+            ],
+        );
         self.run_jj_action(
             result,
             "Failed to move bookmark",
@@ -138,9 +148,11 @@ impl App {
             return;
         }
 
+        let mut args: Vec<&str> = vec!["bookmark", "delete"];
         let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+        args.extend(&name_refs);
         let msg = format!("Deleted bookmarks: {}", names.join(", "));
-        let result = self.jj.bookmark_delete(&name_refs);
+        let result = self.run_and_record("Bookmark delete", &args);
         self.run_jj_action(
             result,
             "Failed to delete bookmarks",
@@ -160,7 +172,10 @@ impl App {
             return;
         }
         let msg = format!("Renamed bookmark: {} → {}", old_name, new_name);
-        let result = self.jj.bookmark_rename(old_name, new_name);
+        let result = self.run_and_record(
+            "Bookmark rename",
+            &["bookmark", "rename", old_name, new_name],
+        );
         self.run_jj_action(
             result,
             "Rename failed",
@@ -173,7 +188,7 @@ impl App {
     pub(crate) fn execute_bookmark_forget(&mut self) {
         if let Some(name) = self.pending_forget_bookmark.take() {
             let msg = format!("Forgot bookmark: {} (remote tracking removed)", name);
-            let result = self.jj.bookmark_forget(&[&name]);
+            let result = self.run_and_record("Bookmark forget", &["bookmark", "forget", &name]);
             self.run_jj_action(
                 result,
                 "Forget failed",
@@ -267,7 +282,10 @@ impl App {
     /// Execute bookmark move with --allow-backwards (called after re-confirmation)
     pub(super) fn execute_bookmark_move_backwards(&mut self, name: &str) {
         let msg = format!("Moved bookmark '{}' to @ (backwards)", name);
-        let result = self.jj.bookmark_move_allow_backwards(name, "@");
+        let result = self.run_and_record(
+            "Bookmark move",
+            &["bookmark", "move", name, "--to", "@", "--allow-backwards"],
+        );
         self.run_jj_action(result, "Move failed", &msg, DirtyFlags::log_and_bookmarks());
     }
 
@@ -441,7 +459,7 @@ impl App {
     pub(crate) fn execute_untrack(&mut self, full_name: &str) {
         let display = full_name.split('@').next().unwrap_or(full_name);
         let msg = format!("Stopped tracking: {}", display);
-        let result = self.jj.bookmark_untrack(&[full_name]);
+        let result = self.run_and_record("Bookmark untrack", &["bookmark", "untrack", full_name]);
         let dirty = DirtyFlags {
             log: true,
             status: true,
@@ -464,7 +482,9 @@ impl App {
             format!("{} bookmarks", names.len())
         };
         let msg = format!("Started tracking: {}", display);
-        let result = self.jj.bookmark_track(&name_refs);
+        let mut track_args: Vec<&str> = vec!["bookmark", "track"];
+        track_args.extend(&name_refs);
+        let result = self.run_and_record("Bookmark track", &track_args);
         let dirty = DirtyFlags {
             log: true,
             status: true,

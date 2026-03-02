@@ -6,6 +6,7 @@
 mod annotation;
 mod bookmark;
 mod change;
+mod command_record;
 mod conflict;
 mod diff;
 mod evolog;
@@ -18,6 +19,7 @@ mod tag;
 pub use annotation::{AnnotationContent, AnnotationLine};
 pub use bookmark::{Bookmark, BookmarkInfo};
 pub use change::Change;
+pub use command_record::{CommandHistory, CommandRecord, CommandStatus};
 pub use conflict::ConflictFile;
 pub use diff::{
     CompareInfo, CompareRevisionInfo, DiffContent, DiffDisplayFormat, DiffLine, DiffLineKind,

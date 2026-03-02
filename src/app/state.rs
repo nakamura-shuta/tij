@@ -4,11 +4,11 @@ use std::cell::Cell;
 use std::collections::VecDeque;
 
 use crate::jj::JjExecutor;
-use crate::model::{Change, DiffContent, Notification};
+use crate::model::{Change, CommandHistory, DiffContent, Notification};
 use crate::ui::components::Dialog;
 use crate::ui::views::{
-    BlameView, BookmarkView, DiffView, EvologView, LogView, OperationView, ResolveView, StatusView,
-    TagView,
+    BlameView, BookmarkView, CommandHistoryView, DiffView, EvologView, LogView, OperationView,
+    ResolveView, StatusView, TagView,
 };
 
 /// Tracks which data needs refreshing after a jj operation.
@@ -171,6 +171,7 @@ pub enum View {
     Bookmark,
     Tag,
     Evolog,
+    CommandHistory,
     Help,
 }
 
@@ -197,6 +198,8 @@ pub struct App {
     pub bookmark_view: BookmarkView,
     /// Tag view state
     pub tag_view: TagView,
+    /// Command history view state
+    pub command_history_view: CommandHistoryView,
     /// Status view state
     pub status_view: StatusView,
     /// Operation history view state
@@ -240,6 +243,8 @@ pub struct App {
     pub(crate) help_input_buffer: String,
     /// Dirty flags for lazy refresh
     pub(crate) dirty: DirtyFlags,
+    /// Command execution history (for Command History View)
+    pub(crate) command_history: CommandHistory,
 }
 
 impl Default for App {
@@ -264,6 +269,7 @@ impl App {
             evolog_view: None,
             bookmark_view: BookmarkView::new(),
             tag_view: TagView::new(),
+            command_history_view: CommandHistoryView::new(),
             status_view: StatusView::new(),
             operation_view: OperationView::new(),
             jj: JjExecutor::new(),
@@ -289,6 +295,7 @@ impl App {
                 op_log: true,
                 bookmarks: true,
             },
+            command_history: CommandHistory::new(),
         }
     }
 
@@ -326,6 +333,7 @@ impl App {
             View::Bookmark => View::Log,
             View::Evolog => View::Log,
             View::Tag => View::Log,
+            View::CommandHistory => View::Log,
             View::Help => View::Log,
         };
         self.go_to_view(next);

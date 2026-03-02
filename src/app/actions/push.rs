@@ -3,6 +3,8 @@
 use crate::jj::{PushBulkMode, PushPreviewResult, parse_push_dry_run};
 use crate::ui::components::{Dialog, DialogCallback, SelectItem};
 
+use std::time::Instant;
+
 use crate::app::state::{App, DirtyFlags};
 
 impl App {
@@ -222,11 +224,19 @@ impl App {
         let mut retry_notes: Vec<&str> = Vec::new();
 
         for name in bookmark_names {
+            let start = Instant::now();
             let result = if let Some(ref r) = remote {
                 self.jj.git_push_bookmark_to_remote(name, r)
             } else {
                 self.jj.git_push_bookmark(name)
             };
+
+            let push_args: Vec<&str> = if let Some(ref r) = remote {
+                vec!["git", "push", "--bookmark", name, "--remote", r]
+            } else {
+                vec!["git", "push", "--bookmark", name]
+            };
+            self.record_str_command("Push", &push_args, start, &result);
 
             match result {
                 Ok(_) => {
@@ -248,12 +258,19 @@ impl App {
                     }
 
                     if !extra_flags.is_empty() {
+                        let retry_start = Instant::now();
                         let retry = if let Some(ref r) = remote {
                             self.jj
                                 .git_push_bookmark_to_remote_with_flags(name, r, &extra_flags)
                         } else {
                             self.jj.git_push_bookmark_with_flags(name, &extra_flags)
                         };
+                        let mut retry_args: Vec<&str> = push_args.clone();
+                        for flag in &extra_flags {
+                            retry_args.push(flag);
+                        }
+                        self.record_str_command("Push (retry)", &retry_args, retry_start, &retry);
+
                         match retry {
                             Ok(_) => {
                                 successes.push(name.clone());
@@ -314,11 +331,19 @@ impl App {
     /// On private/empty-description errors, retries with appropriate flags.
     pub(crate) fn execute_push_change(&mut self, change_id: &str) {
         let remote = self.push_target_remote.take();
+        let start = Instant::now();
         let result = if let Some(ref r) = remote {
             self.jj.git_push_change_to_remote(change_id, r)
         } else {
             self.jj.git_push_change(change_id)
         };
+        let push_args: Vec<&str> = if let Some(ref r) = remote {
+            vec!["git", "push", "--change", change_id, "--remote", r]
+        } else {
+            vec!["git", "push", "--change", change_id]
+        };
+        self.record_str_command("Push change", &push_args, start, &result);
+
         match result {
             Ok(output) => {
                 self.notify_push_change_success(&output, change_id, remote.as_deref(), &[]);
@@ -329,12 +354,24 @@ impl App {
                 let extra_flags = detect_push_retry_flags(&err_msg);
 
                 if !extra_flags.is_empty() {
+                    let retry_start = Instant::now();
                     let retry = if let Some(ref r) = remote {
                         self.jj
                             .git_push_change_to_remote_with_flags(change_id, r, &extra_flags)
                     } else {
                         self.jj.git_push_change_with_flags(change_id, &extra_flags)
                     };
+                    let mut retry_args = push_args.clone();
+                    for flag in &extra_flags {
+                        retry_args.push(flag);
+                    }
+                    self.record_str_command(
+                        "Push change (retry)",
+                        &retry_args,
+                        retry_start,
+                        &retry,
+                    );
+
                     match retry {
                         Ok(output) => {
                             self.notify_push_change_success(
@@ -548,7 +585,15 @@ impl App {
     pub(super) fn execute_push_bulk(&mut self, mode: PushBulkMode, remote: Option<&str>) {
         self.push_target_remote = None;
 
-        match self.jj.git_push_bulk(mode, remote) {
+        let start = Instant::now();
+        let result = self.jj.git_push_bulk(mode, remote);
+        let push_args: Vec<&str> = match (remote, mode) {
+            (Some(r), _) => vec!["git", "push", mode.flag(), "--remote", r],
+            (None, _) => vec!["git", "push", mode.flag()],
+        };
+        self.record_str_command("Push bulk", &push_args, start, &result);
+
+        match result {
             Ok(_) => {
                 self.notify_success(format!("Pushed {}", mode.label()));
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
@@ -732,11 +777,19 @@ impl App {
     /// On private/empty-description errors, retries with appropriate flags.
     pub(super) fn execute_push_revisions(&mut self, change_id: &str, bookmarks: &[String]) {
         let remote = self.push_target_remote.take();
+        let start = Instant::now();
         let result = if let Some(ref r) = remote {
             self.jj.git_push_revisions_to_remote(change_id, r)
         } else {
             self.jj.git_push_revisions(change_id)
         };
+        let push_args: Vec<&str> = if let Some(ref r) = remote {
+            vec!["git", "push", "--revisions", change_id, "--remote", r]
+        } else {
+            vec!["git", "push", "--revisions", change_id]
+        };
+        self.record_str_command("Push revisions", &push_args, start, &result);
+
         match result {
             Ok(_) => {
                 let short_id = &change_id[..change_id.len().min(8)];
@@ -761,6 +814,7 @@ impl App {
                     // Try private/empty-description retry
                     let extra_flags = detect_push_retry_flags(&err_msg);
                     if !extra_flags.is_empty() {
+                        let retry_start = Instant::now();
                         let retry = if let Some(ref r) = remote {
                             self.jj.git_push_revisions_to_remote_with_flags(
                                 change_id,
@@ -771,6 +825,17 @@ impl App {
                             self.jj
                                 .git_push_revisions_with_flags(change_id, &extra_flags)
                         };
+                        let mut retry_args = push_args.clone();
+                        for flag in &extra_flags {
+                            retry_args.push(flag);
+                        }
+                        self.record_str_command(
+                            "Push revisions (retry)",
+                            &retry_args,
+                            retry_start,
+                            &retry,
+                        );
+
                         match retry {
                             Ok(_) => {
                                 let short_id = &change_id[..change_id.len().min(8)];

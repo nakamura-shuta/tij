@@ -145,6 +145,9 @@ pub const BOOKMARK_VIEW: KeyCode = KeyCode::Char('M');
 /// Open Tag View (Log View)
 pub const TAG_VIEW: KeyCode = KeyCode::Char('t');
 
+/// Open Command History View (Log View)
+pub const COMMAND_HISTORY: KeyCode = KeyCode::Char('H');
+
 /// Toggle preview pane (Log View)
 pub const PREVIEW: KeyCode = KeyCode::Char('p');
 
@@ -460,6 +463,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "f",
         description: "Fix (apply configured code formatters to revision and descendants)",
+    },
+    KeyBindEntry {
+        key: "H",
+        description: "Command history",
     },
 ];
 
@@ -831,6 +838,11 @@ pub const HINT_REVERT: KeyHint = KeyHint {
     label: "Revert",
     color: Color::Red,
 };
+pub const HINT_DETAIL: KeyHint = KeyHint {
+    key: "Enter",
+    label: "Detail",
+    color: Color::Green,
+};
 
 // =============================================================================
 // HintContext + DialogHintKind
@@ -897,6 +909,7 @@ pub fn current_hints(view: View, input_mode: InputMode, ctx: &HintContext) -> Ve
         View::Resolve => resolve_hints(ctx),
         View::Bookmark => bookmark_view_hints(ctx),
         View::Tag => tag_view_hints(),
+        View::CommandHistory => command_history_hints(),
         View::Status => STATUS_VIEW_HINTS.to_vec(),
         View::Operation => OPERATION_VIEW_HINTS.to_vec(),
         // Diff, Blame use prefix-based rendering; Help has no status bar.
@@ -1001,6 +1014,10 @@ fn tag_view_hints() -> Vec<KeyHint> {
         HINT_REFRESH,
         HINT_BACK,
     ]
+}
+
+fn command_history_hints() -> Vec<KeyHint> {
+    vec![HINT_NAV, HINT_DETAIL, HINT_BACK]
 }
 
 /// ParallelizeSelect mode status bar hints
@@ -1373,6 +1390,26 @@ pub const TAG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "q",
         description: "Back to log",
+    },
+];
+
+/// Command history view key bindings for help display
+pub const COMMAND_HISTORY_KEYS: &[KeyBindEntry] = &[
+    KeyBindEntry {
+        key: "j/k",
+        description: "Move down/up",
+    },
+    KeyBindEntry {
+        key: "g/G",
+        description: "Go to top/bottom",
+    },
+    KeyBindEntry {
+        key: "Enter",
+        description: "Toggle detail",
+    },
+    KeyBindEntry {
+        key: "q",
+        description: "Back",
     },
 ];
 

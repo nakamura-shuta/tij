@@ -31,6 +31,7 @@ const SYNONYM_MAP: &[(&str, &[&str])] = &[
     ("copy", &["clipboard", "export", "patch"]),
     ("navigate", &["next", "prev", "jump"]),
     ("edit", &["describe", "diffedit", "split", "fix", "editor"]),
+    ("history", &["command", "execute", "log"]),
 ];
 
 /// Expand a query into additional search terms via the synonym map.
@@ -137,6 +138,13 @@ pub fn build_help_lines(search_query: Option<&str>) -> Vec<HelpLine> {
         &mut lines,
         "Tag View",
         keys::TAG_KEYS,
+        query_lower.as_deref(),
+        &synonyms,
+    );
+    push_section(
+        &mut lines,
+        "Command History View",
+        keys::COMMAND_HISTORY_KEYS,
         query_lower.as_deref(),
         &synonyms,
     );

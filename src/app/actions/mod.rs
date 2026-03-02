@@ -5,7 +5,15 @@ mod dialog;
 mod push;
 mod tag;
 
-use crate::model::{CompareInfo, DiffContent, DiffDisplayFormat, Notification, RebaseMode};
+use std::io;
+use std::process::ExitStatus;
+use std::time::{Instant, SystemTime};
+
+use crate::jj::{JjError, RunResult};
+use crate::model::{
+    CommandRecord, CommandStatus, CompareInfo, DiffContent, DiffDisplayFormat, Notification,
+    RebaseMode,
+};
 use crate::ui::components::{Dialog, DialogCallback, SelectItem};
 
 use super::state::{App, DirtyFlags, View};
@@ -54,6 +62,97 @@ impl App {
         self.error_message = Some(msg.into());
     }
 
+    // ── Command history recording helpers ─────────────────────────────
+
+    /// Record a command execution into the command history.
+    ///
+    /// Called after a jj command completes. `args` are provided separately
+    /// so that the command is recorded even on failure (when `RunResult` is not available).
+    fn record_command(
+        &mut self,
+        operation: &str,
+        args: &[&str],
+        start: Instant,
+        result: &Result<RunResult, JjError>,
+    ) {
+        let (status, error) = match result {
+            Ok(_) => (CommandStatus::Success, None),
+            Err(e) => (CommandStatus::Failed, Some(e.to_string())),
+        };
+        self.command_history.push(CommandRecord {
+            operation: operation.to_string(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            timestamp: SystemTime::now(),
+            duration_ms: start.elapsed().as_millis(),
+            status,
+            error,
+        });
+    }
+
+    /// Run a jj command via the executor's `run()` and record it in command history.
+    ///
+    /// Returns the output string (same API as executor individual methods).
+    /// Use this for write operations that should appear in Command History View.
+    fn run_and_record(&mut self, operation: &str, args: &[&str]) -> Result<String, JjError> {
+        let start = Instant::now();
+        let result = self.jj.run(args);
+        self.record_command(operation, args, start, &result);
+        result.map(|r| r.output)
+    }
+
+    /// Record an interactive command execution (ExitStatus-based).
+    ///
+    /// Used for commands that go through `Stdio::inherit()` (split, diffedit, etc.)
+    /// where we don't get RunResult but only ExitStatus.
+    fn record_interactive_command(
+        &mut self,
+        operation: &str,
+        args: &[&str],
+        start: Instant,
+        result: &io::Result<ExitStatus>,
+    ) {
+        let (status, error) = match result {
+            Ok(s) if s.success() => (CommandStatus::Success, None),
+            Ok(s) => (
+                CommandStatus::Failed,
+                Some(format!("exit code: {}", s.code().unwrap_or(-1))),
+            ),
+            Err(e) => (CommandStatus::Failed, Some(e.to_string())),
+        };
+        self.command_history.push(CommandRecord {
+            operation: operation.to_string(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            timestamp: SystemTime::now(),
+            duration_ms: start.elapsed().as_millis(),
+            status,
+            error,
+        });
+    }
+
+    /// Record a command from a `Result<String, JjError>` (for methods that don't use RunResult).
+    ///
+    /// Used by push operations where executor methods return String directly.
+    fn record_str_command(
+        &mut self,
+        operation: &str,
+        args: &[&str],
+        start: Instant,
+        result: &Result<String, JjError>,
+    ) {
+        let (status, error) = match result {
+            Ok(_) => (CommandStatus::Success, None),
+            Err(e) => (CommandStatus::Failed, Some(e.to_string())),
+        };
+        self.command_history.push(CommandRecord {
+            operation: operation.to_string(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            timestamp: SystemTime::now(),
+            duration_ms: start.elapsed().as_millis(),
+            status,
+            error,
+        });
+    }
+
     /// Handle a simple jj action result: notify on success, set error on failure
     ///
     /// For the common pattern: Ok → notify_success + mark_dirty, Err → set_error.
@@ -79,7 +178,7 @@ impl App {
 
     /// Execute undo operation
     pub(crate) fn execute_undo(&mut self) {
-        let result = self.jj.undo();
+        let result = self.run_and_record("Undo", &["undo"]);
         self.run_jj_action(result, "Undo failed", "Undo complete", DirtyFlags::all());
     }
 
@@ -129,7 +228,14 @@ impl App {
         let _guard = suspend_tui();
 
         // Run jj describe --editor (blocking, interactive)
+        let start = Instant::now();
         let result = self.jj.describe_edit_interactive(change_id);
+        self.record_interactive_command(
+            "Describe (editor)",
+            &["describe", change_id],
+            start,
+            &result,
+        );
 
         match result {
             Ok(status) if status.success() => {
@@ -171,7 +277,7 @@ impl App {
 
     /// Execute describe operation
     pub(crate) fn execute_describe(&mut self, change_id: &str, message: &str) {
-        let result = self.jj.describe(change_id, message);
+        let result = self.run_and_record("Describe", &["describe", change_id, "-m", message]);
         self.run_jj_action(
             result,
             "Failed to update description",
@@ -184,13 +290,13 @@ impl App {
     pub(crate) fn execute_edit(&mut self, change_id: &str) {
         let short_id = &change_id[..8.min(change_id.len())];
         let msg = format!("Now editing: {}", short_id);
-        let result = self.jj.edit(change_id);
+        let result = self.run_and_record("Edit", &["edit", change_id]);
         self.run_jj_action(result, "Failed to edit", &msg, DirtyFlags::log_and_status());
     }
 
     /// Execute new change operation
     pub(crate) fn execute_new_change(&mut self) {
-        let result = self.jj.new_change();
+        let result = self.run_and_record("New", &["new"]);
         self.run_jj_action(
             result,
             "Failed to create change",
@@ -202,7 +308,7 @@ impl App {
     /// Execute new change from specified parent
     pub(crate) fn execute_new_change_from(&mut self, parent_id: &str, display_name: &str) {
         let msg = format!("Created new change from {}", display_name);
-        let result = self.jj.new_change_from(parent_id);
+        let result = self.run_and_record("New from", &["new", parent_id]);
         self.run_jj_action(
             result,
             "Failed to create change",
@@ -213,7 +319,7 @@ impl App {
 
     /// Execute commit operation (describe current change + create new change)
     pub(crate) fn execute_commit(&mut self, message: &str) {
-        let result = self.jj.commit(message);
+        let result = self.run_and_record("Commit", &["commit", "-m", message]);
         self.run_jj_action(
             result,
             "Commit failed",
@@ -238,7 +344,14 @@ impl App {
         let _guard = suspend_tui();
 
         // Run jj squash --from --into (blocking, interactive)
+        let start = Instant::now();
         let result = self.jj.squash_into_interactive(source, destination);
+        self.record_interactive_command(
+            "Squash into",
+            &["squash", "--from", source, "--into", destination],
+            start,
+            &result,
+        );
 
         // 4. Handle result (io::Result<ExitStatus>)
         match result {
@@ -276,7 +389,7 @@ impl App {
 
         let short_id = &change_id[..8.min(change_id.len())];
         let msg = format!("Abandoned {} (undo: u)", short_id);
-        let result = self.jj.abandon(change_id);
+        let result = self.run_and_record("Abandon", &["abandon", change_id]);
         self.run_jj_action(result, "Abandon failed", &msg, DirtyFlags::log_and_status());
     }
 
@@ -284,7 +397,7 @@ impl App {
     pub(crate) fn execute_revert(&mut self, change_id: &str) {
         let short_id = &change_id[..8.min(change_id.len())];
         let msg = format!("Reverted {} (undo: u)", short_id);
-        let result = self.jj.revert(change_id);
+        let result = self.run_and_record("Revert", &["revert", "-r", change_id, "--onto", "@"]);
         self.run_jj_action(result, "Revert failed", &msg, DirtyFlags::log());
     }
 
@@ -294,15 +407,18 @@ impl App {
     pub(crate) fn execute_redo(&mut self) {
         // First, check if last operation was an undo and get the target
         match self.jj.get_redo_target() {
-            Ok(Some(op_id)) => match self.jj.redo(&op_id) {
-                Ok(_) => {
-                    self.notify_success("Redo complete");
-                    self.mark_dirty_and_refresh_current(DirtyFlags::all());
+            Ok(Some(op_id)) => {
+                let result = self.run_and_record("Redo", &["op", "restore", &op_id]);
+                match result {
+                    Ok(_) => {
+                        self.notify_success("Redo complete");
+                        self.mark_dirty_and_refresh_current(DirtyFlags::all());
+                    }
+                    Err(e) => {
+                        self.set_error(format!("Redo failed: {}", e));
+                    }
                 }
-                Err(e) => {
-                    self.set_error(format!("Redo failed: {}", e));
-                }
-            },
+            }
             Ok(None) => {
                 // Not in an undo/redo chain, or multiple consecutive undos
                 // Note: After multiple undos, use 'o' (Operation History) to restore
@@ -322,7 +438,7 @@ impl App {
     /// TODO: Add confirmation dialog (Phase 5.2) before executing.
     /// Currently, users can undo with `u` key if needed.
     pub(crate) fn execute_op_restore(&mut self, operation_id: &str) {
-        match self.jj.op_restore(operation_id) {
+        match self.run_and_record("Op restore", &["op", "restore", operation_id]) {
             Ok(_) => {
                 let short_id = &operation_id[..12.min(operation_id.len())];
                 self.notify_success(format!("Restored to {} (undo: u)", short_id));
@@ -354,7 +470,9 @@ impl App {
         let _guard = suspend_tui();
 
         // Run jj split (blocking)
+        let start = Instant::now();
         let result = self.jj.split_interactive(change_id);
+        self.record_interactive_command("Split", &["split", "-r", change_id], start, &result);
 
         // 4. Handle result and refresh
         // Note: _guard will restore terminal when this function returns
@@ -383,11 +501,18 @@ impl App {
         let _guard = suspend_tui();
 
         // Run jj diffedit (blocking)
+        let start = Instant::now();
         let result = if let Some(f) = file {
             self.jj.diffedit_file_interactive(change_id, f)
         } else {
             self.jj.diffedit_interactive(change_id)
         };
+        let args: Vec<&str> = if let Some(f) = file {
+            vec!["diffedit", "-r", change_id, f]
+        } else {
+            vec!["diffedit", "-r", change_id]
+        };
+        self.record_interactive_command("Diffedit", &args, start, &result);
 
         // 4. Handle result
         match result {
@@ -410,13 +535,13 @@ impl App {
     /// Execute restore for a single file
     pub(crate) fn execute_restore_file(&mut self, file_path: &str) {
         let msg = format!("Restored: {}", file_path);
-        let result = self.jj.restore_file(file_path);
+        let result = self.run_and_record("Restore", &["restore", file_path]);
         self.run_jj_action(result, "Restore failed", &msg, DirtyFlags::log_and_status());
     }
 
     /// Execute restore for all files
     pub(crate) fn execute_restore_all(&mut self) {
-        let result = self.jj.restore_all();
+        let result = self.run_and_record("Restore all", &["restore"]);
         self.run_jj_action(
             result,
             "Restore failed",
@@ -427,7 +552,7 @@ impl App {
 
     /// Execute `jj next --edit` and refresh
     pub(crate) fn execute_next(&mut self) {
-        match self.jj.next() {
+        match self.run_and_record("Next", &["next", "--edit"]) {
             Ok(output) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
@@ -446,7 +571,7 @@ impl App {
 
     /// Execute `jj prev --edit` and refresh
     pub(crate) fn execute_prev(&mut self) {
-        match self.jj.prev() {
+        match self.run_and_record("Prev", &["prev", "--edit"]) {
             Ok(output) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
@@ -561,7 +686,7 @@ impl App {
     /// Each hunk is moved to the closest mutable ancestor where the
     /// corresponding lines were modified last.
     pub(crate) fn execute_absorb(&mut self) {
-        match self.jj.absorb() {
+        match self.run_and_record("Absorb", &["absorb"]) {
             Ok(output) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
@@ -583,7 +708,7 @@ impl App {
 
     /// Execute simplify-parents: remove redundant parent edges
     pub(crate) fn execute_simplify_parents(&mut self, change_id: &str) {
-        match self.jj.simplify_parents(change_id) {
+        match self.run_and_record("Simplify parents", &["simplify-parents", "-r", change_id]) {
             Ok(output) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
@@ -613,7 +738,7 @@ impl App {
             .find(|c| c.change_id == change_id)
             .map(|c| c.commit_id.clone());
 
-        match self.jj.fix(change_id) {
+        match self.run_and_record("Fix", &["fix", "-s", change_id]) {
             Ok(_) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
@@ -652,7 +777,8 @@ impl App {
 
     /// Execute parallelize: convert linear chain to parallel (sibling) commits
     pub(crate) fn execute_parallelize(&mut self, from: &str, to: &str) {
-        match self.jj.parallelize(from, to) {
+        let revset = format!("{}::{} | {}::{}", from, to, to, from);
+        match self.run_and_record("Parallelize", &["parallelize", &revset]) {
             Ok(output) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
                 self.notification = Some(Self::parallelize_notification(&output));
@@ -678,7 +804,7 @@ impl App {
 
     /// Execute git fetch (default behavior)
     pub(crate) fn execute_fetch(&mut self) {
-        match self.jj.git_fetch() {
+        match self.run_and_record("Fetch", &["git", "fetch"]) {
             Ok(output) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::all());
 
@@ -755,12 +881,22 @@ impl App {
 
     /// Execute fetch with specific remote option
     pub(crate) fn execute_fetch_with_option(&mut self, option: &str) {
-        let result = match option {
-            "__default__" => self.jj.git_fetch(),
-            "__all_remotes__" => self.jj.git_fetch_all_remotes(),
-            "__tracked__" => self.jj.git_fetch_tracked(),
-            remote => self.jj.git_fetch_remote(remote),
+        let (label, result) = match option {
+            "__default__" => ("Fetch", self.run_and_record("Fetch", &["git", "fetch"])),
+            "__all_remotes__" => (
+                "Fetch all",
+                self.run_and_record("Fetch all", &["git", "fetch", "--all-remotes"]),
+            ),
+            "__tracked__" => (
+                "Fetch tracked",
+                self.run_and_record("Fetch tracked", &["git", "fetch", "--tracked"]),
+            ),
+            remote => (
+                "Fetch remote",
+                self.run_and_record("Fetch remote", &["git", "fetch", "--remote", remote]),
+            ),
         };
+        let _ = label;
         match result {
             Ok(output) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::all());
@@ -836,7 +972,7 @@ impl App {
 
     /// Execute `jj git fetch --branch <name>` for a specific branch
     fn execute_fetch_branch(&mut self, branch: &str) {
-        match self.jj.git_fetch_branch(branch) {
+        match self.run_and_record("Fetch branch", &["git", "fetch", "--branch", branch]) {
             Ok(output) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::all());
 
@@ -860,10 +996,10 @@ impl App {
             None => return,
         };
 
-        match self
-            .jj
-            .resolve_with_tool(file_path, ":ours", Some(&change_id))
-        {
+        match self.run_and_record(
+            "Resolve :ours",
+            &["resolve", "--tool", ":ours", "-r", &change_id, file_path],
+        ) {
             Ok(_) => {
                 self.notify_success(format!("Resolved {} with :ours", file_path));
                 self.refresh_resolve_list(&change_id, is_wc);
@@ -881,10 +1017,10 @@ impl App {
             None => return,
         };
 
-        match self
-            .jj
-            .resolve_with_tool(file_path, ":theirs", Some(&change_id))
-        {
+        match self.run_and_record(
+            "Resolve :theirs",
+            &["resolve", "--tool", ":theirs", "-r", &change_id, file_path],
+        ) {
             Ok(_) => {
                 self.notify_success(format!("Resolved {} with :theirs", file_path));
                 self.refresh_resolve_list(&change_id, is_wc);
@@ -912,7 +1048,14 @@ impl App {
         let _guard = suspend_tui();
 
         // Run jj resolve (blocking)
+        let start = Instant::now();
         let result = self.jj.resolve_interactive(file_path, Some(&change_id));
+        self.record_interactive_command(
+            "Resolve",
+            &["resolve", "-r", &change_id, file_path],
+            start,
+            &result,
+        );
 
         // 4. Handle result
         match result {
@@ -962,9 +1105,24 @@ impl App {
             vec![]
         };
 
-        let result = self
-            .jj
-            .rebase_unified(mode, source, destination, &extra_flags);
+        // Build args for recording
+        let mut rebase_args = vec!["rebase"];
+        match mode {
+            RebaseMode::Revision => {
+                rebase_args.extend_from_slice(&["-r", source, "-d", destination])
+            }
+            RebaseMode::Source => rebase_args.extend_from_slice(&["-s", source, "-d", destination]),
+            RebaseMode::Branch => rebase_args.extend_from_slice(&["-b", source, "-d", destination]),
+            RebaseMode::InsertAfter => {
+                rebase_args.extend_from_slice(&["-r", source, "-A", destination])
+            }
+            RebaseMode::InsertBefore => {
+                rebase_args.extend_from_slice(&["-r", source, "-B", destination])
+            }
+        }
+        rebase_args.extend_from_slice(&extra_flags);
+
+        let result = self.run_and_record("Rebase", &rebase_args);
 
         match result {
             Ok(output) => {
@@ -975,7 +1133,25 @@ impl App {
 
                 if skip_emptied && is_rebase_flag_unsupported(&err_msg) {
                     // --skip-emptied (or mode flag) caused failure, retry without it
-                    let retry = self.jj.rebase_unified(mode, source, destination, &[]);
+                    let mut retry_args = vec!["rebase"];
+                    match mode {
+                        RebaseMode::Revision => {
+                            retry_args.extend_from_slice(&["-r", source, "-d", destination])
+                        }
+                        RebaseMode::Source => {
+                            retry_args.extend_from_slice(&["-s", source, "-d", destination])
+                        }
+                        RebaseMode::Branch => {
+                            retry_args.extend_from_slice(&["-b", source, "-d", destination])
+                        }
+                        RebaseMode::InsertAfter => {
+                            retry_args.extend_from_slice(&["-r", source, "-A", destination])
+                        }
+                        RebaseMode::InsertBefore => {
+                            retry_args.extend_from_slice(&["-r", source, "-B", destination])
+                        }
+                    }
+                    let retry = self.run_and_record("Rebase (retry)", &retry_args);
                     match retry {
                         Ok(output) => {
                             self.notify_rebase_success(&output, destination, mode, false);
@@ -1823,5 +1999,97 @@ mod tests {
         let mut app = App::new_for_test();
         app.set_error("Something failed");
         assert_eq!(app.error_message.as_deref(), Some("Something failed"));
+    }
+
+    // =========================================================================
+    // Command history recording tests
+    // =========================================================================
+
+    #[test]
+    fn test_record_command_preserves_args_on_success() {
+        use crate::jj::RunResult;
+
+        let mut app = App::new_for_test();
+        let start = Instant::now();
+        let result: Result<RunResult, JjError> = Ok(RunResult {
+            output: "done".to_string(),
+            args: vec!["describe".to_string(), "-m".to_string(), "test".to_string()],
+        });
+        app.record_command("Describe", &["describe", "-m", "test"], start, &result);
+
+        assert_eq!(app.command_history.len(), 1);
+        let record = &app.command_history.records()[0];
+        assert_eq!(record.operation, "Describe");
+        assert_eq!(record.args, vec!["describe", "-m", "test"]);
+        assert_eq!(record.status, CommandStatus::Success);
+        assert!(record.error.is_none());
+    }
+
+    #[test]
+    fn test_record_command_preserves_args_on_failure() {
+        let mut app = App::new_for_test();
+        let start = Instant::now();
+        let result: Result<RunResult, JjError> = Err(JjError::CommandFailed {
+            stderr: "Immutable commit".to_string(),
+            exit_code: 1,
+        });
+        app.record_command("Edit", &["edit", "-r", "abc123"], start, &result);
+
+        assert_eq!(app.command_history.len(), 1);
+        let record = &app.command_history.records()[0];
+        assert_eq!(record.operation, "Edit");
+        // Bug #1 fix: args must be preserved even on failure
+        assert_eq!(record.args, vec!["edit", "-r", "abc123"]);
+        assert_eq!(record.status, CommandStatus::Failed);
+        assert!(
+            record
+                .error
+                .as_deref()
+                .unwrap()
+                .contains("Immutable commit")
+        );
+    }
+
+    #[test]
+    fn test_record_str_command_preserves_args_on_failure() {
+        let mut app = App::new_for_test();
+        let start = Instant::now();
+        let result: Result<String, JjError> = Err(JjError::CommandFailed {
+            stderr: "push failed".to_string(),
+            exit_code: 1,
+        });
+        app.record_str_command(
+            "Push",
+            &["git", "push", "--bookmark", "main"],
+            start,
+            &result,
+        );
+
+        assert_eq!(app.command_history.len(), 1);
+        let record = &app.command_history.records()[0];
+        assert_eq!(record.args, vec!["git", "push", "--bookmark", "main"]);
+        assert_eq!(record.status, CommandStatus::Failed);
+        assert!(record.error.is_some());
+    }
+
+    #[test]
+    fn test_record_interactive_command_preserves_args_on_failure() {
+        let mut app = App::new_for_test();
+        let start = Instant::now();
+        let result: io::Result<ExitStatus> =
+            Err(io::Error::new(io::ErrorKind::NotFound, "editor not found"));
+        app.record_interactive_command("Split", &["split", "-r", "abc"], start, &result);
+
+        assert_eq!(app.command_history.len(), 1);
+        let record = &app.command_history.records()[0];
+        assert_eq!(record.args, vec!["split", "-r", "abc"]);
+        assert_eq!(record.status, CommandStatus::Failed);
+        assert!(
+            record
+                .error
+                .as_deref()
+                .unwrap()
+                .contains("editor not found")
+        );
     }
 }

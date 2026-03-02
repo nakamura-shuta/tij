@@ -227,6 +227,9 @@ impl App {
                 self.refresh_tag_view();
                 self.notify_info("Refreshed");
             }
+            View::CommandHistory => {
+                // Command history is in-memory data, no external refresh needed
+            }
             View::Help => {
                 // Help is static content, no refresh needed, no notification
             }

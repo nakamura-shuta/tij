@@ -54,6 +54,14 @@ impl PushBulkMode {
     }
 }
 
+/// Result of running a jj command, including the captured arguments
+pub struct RunResult {
+    /// The command output (stdout)
+    pub output: String,
+    /// The arguments passed to jj (excluding --color=never and --repository)
+    pub args: Vec<String>,
+}
+
 /// Executor for jj commands
 ///
 /// All methods take `&self` (no mutable state), making `JjExecutor` safe to
@@ -100,8 +108,11 @@ impl JjExecutor {
     /// Run a jj command with the given arguments
     ///
     /// Automatically adds `--color=never` to ensure parseable output.
-    pub fn run(&self, args: &[&str]) -> Result<String, JjError> {
+    /// Returns `RunResult` containing both the output and the captured args.
+    pub fn run(&self, args: &[&str]) -> Result<RunResult, JjError> {
         use std::process::Stdio;
+
+        let args_vec: Vec<String> = args.iter().map(|s| s.to_string()).collect();
 
         let mut cmd = Command::new(constants::JJ_COMMAND);
 
@@ -131,7 +142,10 @@ impl JjExecutor {
         })?;
 
         if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+            Ok(RunResult {
+                output: String::from_utf8_lossy(&output.stdout).into_owned(),
+                args: args_vec,
+            })
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
             let exit_code = output.status.code().unwrap_or(-1);
@@ -151,11 +165,22 @@ impl JjExecutor {
             // .jjignore or snapshot.max-new-file-size in the repository.
             let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
             if stderr.contains("Refused to snapshot") {
-                return Ok(stdout);
+                return Ok(RunResult {
+                    output: stdout,
+                    args: args_vec,
+                });
             }
 
             Err(JjError::CommandFailed { stderr, exit_code })
         }
+    }
+
+    /// Run a jj command and return only the output string.
+    ///
+    /// Convenience wrapper around `run()` for callers that don't need `RunResult.args`.
+    // Used by run_and_record: see execute_*() in app/actions/
+    fn run_str(&self, args: &[&str]) -> Result<String, JjError> {
+        self.run(args).map(|r| r.output)
     }
 
     /// Run `jj log` with optional revset filter (raw output)
@@ -180,7 +205,7 @@ impl JjExecutor {
             args.push(flags::REVERSED);
         }
 
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Run `jj log` and parse the output into Changes
@@ -201,7 +226,7 @@ impl JjExecutor {
 
     /// Run `jj status`
     pub fn status_raw(&self) -> Result<String, JjError> {
-        self.run(&[commands::STATUS])
+        self.run_str(&[commands::STATUS])
     }
 
     /// Run `jj status` and parse the output into Status
@@ -212,7 +237,7 @@ impl JjExecutor {
 
     /// Run `jj show` for a specific change
     pub fn show_raw(&self, change_id: &str) -> Result<String, JjError> {
-        self.run(&[commands::SHOW, flags::REVISION, change_id])
+        self.run_str(&[commands::SHOW, flags::REVISION, change_id])
     }
 
     /// Run `jj show` and parse the output into DiffContent
@@ -225,12 +250,12 @@ impl JjExecutor {
 
     /// Run `jj show --stat` for a specific change (histogram overview)
     pub fn show_stat(&self, change_id: &str) -> Result<String, JjError> {
-        self.run(&[commands::SHOW, flags::STAT, flags::REVISION, change_id])
+        self.run_str(&[commands::SHOW, flags::STAT, flags::REVISION, change_id])
     }
 
     /// Run `jj show --git` for a specific change (git unified diff)
     pub fn show_git(&self, change_id: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::SHOW,
             flags::GIT_FORMAT,
             flags::REVISION,
@@ -243,7 +268,7 @@ impl JjExecutor {
     /// Uses positional argument format: `jj describe <change-id> -m <message>`
     /// Note: `-r` is accepted as an alias for compatibility but positional is preferred.
     pub fn describe(&self, change_id: &str, message: &str) -> Result<String, JjError> {
-        self.run(&[commands::DESCRIBE, change_id, "-m", message])
+        self.run_str(&[commands::DESCRIBE, change_id, "-m", message])
     }
 
     /// Get the full description (multi-line) for a change
@@ -252,7 +277,7 @@ impl JjExecutor {
     /// Unlike the normal log output which uses `description.first_line()`, this returns
     /// the entire description including all lines.
     pub fn get_description(&self, change_id: &str) -> Result<String, JjError> {
-        let output = self.run(&[
+        let output = self.run_str(&[
             commands::LOG,
             flags::NO_GRAPH,
             flags::REVISION,
@@ -265,7 +290,7 @@ impl JjExecutor {
 
     /// Check if a revision is immutable
     pub fn is_immutable(&self, change_id: &str) -> bool {
-        self.run(&[
+        self.run_str(&[
             commands::LOG,
             flags::NO_GRAPH,
             flags::REVISION,
@@ -278,12 +303,12 @@ impl JjExecutor {
 
     /// Run `jj edit` to set working-copy revision
     pub fn edit(&self, change_id: &str) -> Result<String, JjError> {
-        self.run(&[commands::EDIT, change_id])
+        self.run_str(&[commands::EDIT, change_id])
     }
 
     /// Run `jj new` to create a new empty change
     pub fn new_change(&self) -> Result<String, JjError> {
-        self.run(&[commands::NEW])
+        self.run_str(&[commands::NEW])
     }
 
     /// Run `jj new <revision>` to create a new change with specified parent
@@ -291,7 +316,7 @@ impl JjExecutor {
     /// Creates a new empty change as a child of the specified revision.
     /// The working copy (@) moves to the new change.
     pub fn new_change_from(&self, revision: &str) -> Result<String, JjError> {
-        self.run(&[commands::NEW, revision])
+        self.run_str(&[commands::NEW, revision])
     }
 
     /// Run `jj commit` to commit current changes with a message
@@ -299,7 +324,7 @@ impl JjExecutor {
     /// This is equivalent to `jj describe` + `jj new`, but atomic.
     /// After commit, a new empty change is created on top.
     pub fn commit(&self, message: &str) -> Result<String, JjError> {
-        self.run(&[commands::COMMIT, "-m", message])
+        self.run_str(&[commands::COMMIT, "-m", message])
     }
 
     /// Run `jj squash` to squash @ into @- (non-interactive)
@@ -308,7 +333,7 @@ impl JjExecutor {
     /// If the current change becomes empty, it is automatically abandoned.
     /// This uses `--use-destination-message` to avoid opening an editor.
     pub fn squash(&self) -> Result<String, JjError> {
-        self.run(&[commands::SQUASH, "--use-destination-message"])
+        self.run_str(&[commands::SQUASH, "--use-destination-message"])
     }
 
     /// Run `jj abandon <change-id>` to abandon a revision
@@ -316,14 +341,14 @@ impl JjExecutor {
     /// Descendants are automatically rebased onto the parent.
     /// If @ is abandoned, a new empty change is created.
     pub fn abandon(&self, change_id: &str) -> Result<String, JjError> {
-        self.run(&[commands::ABANDON, change_id])
+        self.run_str(&[commands::ABANDON, change_id])
     }
 
     /// Run `jj revert -r <change_id> --onto @` to create a reverse-diff commit
     ///
     /// Creates a new commit on top of @ that undoes the changes from the specified revision.
     pub fn revert(&self, change_id: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::REVERT,
             flags::REVISION,
             change_id,
@@ -334,12 +359,12 @@ impl JjExecutor {
 
     /// Run `jj restore <file_path>` to restore a specific file to its parent state
     pub fn restore_file(&self, file_path: &str) -> Result<String, JjError> {
-        self.run(&[commands::RESTORE, file_path])
+        self.run_str(&[commands::RESTORE, file_path])
     }
 
     /// Run `jj restore` to restore all files to their parent state
     pub fn restore_all(&self) -> Result<String, JjError> {
-        self.run(&[commands::RESTORE])
+        self.run_str(&[commands::RESTORE])
     }
 
     /// Run `jj evolog -r <change_id>` with template output
@@ -358,7 +383,7 @@ impl JjExecutor {
             "  if(commit.description(), commit.description().first_line(), \"(no description set)\")",
             ") ++ \"\\n\""
         );
-        self.run(&[
+        self.run_str(&[
             commands::EVOLOG,
             flags::REVISION,
             change_id,
@@ -371,7 +396,7 @@ impl JjExecutor {
     ///
     /// Returns the raw output from the command for notification display.
     pub fn undo(&self) -> Result<String, JjError> {
-        self.run(&[commands::UNDO])
+        self.run_str(&[commands::UNDO])
     }
 
     /// Run `jj op restore` to restore a previous operation (redo)
@@ -379,7 +404,7 @@ impl JjExecutor {
     /// This restores the operation before the most recent undo, effectively redoing.
     /// The operation ID should be obtained from `get_redo_target()`.
     pub fn redo(&self, operation_id: &str) -> Result<String, JjError> {
-        self.run(&[commands::OP, commands::OP_RESTORE, operation_id])
+        self.run_str(&[commands::OP, commands::OP_RESTORE, operation_id])
     }
 
     /// Get the redo target operation ID, if we're in an undo/redo chain.
@@ -411,7 +436,7 @@ impl JjExecutor {
     /// should be updated to use it instead.
     pub fn get_redo_target(&self) -> Result<Option<String>, JjError> {
         // Template: id<TAB>description.first_line()
-        let output = self.run(&[
+        let output = self.run_str(&[
             commands::OP,
             commands::OP_LOG,
             flags::NO_GRAPH,
@@ -482,7 +507,7 @@ impl JjExecutor {
             args.push(&limit_str);
         }
 
-        let output = self.run(&args)?;
+        let output = self.run_str(&args)?;
         Parser::parse_op_log(&output)
     }
 
@@ -491,7 +516,7 @@ impl JjExecutor {
     /// This restores the repository state to what it was after the specified operation.
     /// Use with caution - this is a powerful operation.
     pub fn op_restore(&self, operation_id: &str) -> Result<String, JjError> {
-        self.run(&[commands::OP, commands::OP_RESTORE, operation_id])
+        self.run_str(&[commands::OP, commands::OP_RESTORE, operation_id])
     }
 
     /// Run `jj bookmark create <name> -r <change-id>` to create a bookmark
@@ -499,7 +524,7 @@ impl JjExecutor {
     /// Creates a new bookmark pointing to the specified change.
     /// Returns an error if a bookmark with the same name already exists.
     pub fn bookmark_create(&self, name: &str, change_id: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::BOOKMARK,
             commands::BOOKMARK_CREATE,
             name,
@@ -513,7 +538,7 @@ impl JjExecutor {
     /// Moves an existing bookmark to point to the specified change.
     /// Uses `--allow-backwards` to permit moving in any direction.
     pub fn bookmark_set(&self, name: &str, change_id: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::BOOKMARK,
             commands::BOOKMARK_SET,
             name,
@@ -529,7 +554,7 @@ impl JjExecutor {
     pub fn bookmark_delete(&self, names: &[&str]) -> Result<String, JjError> {
         let mut args = vec![commands::BOOKMARK, commands::BOOKMARK_DELETE];
         args.extend(names);
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Run `jj bookmark list --all-remotes` to get all bookmarks
@@ -541,7 +566,7 @@ impl JjExecutor {
     pub fn bookmark_list_all(&self) -> Result<Vec<Bookmark>, JjError> {
         const BOOKMARK_LIST_TEMPLATE: &str = r#"separate("\t", name, remote, tracked) ++ "\n""#;
 
-        let output = self.run(&[
+        let output = self.run_str(&[
             commands::BOOKMARK,
             commands::BOOKMARK_LIST,
             flags::ALL_REMOTES,
@@ -572,7 +597,7 @@ impl JjExecutor {
         // Use short(8) to match LogView's change_id length for exact matching
         const BOOKMARK_INFO_TEMPLATE: &str = r#"bookmarks.map(|x| x.name()).join(" ") ++ "\t" ++ change_id.short(8) ++ "\t" ++ commit_id.short(8) ++ "\t" ++ description.first_line() ++ "\n""#;
 
-        let log_output = self.run(&[
+        let log_output = self.run_str(&[
             commands::LOG,
             flags::NO_GRAPH,
             flags::REVISION,
@@ -636,7 +661,7 @@ impl JjExecutor {
     pub fn bookmark_track(&self, names: &[&str]) -> Result<String, JjError> {
         let mut args = vec![commands::BOOKMARK, commands::BOOKMARK_TRACK];
         args.extend(names);
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Run `jj bookmark untrack <names...>` to stop tracking remote bookmarks
@@ -646,7 +671,7 @@ impl JjExecutor {
     pub fn bookmark_untrack(&self, names: &[&str]) -> Result<String, JjError> {
         let mut args = vec![commands::BOOKMARK, commands::BOOKMARK_UNTRACK];
         args.extend(names);
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Unified rebase: run jj rebase with the given mode and optional extra flags
@@ -687,7 +712,7 @@ impl JjExecutor {
             }
         }
         args.extend_from_slice(extra_flags);
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Check if a specific change has conflicts
@@ -695,7 +720,7 @@ impl JjExecutor {
     /// Uses `jj log -r <change_id> -T 'conflict'` to query the conflict status.
     /// Returns true if the change has unresolved conflicts.
     pub fn has_conflict(&self, change_id: &str) -> Result<bool, JjError> {
-        let output = self.run(&[
+        let output = self.run_str(&[
             commands::LOG,
             flags::NO_GRAPH,
             flags::REVISION,
@@ -715,7 +740,7 @@ impl JjExecutor {
     ///
     /// Returns the command output which describes what was absorbed.
     pub fn absorb(&self) -> Result<String, JjError> {
-        self.run(&[commands::ABSORB])
+        self.run_str(&[commands::ABSORB])
     }
 
     /// Run `jj simplify-parents -r <change_id>` to remove redundant parent edges
@@ -723,7 +748,7 @@ impl JjExecutor {
     /// Removes parents that are ancestors of other parents, simplifying the DAG
     /// without changing content. Returns the command output.
     pub fn simplify_parents(&self, change_id: &str) -> Result<String, JjError> {
-        self.run(&[commands::SIMPLIFY_PARENTS, flags::REVISION, change_id])
+        self.run_str(&[commands::SIMPLIFY_PARENTS, flags::REVISION, change_id])
     }
 
     /// Run `jj fix -s <change_id>`
@@ -731,7 +756,7 @@ impl JjExecutor {
     /// Applies configured code formatters to the specified revision
     /// and its descendants. Requires `[fix.tools.*]` in jj config.
     pub fn fix(&self, change_id: &str) -> Result<String, JjError> {
-        self.run(&[commands::FIX, flags::SOURCE, change_id])
+        self.run_str(&[commands::FIX, flags::SOURCE, change_id])
     }
 
     /// Run `jj parallelize` to convert a linear chain into parallel (sibling) commits
@@ -741,7 +766,7 @@ impl JjExecutor {
     /// and the union ensures the correct range is always used.
     pub fn parallelize(&self, from: &str, to: &str) -> Result<String, JjError> {
         let revset = format!("{}::{} | {}::{}", from, to, to, from);
-        self.run(&[commands::PARALLELIZE, &revset])
+        self.run_str(&[commands::PARALLELIZE, &revset])
     }
 
     /// List conflicted files for a change
@@ -756,7 +781,7 @@ impl JjExecutor {
             args.push(rev);
         }
 
-        let output = self.run(&args)?;
+        let output = self.run_str(&args)?;
         Ok(Parser::parse_resolve_list(&output))
     }
 
@@ -777,7 +802,7 @@ impl JjExecutor {
         }
 
         args.push(file_path);
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Rename a local bookmark
@@ -785,7 +810,7 @@ impl JjExecutor {
     /// Runs `jj bookmark rename <old> <new>`.
     /// Only works for local bookmarks. Remote bookmarks cannot be renamed.
     pub fn bookmark_rename(&self, old_name: &str, new_name: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::BOOKMARK,
             commands::BOOKMARK_RENAME,
             old_name,
@@ -800,17 +825,17 @@ impl JjExecutor {
     pub fn bookmark_forget(&self, names: &[&str]) -> Result<String, JjError> {
         let mut args = vec![commands::BOOKMARK, commands::BOOKMARK_FORGET];
         args.extend(names);
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Run `jj next --edit` to move @ to the next child
     pub fn next(&self) -> Result<String, JjError> {
-        self.run(&[commands::NEXT, flags::EDIT_FLAG])
+        self.run_str(&[commands::NEXT, flags::EDIT_FLAG])
     }
 
     /// Run `jj prev --edit` to move @ to the previous parent
     pub fn prev(&self) -> Result<String, JjError> {
-        self.run(&[commands::PREV, flags::EDIT_FLAG])
+        self.run_str(&[commands::PREV, flags::EDIT_FLAG])
     }
 
     /// Run `jj duplicate <change_id>` to create a copy of the specified change
@@ -848,17 +873,17 @@ impl JjExecutor {
     /// Returns the command output describing what was fetched.
     /// Empty output typically means "already up to date".
     pub fn git_fetch(&self) -> Result<String, JjError> {
-        self.run(&[commands::GIT, commands::GIT_FETCH])
+        self.run_str(&[commands::GIT, commands::GIT_FETCH])
     }
 
     /// Run `jj git fetch --all-remotes`
     pub fn git_fetch_all_remotes(&self) -> Result<String, JjError> {
-        self.run(&[commands::GIT, commands::GIT_FETCH, flags::ALL_REMOTES])
+        self.run_str(&[commands::GIT, commands::GIT_FETCH, flags::ALL_REMOTES])
     }
 
     /// Run `jj git fetch --remote <name>`
     pub fn git_fetch_remote(&self, remote: &str) -> Result<String, JjError> {
-        self.run(&[commands::GIT, commands::GIT_FETCH, flags::REMOTE, remote])
+        self.run_str(&[commands::GIT, commands::GIT_FETCH, flags::REMOTE, remote])
     }
 
     /// Run `jj git fetch --tracked`
@@ -866,12 +891,12 @@ impl JjExecutor {
     /// Fetches only bookmarks that are already tracked from the default remote(s).
     /// `flags::TRACKED` (`"--tracked"`) is the same string for both fetch and push.
     pub fn git_fetch_tracked(&self) -> Result<String, JjError> {
-        self.run(&[commands::GIT, commands::GIT_FETCH, flags::TRACKED])
+        self.run_str(&[commands::GIT, commands::GIT_FETCH, flags::TRACKED])
     }
 
     /// Run `jj git fetch --tracked --remote <name>`
     pub fn git_fetch_tracked_remote(&self, remote: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::GIT,
             commands::GIT_FETCH,
             flags::TRACKED,
@@ -882,7 +907,7 @@ impl JjExecutor {
 
     /// Run `jj git remote list` to get all remote names
     pub fn git_remote_list(&self) -> Result<Vec<String>, JjError> {
-        let output = self.run(&[
+        let output = self.run_str(&[
             commands::GIT,
             commands::GIT_REMOTE,
             commands::GIT_REMOTE_LIST,
@@ -898,7 +923,7 @@ impl JjExecutor {
     /// Pushes the specified bookmark to the default remote (origin).
     /// jj automatically performs force-with-lease equivalent safety checks.
     pub fn git_push_bookmark(&self, bookmark_name: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::GIT,
             commands::GIT_PUSH,
             flags::BOOKMARK_FLAG,
@@ -912,7 +937,7 @@ impl JjExecutor {
     /// Note: --allow-new is deprecated in jj 0.37+ but still functional.
     /// Users should configure `remotes.origin.auto-track-bookmarks` for a permanent fix.
     pub fn git_push_bookmark_allow_new(&self, bookmark_name: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::GIT,
             commands::GIT_PUSH,
             flags::BOOKMARK_FLAG,
@@ -969,7 +994,7 @@ impl JjExecutor {
     /// and pushes it in a single operation.
     pub fn git_push_named(&self, bookmark_name: &str, revision: &str) -> Result<String, JjError> {
         let named_arg = format!("{}={}", bookmark_name, revision);
-        self.run(&[commands::GIT, commands::GIT_PUSH, flags::NAMED, &named_arg])
+        self.run_str(&[commands::GIT, commands::GIT_PUSH, flags::NAMED, &named_arg])
     }
 
     /// Run `jj git push --change <change_id>` to push by change ID
@@ -978,7 +1003,7 @@ impl JjExecutor {
     /// and pushes it to the remote. If the bookmark already exists, it
     /// reuses it.
     pub fn git_push_change(&self, change_id: &str) -> Result<String, JjError> {
-        self.run(&[commands::GIT, commands::GIT_PUSH, flags::CHANGE, change_id])
+        self.run_str(&[commands::GIT, commands::GIT_PUSH, flags::CHANGE, change_id])
     }
 
     /// Run `jj git push --bookmark <name> --remote <remote>` to push to specific remote
@@ -987,7 +1012,7 @@ impl JjExecutor {
         bookmark_name: &str,
         remote: &str,
     ) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::GIT,
             commands::GIT_PUSH,
             flags::BOOKMARK_FLAG,
@@ -1003,7 +1028,7 @@ impl JjExecutor {
         bookmark_name: &str,
         remote: &str,
     ) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::GIT,
             commands::GIT_PUSH,
             flags::BOOKMARK_FLAG,
@@ -1058,7 +1083,7 @@ impl JjExecutor {
         change_id: &str,
         remote: &str,
     ) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::GIT,
             commands::GIT_PUSH,
             flags::CHANGE,
@@ -1151,7 +1176,7 @@ impl JjExecutor {
         if let Some(r) = remote {
             args.extend([flags::REMOTE, r]);
         }
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Dry-run push with a bulk flag
@@ -1210,7 +1235,7 @@ impl JjExecutor {
             bookmark_name,
         ];
         args.extend_from_slice(extra_flags);
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Run `jj git push --bookmark <name> --remote <remote>` with extra flags
@@ -1229,7 +1254,7 @@ impl JjExecutor {
             remote,
         ];
         args.extend_from_slice(extra_flags);
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Run `jj git push --change <change_id>` with extra flags
@@ -1240,7 +1265,7 @@ impl JjExecutor {
     ) -> Result<String, JjError> {
         let mut args = vec![commands::GIT, commands::GIT_PUSH, flags::CHANGE, change_id];
         args.extend_from_slice(extra_flags);
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Run `jj git push --change <change_id> --remote <remote>` with extra flags
@@ -1259,7 +1284,7 @@ impl JjExecutor {
             remote,
         ];
         args.extend_from_slice(extra_flags);
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Run `jj git push --revisions <change_id>` with extra flags
@@ -1275,7 +1300,7 @@ impl JjExecutor {
             change_id,
         ];
         args.extend_from_slice(extra_flags);
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Run `jj git push --revisions <change_id> --remote <remote>` with extra flags
@@ -1294,17 +1319,17 @@ impl JjExecutor {
             remote,
         ];
         args.extend_from_slice(extra_flags);
-        self.run(&args)
+        self.run_str(&args)
     }
 
     /// Run `jj git fetch --branch <name>` to fetch a specific branch
     pub fn git_fetch_branch(&self, branch: &str) -> Result<String, JjError> {
-        self.run(&[commands::GIT, commands::GIT_FETCH, flags::BRANCH, branch])
+        self.run_str(&[commands::GIT, commands::GIT_FETCH, flags::BRANCH, branch])
     }
 
     /// Run `jj git push --revisions <change_id>` to push all bookmarks on a revision
     pub fn git_push_revisions(&self, change_id: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::GIT,
             commands::GIT_PUSH,
             flags::REVISIONS,
@@ -1318,7 +1343,7 @@ impl JjExecutor {
         change_id: &str,
         remote: &str,
     ) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::GIT,
             commands::GIT_PUSH,
             flags::REVISIONS,
@@ -1405,7 +1430,7 @@ impl JjExecutor {
     /// Runs `jj bookmark move <name> --to <to>`.
     /// Forward moves succeed; backward/sideways moves require --allow-backwards.
     pub fn bookmark_move(&self, name: &str, to: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::BOOKMARK,
             commands::BOOKMARK_MOVE,
             name,
@@ -1418,7 +1443,7 @@ impl JjExecutor {
     ///
     /// Runs `jj bookmark move <name> --to <to> --allow-backwards`.
     pub fn bookmark_move_allow_backwards(&self, name: &str, to: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::BOOKMARK,
             commands::BOOKMARK_MOVE,
             name,
@@ -1432,14 +1457,14 @@ impl JjExecutor {
     ///
     /// Returns diff-only output without the commit header (unlike `jj show`).
     pub fn diff_raw(&self, change_id: &str) -> Result<String, JjError> {
-        self.run(&[commands::DIFF, flags::REVISION, change_id])
+        self.run_str(&[commands::DIFF, flags::REVISION, change_id])
     }
 
     /// Run `jj diff --git -r <change_id>` for git-compatible unified patch output
     ///
     /// Produces output suitable for `git apply`.
     pub fn diff_git_raw(&self, change_id: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::DIFF,
             flags::GIT_FORMAT,
             flags::REVISION,
@@ -1451,12 +1476,12 @@ impl JjExecutor {
     ///
     /// Returns the raw diff output between the two revisions.
     pub fn diff_range(&self, from: &str, to: &str) -> Result<String, JjError> {
-        self.run(&[commands::DIFF, flags::FROM, from, flags::TO, to])
+        self.run_str(&[commands::DIFF, flags::FROM, from, flags::TO, to])
     }
 
     /// Run `jj diff --git --from <from> --to <to>` for git-compatible unified patch
     pub fn diff_range_git(&self, from: &str, to: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::DIFF,
             flags::GIT_FORMAT,
             flags::FROM,
@@ -1468,7 +1493,7 @@ impl JjExecutor {
 
     /// Run `jj diff --stat --from <from> --to <to>` for histogram overview
     pub fn diff_range_stat(&self, from: &str, to: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::DIFF,
             flags::STAT,
             flags::FROM,
@@ -1486,7 +1511,7 @@ impl JjExecutor {
         change_id: &str,
     ) -> Result<(String, Vec<String>, String, String, String), JjError> {
         let template = Templates::change_info();
-        let output = self.run(&[
+        let output = self.run_str(&[
             commands::LOG,
             flags::NO_GRAPH,
             flags::REVISION,
@@ -1544,7 +1569,7 @@ impl JjExecutor {
         args.push(template);
         args.push(file_path);
 
-        let output = self.run(&args)?;
+        let output = self.run_str(&args)?;
         Parser::parse_file_annotate(&output, file_path)
     }
 
@@ -1557,7 +1582,7 @@ impl JjExecutor {
     pub fn tag_list(&self) -> Result<Vec<TagInfo>, JjError> {
         const TAG_LIST_TEMPLATE: &str = r#"separate("\t", name, if(remote, remote, ""), if(present, "true", "false"), if(tracked, "true", "false"), normal_target.change_id().short(8), normal_target.commit_id().short(8), normal_target.description().first_line()) ++ "\n""#;
 
-        let output = self.run(&[
+        let output = self.run_str(&[
             commands::TAG,
             commands::TAG_LIST,
             flags::TEMPLATE,
@@ -1570,7 +1595,7 @@ impl JjExecutor {
     ///
     /// Runs `jj tag set <name> -r <revision>`.
     pub fn tag_set(&self, name: &str, revision: &str) -> Result<String, JjError> {
-        self.run(&[
+        self.run_str(&[
             commands::TAG,
             commands::TAG_SET,
             name,
@@ -1583,7 +1608,7 @@ impl JjExecutor {
     ///
     /// Runs `jj tag delete <name>`.
     pub fn tag_delete(&self, name: &str) -> Result<String, JjError> {
-        self.run(&[commands::TAG, commands::TAG_DELETE, name])
+        self.run_str(&[commands::TAG, commands::TAG_DELETE, name])
     }
 }
 

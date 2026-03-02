@@ -128,6 +128,8 @@ pub enum LogAction {
     OpenBookmarkView,
     /// Open Tag View
     OpenTagView,
+    /// Open Command History View
+    OpenCommandHistory,
     /// Move @ to next child (jj next --edit)
     NextChange,
     /// Move @ to previous parent (jj prev --edit)

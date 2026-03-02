@@ -48,7 +48,7 @@ impl App {
 
     /// Execute tag creation on @ (working copy)
     fn execute_tag_create(&mut self, name: &str) {
-        match self.jj.tag_set(name, "@") {
+        match self.run_and_record("Tag create", &["tag", "set", name, "-r", "@"]) {
             Ok(_) => {
                 self.notify_success(format!("Tag '{}' created", name));
                 self.refresh_tag_view();
@@ -62,7 +62,7 @@ impl App {
 
     /// Execute tag deletion
     fn execute_tag_delete(&mut self, name: &str) {
-        match self.jj.tag_delete(name) {
+        match self.run_and_record("Tag delete", &["tag", "delete", name]) {
             Ok(_) => {
                 self.notify_success(format!("Tag '{}' deleted", name));
                 self.refresh_tag_view();

@@ -5,8 +5,9 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use super::state::{App, View};
 use crate::keys;
 use crate::ui::views::{
-    BlameAction, BookmarkAction, DiffAction, EvologAction, InputMode, LogAction, OperationAction,
-    RenameState, ResolveAction, StatusAction, StatusInputMode, TagAction,
+    BlameAction, BookmarkAction, CommandHistoryAction, DiffAction, EvologAction, InputMode,
+    LogAction, OperationAction, RenameState, ResolveAction, StatusAction, StatusInputMode,
+    TagAction,
 };
 
 impl App {
@@ -216,6 +217,11 @@ impl App {
                     self.handle_evolog_action(action);
                 }
             }
+            View::CommandHistory => {
+                let total = self.command_history.len();
+                let action = self.command_history_view.handle_key(key, total);
+                self.handle_command_history_action(action);
+            }
             View::Help => {
                 if self.help_search_input {
                     // Search input mode: capture text
@@ -299,6 +305,7 @@ impl App {
             | LogAction::ClearRevset
             | LogAction::OpenBookmarkView
             | LogAction::OpenTagView
+            | LogAction::OpenCommandHistory
             | LogAction::OpenEvolog(_)
             | LogAction::OpenResolveList { .. } => {
                 self.handle_log_navigation(action);
@@ -365,6 +372,7 @@ impl App {
             LogAction::ClearRevset => self.refresh_log(None),
             LogAction::OpenBookmarkView => self.open_bookmark_view(),
             LogAction::OpenTagView => self.open_tag_view(),
+            LogAction::OpenCommandHistory => self.go_to_view(View::CommandHistory),
             LogAction::OpenEvolog(change_id) => self.open_evolog(&change_id),
             LogAction::OpenResolveList {
                 change_id,
@@ -735,6 +743,18 @@ impl App {
             }
             EvologAction::OpenDiff(change_id) => {
                 self.open_diff(&change_id);
+            }
+        }
+    }
+
+    fn handle_command_history_action(&mut self, action: CommandHistoryAction) {
+        match action {
+            CommandHistoryAction::None => {}
+            CommandHistoryAction::Back => {
+                self.go_back();
+            }
+            CommandHistoryAction::ToggleDetail(_) => {
+                // Detail toggle is handled internally by CommandHistoryView
             }
         }
     }
