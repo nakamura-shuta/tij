@@ -142,6 +142,9 @@ pub const COMPARE: KeyCode = KeyCode::Char('=');
 /// Open Bookmark View (Log View)
 pub const BOOKMARK_VIEW: KeyCode = KeyCode::Char('M');
 
+/// Open Tag View (Log View)
+pub const TAG_VIEW: KeyCode = KeyCode::Char('t');
+
 /// Toggle preview pane (Log View)
 pub const PREVIEW: KeyCode = KeyCode::Char('p');
 
@@ -413,6 +416,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "M",
         description: "Bookmark view",
+    },
+    KeyBindEntry {
+        key: "t",
+        description: "Tag view",
     },
     KeyBindEntry {
         key: "p",
@@ -738,6 +745,22 @@ pub const HINT_BOOKMARK_VIEW: KeyHint = KeyHint {
     label: "Bookmarks",
     color: Color::Cyan,
 };
+// Tag view hints
+pub const HINT_TAG_VIEW: KeyHint = KeyHint {
+    key: "t",
+    label: "Tags",
+    color: Color::Cyan,
+};
+pub const HINT_TAG_CREATE: KeyHint = KeyHint {
+    key: "c",
+    label: "Create Tag",
+    color: Color::Green,
+};
+pub const HINT_TAG_DELETE: KeyHint = KeyHint {
+    key: "D",
+    label: "Delete",
+    color: Color::Red,
+};
 pub const HINT_JUMP_ENTER: KeyHint = KeyHint {
     key: "Enter",
     label: "Jump",
@@ -873,6 +896,7 @@ pub fn current_hints(view: View, input_mode: InputMode, ctx: &HintContext) -> Ve
         View::Log => log_hints(input_mode, ctx),
         View::Resolve => resolve_hints(ctx),
         View::Bookmark => bookmark_view_hints(ctx),
+        View::Tag => tag_view_hints(),
         View::Status => STATUS_VIEW_HINTS.to_vec(),
         View::Operation => OPERATION_VIEW_HINTS.to_vec(),
         // Diff, Blame use prefix-based rendering; Help has no status bar.
@@ -965,6 +989,18 @@ fn bookmark_view_hints(ctx: &HintContext) -> Vec<KeyHint> {
     }
     h.extend([HINT_UNDO, HINT_REFRESH, HINT_BACK]);
     h
+}
+
+fn tag_view_hints() -> Vec<KeyHint> {
+    vec![
+        HINT_NAV,
+        HINT_JUMP_ENTER,
+        HINT_TAG_CREATE,
+        HINT_TAG_DELETE,
+        HINT_UNDO,
+        HINT_REFRESH,
+        HINT_BACK,
+    ]
 }
 
 /// ParallelizeSelect mode status bar hints
@@ -1297,6 +1333,38 @@ pub const BOOKMARK_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "m",
         description: "Move bookmark to @",
+    },
+    KeyBindEntry {
+        key: "u",
+        description: "Undo",
+    },
+    KeyBindEntry {
+        key: "q",
+        description: "Back to log",
+    },
+];
+
+/// Tag view key bindings for help display
+pub const TAG_KEYS: &[KeyBindEntry] = &[
+    KeyBindEntry {
+        key: "j/k",
+        description: "Move down/up",
+    },
+    KeyBindEntry {
+        key: "g/G",
+        description: "Go to top/bottom",
+    },
+    KeyBindEntry {
+        key: "Enter",
+        description: "Jump to tag in log",
+    },
+    KeyBindEntry {
+        key: "c",
+        description: "Create tag on @",
+    },
+    KeyBindEntry {
+        key: "D",
+        description: "Delete tag",
     },
     KeyBindEntry {
         key: "u",

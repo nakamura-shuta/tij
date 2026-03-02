@@ -44,6 +44,7 @@ expression: terminal.backend()
 "│  '         Jump to bookmark                                                  │"
 "│  =         Compare revisions                                                 │"
 "│  M         Bookmark view                                                     │"
+"│  t         Tag view                                                          │"
 "│  p         Toggle preview pane                                               │"
 "│  ]/[       Move @ to next/prev                                               │"
 "│  V         Toggle reversed order                                             │"
@@ -90,5 +91,4 @@ expression: terminal.backend()
 "│  g/G       Go to top/bottom                                                  │"
 "│  Enter     Jump to bookmark in log                                           │"
 "│  T         Track remote bookmark                                             │"
-"│  U         Untrack remote bookmark                                           │"
 "└──────────────────────────────────────────────────────────────────────────────┘"

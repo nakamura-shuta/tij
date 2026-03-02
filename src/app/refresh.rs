@@ -223,6 +223,10 @@ impl App {
                     }
                 }
             }
+            View::Tag => {
+                self.refresh_tag_view();
+                self.notify_info("Refreshed");
+            }
             View::Help => {
                 // Help is static content, no refresh needed, no notification
             }

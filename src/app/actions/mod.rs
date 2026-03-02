@@ -3,6 +3,7 @@
 mod bookmark;
 mod dialog;
 mod push;
+mod tag;
 
 use crate::model::{CompareInfo, DiffContent, DiffDisplayFormat, Notification, RebaseMode};
 use crate::ui::components::{Dialog, DialogCallback, SelectItem};

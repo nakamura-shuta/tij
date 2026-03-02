@@ -63,6 +63,7 @@
 - [x] Bugfix: Fix通知 commit_id比較による正確な判定 + ダイアログ後プレビュー再取得（v0.4.8）
 - [x] Phase 32: Help キーワード連動ハイライト — 同義語マップによる検索展開（v0.4.9）
 - [x] Bugfix: プレビューペインのファイル操作 A/M/D 誤表示修正 — FileOperation をパーサーから伝播（v0.4.10）
+- [x] Phase 33: Tag View — タグ一覧表示 / 作成(@ 対象) / 削除 / revset 拡張ジャンプ + Input ダイアログ汎用化（v0.4.11）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
@@ -148,7 +149,8 @@
 - [x] `simplify-parents`（Phase 26, v0.4.1）
 - [x] `parallelize`（Phase 27, v0.4.2）
 - [x] `fix`（Phase 31, v0.4.7）
-- [ ] `metaedit`, `tag`, `workspace`, `sparse`, `bisect`, `sign/unsign`
+- [x] `tag`（Phase 33, v0.4.11）
+- [ ] `metaedit`, `workspace`, `sparse`, `bisect`, `sign/unsign`
 
 ## 6. jj log 方針
 - [x] `--limit`（デフォルト表示のみ 200）

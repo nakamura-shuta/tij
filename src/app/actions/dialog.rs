@@ -46,6 +46,10 @@ impl App {
                 | DialogCallback::BookmarkMoveBackwards { .. } => {
                     self.handle_bookmark_dialog(callback, values);
                 }
+                // Tag
+                DialogCallback::TagCreate | DialogCallback::TagDelete { .. } => {
+                    self.handle_tag_dialog(callback, values);
+                }
                 // Misc
                 DialogCallback::OpRestore
                 | DialogCallback::Track
@@ -94,7 +98,9 @@ impl App {
             | DialogCallback::Revert { .. }
             | DialogCallback::SimplifyParents { .. }
             | DialogCallback::Parallelize { .. }
-            | DialogCallback::Fix { .. } => {}
+            | DialogCallback::Fix { .. }
+            | DialogCallback::TagCreate
+            | DialogCallback::TagDelete { .. } => {}
         }
     }
 

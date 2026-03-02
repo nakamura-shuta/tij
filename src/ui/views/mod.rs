@@ -10,6 +10,7 @@ mod log;
 mod operation;
 mod resolve;
 mod status;
+mod tag;
 
 pub use blame::{BlameAction, BlameView};
 pub use bookmark::{BookmarkAction, BookmarkView, RenameState};
@@ -19,3 +20,4 @@ pub use log::{InputMode, LogAction, LogView, RebaseMode};
 pub use operation::{OperationAction, OperationView};
 pub use resolve::{ResolveAction, ResolveView};
 pub use status::{StatusAction, StatusInputMode, StatusView};
+pub use tag::{TagAction, TagView};

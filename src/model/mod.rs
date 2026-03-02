@@ -13,6 +13,7 @@ mod file_status;
 mod notification;
 mod operation;
 mod rebase;
+mod tag;
 
 pub use annotation::{AnnotationContent, AnnotationLine};
 pub use bookmark::{Bookmark, BookmarkInfo};
@@ -27,3 +28,4 @@ pub use file_status::{FileState, FileStatus, Status};
 pub use notification::{Notification, NotificationKind};
 pub use operation::Operation;
 pub use rebase::RebaseMode;
+pub use tag::TagInfo;

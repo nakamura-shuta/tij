@@ -126,6 +126,8 @@ pub enum LogAction {
     CompareSameRevision,
     /// Open Bookmark View
     OpenBookmarkView,
+    /// Open Tag View
+    OpenTagView,
     /// Move @ to next child (jj next --edit)
     NextChange,
     /// Move @ to previous parent (jj prev --edit)

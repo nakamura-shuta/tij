@@ -6,7 +6,7 @@ use super::state::{App, View};
 use crate::keys;
 use crate::ui::views::{
     BlameAction, BookmarkAction, DiffAction, EvologAction, InputMode, LogAction, OperationAction,
-    RenameState, ResolveAction, StatusAction, StatusInputMode,
+    RenameState, ResolveAction, StatusAction, StatusInputMode, TagAction,
 };
 
 impl App {
@@ -200,6 +200,10 @@ impl App {
                 let action = self.bookmark_view.handle_key(key);
                 self.handle_bookmark_action(action);
             }
+            View::Tag => {
+                let action = self.tag_view.handle_key(key);
+                self.handle_tag_action(action);
+            }
             View::Resolve => {
                 if let Some(ref mut resolve_view) = self.resolve_view {
                     let action = resolve_view.handle_key(key);
@@ -294,6 +298,7 @@ impl App {
             | LogAction::ExecuteRevset(_)
             | LogAction::ClearRevset
             | LogAction::OpenBookmarkView
+            | LogAction::OpenTagView
             | LogAction::OpenEvolog(_)
             | LogAction::OpenResolveList { .. } => {
                 self.handle_log_navigation(action);
@@ -359,6 +364,7 @@ impl App {
             LogAction::ExecuteRevset(revset) => self.refresh_log(Some(&revset)),
             LogAction::ClearRevset => self.refresh_log(None),
             LogAction::OpenBookmarkView => self.open_bookmark_view(),
+            LogAction::OpenTagView => self.open_tag_view(),
             LogAction::OpenEvolog(change_id) => self.open_evolog(&change_id),
             LogAction::OpenResolveList {
                 change_id,
@@ -574,6 +580,32 @@ impl App {
             }
             BookmarkAction::MoveUnavailable => {
                 self.notify_info("Move is available only for local bookmarks");
+            }
+        }
+    }
+
+    fn handle_tag_action(&mut self, action: TagAction) {
+        match action {
+            TagAction::None => {}
+            TagAction::Jump(change_id) => {
+                self.jump_to_log(&change_id);
+            }
+            TagAction::StartCreate => {
+                use crate::ui::components::{Dialog, DialogCallback};
+                self.active_dialog = Some(Dialog::input(
+                    "Create Tag",
+                    "Create tag on @ (working copy)",
+                    DialogCallback::TagCreate,
+                ));
+            }
+            TagAction::Delete(name) => {
+                use crate::ui::components::{Dialog, DialogCallback};
+                self.active_dialog = Some(Dialog::confirm(
+                    "Delete Tag",
+                    format!("Delete tag '{}'?", name),
+                    None,
+                    DialogCallback::TagDelete { name: name.clone() },
+                ));
             }
         }
     }

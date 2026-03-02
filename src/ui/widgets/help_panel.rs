@@ -22,6 +22,7 @@ const SYNONYM_MAP: &[(&str, &[&str])] = &[
         "bookmark",
         &["branch", "track", "untrack", "forget", "rename"],
     ),
+    ("tag", &["release", "version", "label"]),
     ("undo", &["redo", "restore", "operation"]),
     ("diff", &["show", "compare", "blame", "export"]),
     ("search", &["filter", "revset"]),
@@ -129,6 +130,13 @@ pub fn build_help_lines(search_query: Option<&str>) -> Vec<HelpLine> {
         &mut lines,
         "Bookmark View",
         keys::BOOKMARK_KEYS,
+        query_lower.as_deref(),
+        &synonyms,
+    );
+    push_section(
+        &mut lines,
+        "Tag View",
+        keys::TAG_KEYS,
         query_lower.as_deref(),
         &synonyms,
     );

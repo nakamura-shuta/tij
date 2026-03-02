@@ -397,7 +397,7 @@ impl App {
         } else {
             // First press — show hint and store pending
             self.pending_jump_change_id = Some(change_id.to_string());
-            self.notify_info("Change not in current revset. Press J again to search full log");
+            self.notify_info("Change not in current revset. Repeat to search full log");
         }
     }
 

@@ -52,6 +52,10 @@ pub mod commands {
     pub const FIX: &str = "fix";
     pub const GIT_REMOTE: &str = "remote";
     pub const GIT_REMOTE_LIST: &str = "list";
+    pub const TAG: &str = "tag";
+    pub const TAG_LIST: &str = "list";
+    pub const TAG_SET: &str = "set";
+    pub const TAG_DELETE: &str = "delete";
 }
 
 /// jj resolve flags

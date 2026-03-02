@@ -15,7 +15,7 @@ use std::process::Command;
 
 use crate::model::{
     AnnotationContent, Bookmark, BookmarkInfo, Change, ConflictFile, DiffContent, Operation,
-    RebaseMode, Status,
+    RebaseMode, Status, TagInfo,
 };
 
 use super::JjError;
@@ -1546,6 +1546,44 @@ impl JjExecutor {
 
         let output = self.run(&args)?;
         Parser::parse_file_annotate(&output, file_path)
+    }
+
+    // ── Tag operations ─────────────────────────────────────────────
+
+    /// List all local tags with their target commit info
+    ///
+    /// Uses a single-stage query (unlike bookmarks which need 2 stages)
+    /// because `jj tag list -T` can access `normal_target` directly.
+    pub fn tag_list(&self) -> Result<Vec<TagInfo>, JjError> {
+        const TAG_LIST_TEMPLATE: &str = r#"separate("\t", name, if(remote, remote, ""), if(present, "true", "false"), if(tracked, "true", "false"), normal_target.change_id().short(8), normal_target.commit_id().short(8), normal_target.description().first_line()) ++ "\n""#;
+
+        let output = self.run(&[
+            commands::TAG,
+            commands::TAG_LIST,
+            flags::TEMPLATE,
+            TAG_LIST_TEMPLATE,
+        ])?;
+        Ok(super::parser::parse_tag_list(&output))
+    }
+
+    /// Create a tag on a specific revision
+    ///
+    /// Runs `jj tag set <name> -r <revision>`.
+    pub fn tag_set(&self, name: &str, revision: &str) -> Result<String, JjError> {
+        self.run(&[
+            commands::TAG,
+            commands::TAG_SET,
+            name,
+            flags::REVISION,
+            revision,
+        ])
+    }
+
+    /// Delete a tag
+    ///
+    /// Runs `jj tag delete <name>`.
+    pub fn tag_delete(&self, name: &str) -> Result<String, JjError> {
+        self.run(&[commands::TAG, commands::TAG_DELETE, name])
     }
 }
 

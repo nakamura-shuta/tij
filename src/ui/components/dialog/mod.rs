@@ -5,6 +5,7 @@
 //! - Select dialog: Checkbox selection for multiple items
 
 mod confirm;
+mod input;
 mod select;
 #[cfg(test)]
 mod tests;
@@ -91,6 +92,10 @@ pub enum DialogCallback {
         change_id: String,
         bookmarks: Vec<String>,
     },
+    /// Tag creation (Input dialog)
+    TagCreate,
+    /// Tag deletion (Confirm dialog)
+    TagDelete { name: String },
 }
 
 /// Selection item for Select dialog
@@ -123,6 +128,12 @@ pub enum DialogKind {
         detail: Option<String>,
         /// Single select mode: Enter immediately confirms current item
         single_select: bool,
+    },
+    /// Text input dialog (single-line)
+    Input {
+        title: String,
+        message: String,
+        buffer: String,
     },
 }
 
@@ -207,11 +218,29 @@ impl Dialog {
         }
     }
 
+    /// Create a new Input dialog (single-line text input)
+    pub fn input(
+        title: impl Into<String>,
+        message: impl Into<String>,
+        callback_id: DialogCallback,
+    ) -> Self {
+        Self {
+            kind: DialogKind::Input {
+                title: title.into(),
+                message: message.into(),
+                buffer: String::new(),
+            },
+            cursor: 0,
+            callback_id,
+        }
+    }
+
     /// Handle key input, returns Some(result) when dialog should close
     pub fn handle_key(&mut self, key: KeyEvent) -> Option<DialogResult> {
         match &self.kind {
             DialogKind::Confirm { .. } => self.handle_confirm_key(key),
             DialogKind::Select { .. } => self.handle_select_key(key),
+            DialogKind::Input { .. } => self.handle_input_key(key),
         }
     }
 
@@ -238,6 +267,11 @@ impl Dialog {
                 detail.as_deref(),
                 *single_select,
             ),
+            DialogKind::Input {
+                title,
+                message,
+                buffer,
+            } => self.render_input(frame, area, title, message, buffer),
         }
     }
 }
