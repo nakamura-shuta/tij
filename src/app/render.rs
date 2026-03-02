@@ -1219,4 +1219,115 @@ Modified regular file src/main.rs:
         assert_eq!(summaries[0].insertions, 1);
         assert_eq!(summaries[0].deletions, 0);
     }
+
+    #[test]
+    fn test_extract_file_summaries_mixed_operations() {
+        // Realistic scenario: one commit with Added + Modified(adds-only) + Modified(deletes-only) + Deleted
+        let lines = vec![
+            // File 1: Added
+            DiffLine::file_header_with_op("src/brand_new.rs", FileOperation::Added),
+            DiffLine {
+                kind: DiffLineKind::Added,
+                line_numbers: Some((None, Some(1))),
+                content: "pub fn new() {}".to_string(),
+                file_op: None,
+            },
+            DiffLine::separator(),
+            // File 2: Modified but only additions (was buggy: showed A)
+            DiffLine::file_header_with_op("src/main.rs", FileOperation::Modified),
+            DiffLine {
+                kind: DiffLineKind::Added,
+                line_numbers: Some((None, Some(5))),
+                content: "appended line".to_string(),
+                file_op: None,
+            },
+            DiffLine::separator(),
+            // File 3: Modified but only deletions (was buggy: showed D)
+            DiffLine::file_header_with_op("src/lib.rs", FileOperation::Modified),
+            DiffLine {
+                kind: DiffLineKind::Deleted,
+                line_numbers: Some((Some(3), None)),
+                content: "removed line".to_string(),
+                file_op: None,
+            },
+            DiffLine::separator(),
+            // File 4: Deleted
+            DiffLine::file_header_with_op("src/old.rs", FileOperation::Deleted),
+            DiffLine {
+                kind: DiffLineKind::Deleted,
+                line_numbers: Some((Some(1), None)),
+                content: "fn old() {}".to_string(),
+                file_op: None,
+            },
+        ];
+
+        let summaries = extract_file_summaries(&lines);
+        assert_eq!(summaries.len(), 4);
+
+        assert_eq!(summaries[0].path, "src/brand_new.rs");
+        assert_eq!(summaries[0].op, FileOperation::Added);
+
+        assert_eq!(summaries[1].path, "src/main.rs");
+        assert_eq!(summaries[1].op, FileOperation::Modified); // NOT Added
+
+        assert_eq!(summaries[2].path, "src/lib.rs");
+        assert_eq!(summaries[2].op, FileOperation::Modified); // NOT Deleted
+
+        assert_eq!(summaries[3].path, "src/old.rs");
+        assert_eq!(summaries[3].op, FileOperation::Deleted);
+    }
+
+    #[test]
+    fn test_parse_diff_body_to_file_summaries_preserves_file_op() {
+        // Integration: parse_diff_body (compare diff path) → extract_file_summaries
+        use crate::jj::parser::Parser;
+
+        let output = "\
+Modified regular file src/main.rs:
+   10   10:     fn main() {
+        11: +       println!(\"appended\");
+   11   12:     }
+Added regular file src/new.rs:
+        1: pub fn new() {}
+Removed regular file src/old.rs:
+    1    : fn old() {}
+";
+        let content = Parser::parse_diff_body(output);
+        let summaries = extract_file_summaries(&content.lines);
+
+        assert_eq!(summaries.len(), 3);
+
+        // Modified with only additions — must NOT fall back to 'A'
+        assert_eq!(summaries[0].path, "src/main.rs");
+        assert_eq!(summaries[0].op, FileOperation::Modified);
+        assert_eq!(summaries[0].insertions, 1);
+        assert_eq!(summaries[0].deletions, 0);
+
+        assert_eq!(summaries[1].path, "src/new.rs");
+        assert_eq!(summaries[1].op, FileOperation::Added);
+
+        assert_eq!(summaries[2].path, "src/old.rs");
+        assert_eq!(summaries[2].op, FileOperation::Deleted);
+    }
+
+    #[test]
+    fn test_git_format_falls_back_to_infer() {
+        // Git format has file_op=None, so extract_file_summaries must use infer_file_op
+        use crate::jj::parser::Parser;
+
+        let output = "\
+diff --git a/src/main.rs b/src/main.rs
+@@ -1,3 +1,4 @@
+ fn main() {
++    println!(\"new\");
+-    println!(\"old\");
+ }";
+        let content = Parser::parse_diff_body_git(output);
+        let summaries = extract_file_summaries(&content.lines);
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].path, "src/main.rs");
+        // Both +1 and -1 → infer_file_op returns Modified
+        assert_eq!(summaries[0].op, FileOperation::Modified);
+    }
 }

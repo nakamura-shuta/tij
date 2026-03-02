@@ -1053,3 +1053,124 @@ index 1234567..abcdefg 100644
         .collect();
     assert_eq!(index_lines.len(), 0);
 }
+
+// =========================================================================
+// file_op verification tests (v0.4.10 bug fix coverage)
+// =========================================================================
+
+#[test]
+fn test_parse_show_file_op_set_on_headers() {
+    let output = r#"Commit ID: abc123
+Change ID: xyz789
+Author   : Test <test@example.com> (2024-01-30 12:00:00)
+Committer: Test <test@example.com> (2024-01-30 12:00:00)
+
+    Multiple file types
+
+Added regular file src/new.rs:
+        1: pub fn new() {}
+Modified regular file src/main.rs:
+   10   10:     fn main() {
+        11: +       println!("new");
+   11   12:     }
+Removed regular file old.txt:
+    1    : old content
+"#;
+    let content = Parser::parse_show(output).unwrap();
+
+    let headers: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::FileHeader)
+        .collect();
+    assert_eq!(headers.len(), 3);
+
+    assert_eq!(headers[0].content, "src/new.rs");
+    assert_eq!(headers[0].file_op, Some(FileOperation::Added));
+
+    assert_eq!(headers[1].content, "src/main.rs");
+    assert_eq!(headers[1].file_op, Some(FileOperation::Modified));
+
+    assert_eq!(headers[2].content, "old.txt");
+    assert_eq!(headers[2].file_op, Some(FileOperation::Deleted));
+}
+
+#[test]
+fn test_parse_diff_body_file_op_set_on_headers() {
+    let output = "\
+Added regular file src/new.rs:
+        1: pub fn new() {}
+Modified regular file src/main.rs:
+   10   10:     fn main() {
+        11: +       println!(\"new\");
+   11   12:     }
+Removed regular file old.txt:
+    1    : old content
+";
+    let content = Parser::parse_diff_body(output);
+
+    let headers: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::FileHeader)
+        .collect();
+    assert_eq!(headers.len(), 3);
+
+    assert_eq!(headers[0].content, "src/new.rs");
+    assert_eq!(headers[0].file_op, Some(FileOperation::Added));
+
+    assert_eq!(headers[1].content, "src/main.rs");
+    assert_eq!(headers[1].file_op, Some(FileOperation::Modified));
+
+    assert_eq!(headers[2].content, "old.txt");
+    assert_eq!(headers[2].file_op, Some(FileOperation::Deleted));
+}
+
+#[test]
+fn test_parse_diff_body_conflict_file_op() {
+    let output = "\
+Created conflict in test.txt:
+   1     : original
+        1: <<<<<<< conflict
+";
+    let content = Parser::parse_diff_body(output);
+
+    let header = content
+        .lines
+        .iter()
+        .find(|l| l.kind == DiffLineKind::FileHeader)
+        .unwrap();
+    assert_eq!(header.content, "test.txt");
+    assert_eq!(header.file_op, Some(FileOperation::Modified));
+}
+
+#[test]
+fn test_parse_git_diff_file_op_is_none() {
+    // Git format intentionally does NOT set file_op (no operation info in diff --git header)
+    let output = "\
+diff --git a/src/main.rs b/src/main.rs
+@@ -1,1 +1,1 @@
+-old
++new";
+    let content = Parser::parse_diff_body_git(output);
+
+    let header = content
+        .lines
+        .iter()
+        .find(|l| l.kind == DiffLineKind::FileHeader)
+        .unwrap();
+    assert_eq!(header.content, "src/main.rs");
+    assert_eq!(header.file_op, None); // Must be None — git format lacks operation info
+}
+
+#[test]
+fn test_parse_diff_line_file_op_is_none() {
+    // Individual diff lines should never have file_op set
+    let line =
+        Parser::parse_diff_line("   10   10:     fn main() {", FileOperation::Modified).unwrap();
+    assert_eq!(line.file_op, None);
+
+    let line =
+        Parser::parse_diff_line("        11: +       new line", FileOperation::Modified).unwrap();
+    assert_eq!(line.file_op, None);
+}
