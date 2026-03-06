@@ -140,7 +140,11 @@
 - [x] `jj rebase`: `--branch`（v0.4.0）, `--skip-emptied`（v0.4.0）
 - [x] `jj rebase`: revset 入力（`:` キーで `-r`/`-s`/`-b` に revset 指定）（v0.4.5）
 - [ ] `jj rebase`: `--keep-divergent`
+- [ ] `jj rebase`: `--simplify-parents`（jj 0.39.0〜、rebase 時に冗長親を自動除去）
 - [x] `jj diff/show` 表示オプション拡張（Phase 28, v0.4.3）
+- [x] `jj undo`: 出力改善 — 元に戻された操作名を通知に表示（jj 0.39.0〜, v0.4.13）
+- [ ] `jj git push`: `--option`（jj 0.39.0〜、push オプション指定）
+- [ ] `jj bookmark rename`: `--overwrite-existing`（jj 0.39.0〜）
 
 ### Low
 - [x] `diffedit`（Phase 18.1 完了）

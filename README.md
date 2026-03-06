@@ -49,7 +49,7 @@ Press `?` for help, `q` to quit.
 | Views | Log (with split-pane preview) / Diff / Status / Help (with `/` search + synonym expansion) / Operation History / Blame (with Log jump) / Bookmark / Tag / Evolog (evolution history) / Command History (`H`, shows executed jj commands with OK/NG status) |
 | History Editing | Describe (`d` quick edit / `Ctrl+E` external editor) / Edit / New / New from selected / Commit / Squash / Abandon / Split / Diffedit / Rebase (revision/source/branch/insert-after/insert-before, with `--skip-emptied` toggle and revset input for multi-revision rebase) / Absorb / Duplicate / Revert / Simplify Parents / Parallelize / Fix |
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
-| Recovery | Undo / Redo / Operation Restore / Restore file / Restore all |
+| Recovery | Undo (shows undone operation detail) / Redo / Operation Restore / Restore file / Restore all |
 | Bookmarks | Create / Move to @ (with backward detection) / Delete (multi-select) / Rename / Forget / Track / Untrack / Jump / Bookmark View (`M`) |
 | Tags | Create on @ / Delete / Jump (with revset expansion) / Tag View (`t`) |
 | Git Integration | Fetch (multi-remote selection, branch-specific fetch, tracked-only fetch) / Push (with dry-run preview, force push warnings, protected bookmark detection, multi-remote selection, push-by-change, push-by-revision, bulk options: --all/--tracked/--deleted, auto-retry for private commits and empty descriptions) |
@@ -90,7 +90,7 @@ cargo test --tests            # Integration tests only
 cargo insta test              # Snapshot tests
 ```
 
-**Test categories**: Unit (709), Integration (86), Snapshot (20), Property-based (15)
+**Test categories**: Unit (712), Integration (86), Snapshot (20), Property-based (15)
 
 ## Acknowledgments
 

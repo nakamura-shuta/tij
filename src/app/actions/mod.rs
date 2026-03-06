@@ -177,9 +177,46 @@ impl App {
     }
 
     /// Execute undo operation
+    ///
+    /// jj 0.39+ outputs "Undid operation: ..." to stderr.
+    /// We extract the description part for a more informative notification.
     pub(crate) fn execute_undo(&mut self) {
-        let result = self.run_and_record("Undo", &["undo"]);
-        self.run_jj_action(result, "Undo failed", "Undo complete", DirtyFlags::all());
+        let args: &[&str] = &["undo"];
+        let start = Instant::now();
+        let result = self.jj.run(args);
+        self.record_command("Undo", args, start, &result);
+        match result {
+            Ok(r) => {
+                let msg = Self::parse_undo_message(&r.stderr);
+                self.notify_success(msg);
+                self.mark_dirty_and_refresh_current(DirtyFlags::all());
+            }
+            Err(e) => {
+                self.set_error(format!("Undo failed: {}", e));
+            }
+        }
+    }
+
+    /// Parse jj undo output to extract a concise notification message.
+    ///
+    /// Input format (jj 0.39+):
+    ///   "Undid operation: <id> (<timestamp>) <description>\nRestored to ..."
+    /// Returns: "Undo: <description>" or "Undo complete" as fallback.
+    fn parse_undo_message(output: &str) -> String {
+        // Find first line starting with "Undid operation:"
+        for line in output.lines() {
+            if let Some(rest) = line.strip_prefix("Undid operation:") {
+                // Format: " <id> (<timestamp>) <description>"
+                // Find closing ')' of timestamp, take everything after it
+                if let Some(paren_end) = rest.find(')') {
+                    let description = rest[paren_end + 1..].trim();
+                    if !description.is_empty() {
+                        return format!("Undo: {}", description);
+                    }
+                }
+            }
+        }
+        "Undo complete".to_string()
     }
 
     /// Start describe input mode by fetching the full description
@@ -1572,6 +1609,31 @@ mod tests {
     }
 
     // =========================================================================
+    // parse_undo_message tests (jj 0.39+ output parsing)
+    // =========================================================================
+
+    #[test]
+    fn test_parse_undo_message_jj039_format() {
+        let output = "Undid operation: 4332678ef1ed (2026-03-06 10:29:59) describe commit 509de9e3\nRestored to operation: 6633e04968e6 (2026-03-06 10:29:58) add workspace 'default'";
+        assert_eq!(
+            App::parse_undo_message(output),
+            "Undo: describe commit 509de9e3"
+        );
+    }
+
+    #[test]
+    fn test_parse_undo_message_fallback() {
+        // Pre-0.39 or unexpected format
+        let output = "Working copy now at: abc12345";
+        assert_eq!(App::parse_undo_message(output), "Undo complete");
+    }
+
+    #[test]
+    fn test_parse_undo_message_empty() {
+        assert_eq!(App::parse_undo_message(""), "Undo complete");
+    }
+
+    // =========================================================================
     // Before/after description comparison tests
     //
     // The App::execute_describe_external() method compares descriptions
@@ -2013,6 +2075,7 @@ mod tests {
         let start = Instant::now();
         let result: Result<RunResult, JjError> = Ok(RunResult {
             output: "done".to_string(),
+            stderr: String::new(),
             args: vec!["describe".to_string(), "-m".to_string(), "test".to_string()],
         });
         app.record_command("Describe", &["describe", "-m", "test"], start, &result);

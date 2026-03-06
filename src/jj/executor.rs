@@ -58,6 +58,8 @@ impl PushBulkMode {
 pub struct RunResult {
     /// The command output (stdout)
     pub output: String,
+    /// The stderr output (informational messages, warnings)
+    pub stderr: String,
     /// The arguments passed to jj (excluding --color=never and --repository)
     pub args: Vec<String>,
 }
@@ -144,6 +146,7 @@ impl JjExecutor {
         if output.status.success() {
             Ok(RunResult {
                 output: String::from_utf8_lossy(&output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
                 args: args_vec,
             })
         } else {
@@ -167,6 +170,7 @@ impl JjExecutor {
             if stderr.contains("Refused to snapshot") {
                 return Ok(RunResult {
                     output: stdout,
+                    stderr,
                     args: args_vec,
                 });
             }
