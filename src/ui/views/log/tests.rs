@@ -2013,6 +2013,111 @@ fn test_skip_emptied_false_in_action_when_not_toggled() {
 }
 
 // =============================================================================
+// simplify_parents toggle tests (P key in RebaseSelect)
+// =============================================================================
+
+#[test]
+fn test_simplify_parents_toggle_in_rebase_select() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode -> Revision
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    assert_eq!(view.input_mode, InputMode::RebaseSelect);
+    assert!(!view.simplify_parents); // default false
+
+    // Toggle ON
+    press_key(&mut view, KeyCode::Char('P'));
+    assert!(view.simplify_parents);
+
+    // Toggle OFF
+    press_key(&mut view, KeyCode::Char('P'));
+    assert!(!view.simplify_parents);
+}
+
+#[test]
+fn test_simplify_parents_included_in_rebase_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode -> Revision -> toggle simplify_parents ON
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    press_key(&mut view, KeyCode::Char('P'));
+    assert!(view.simplify_parents);
+
+    // Navigate and confirm
+    press_key(&mut view, keys::MOVE_DOWN);
+    let action = press_key(&mut view, KeyCode::Enter);
+    assert!(matches!(
+        action,
+        LogAction::Rebase {
+            simplify_parents: true,
+            ..
+        }
+    ));
+
+    // After confirm, simplify_parents should be reset
+    assert!(!view.simplify_parents);
+}
+
+#[test]
+fn test_simplify_parents_reset_on_rebase_start() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Manually set simplify_parents to true (simulate leftover)
+    view.simplify_parents = true;
+
+    // Enter rebase mode — should reset
+    press_key(&mut view, keys::REBASE);
+    assert!(!view.simplify_parents);
+}
+
+#[test]
+fn test_simplify_parents_reset_on_cancel() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode -> Revision -> toggle ON
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    press_key(&mut view, KeyCode::Char('P'));
+    assert!(view.simplify_parents);
+
+    // Cancel from RebaseSelect
+    press_key(&mut view, keys::ESC);
+    assert!(!view.simplify_parents);
+}
+
+#[test]
+fn test_simplify_parents_and_skip_emptied_both_on() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    // Enter rebase mode -> Revision -> toggle both ON
+    press_key(&mut view, keys::REBASE);
+    press_key(&mut view, KeyCode::Char('r'));
+    press_key(&mut view, KeyCode::Char('S'));
+    press_key(&mut view, KeyCode::Char('P'));
+    assert!(view.skip_emptied);
+    assert!(view.simplify_parents);
+
+    // Navigate and confirm
+    press_key(&mut view, keys::MOVE_DOWN);
+    let action = press_key(&mut view, KeyCode::Enter);
+    assert!(matches!(
+        action,
+        LogAction::Rebase {
+            skip_emptied: true,
+            simplify_parents: true,
+            ..
+        }
+    ));
+}
+
+// =============================================================================
 // Simplify Parents tests (i key)
 // =============================================================================
 

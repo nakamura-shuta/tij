@@ -134,6 +134,8 @@ pub mod flags {
     pub const BRANCH_SHORT: &str = "-b";
     /// Skip commits that become empty after rebase
     pub const SKIP_EMPTIED: &str = "--skip-emptied";
+    /// Simplify parents of rebased commits (remove redundant ancestors)
+    pub const SIMPLIFY_PARENTS: &str = "--simplify-parents";
 }
 
 /// Default limit for log output (no revset)

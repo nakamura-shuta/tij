@@ -377,6 +377,11 @@ impl LogView {
                 self.skip_emptied = !self.skip_emptied;
                 LogAction::None
             }
+            // Toggle --simplify-parents
+            KeyCode::Char('P') => {
+                self.simplify_parents = !self.simplify_parents;
+                LogAction::None
+            }
             // Confirm rebase
             KeyCode::Enter => {
                 if let (Some(source), Some(dest_change)) =
@@ -391,10 +396,12 @@ impl LogView {
 
                     let mode = self.rebase_mode;
                     let skip_emptied = self.skip_emptied;
+                    let simplify_parents = self.simplify_parents;
                     let use_revset = self.rebase_use_revset;
                     self.rebase_source = None;
                     self.rebase_mode = RebaseMode::default();
                     self.skip_emptied = false;
+                    self.simplify_parents = false;
                     self.rebase_use_revset = false;
                     self.input_mode = InputMode::Normal;
                     LogAction::Rebase {
@@ -403,6 +410,7 @@ impl LogView {
                         mode,
                         skip_emptied,
                         use_revset,
+                        simplify_parents,
                     }
                 } else {
                     LogAction::None

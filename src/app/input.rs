@@ -476,7 +476,15 @@ impl App {
                 mode,
                 skip_emptied,
                 use_revset,
-            } => self.execute_rebase(&source, &destination, mode, skip_emptied, use_revset),
+                simplify_parents,
+            } => self.execute_rebase(
+                &source,
+                &destination,
+                mode,
+                skip_emptied,
+                simplify_parents,
+                use_revset,
+            ),
             LogAction::Absorb => self.execute_absorb(),
             LogAction::StartParallelize(from_id) => {
                 self.notify_info(format!("From: {}. Select end and press Enter", from_id));

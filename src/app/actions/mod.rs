@@ -1121,6 +1121,7 @@ impl App {
     /// - `InsertBefore` (`-B`): Insert change before target in history
     ///
     /// When `skip_emptied` is true, `--skip-emptied` is appended.
+    /// When `simplify_parents` is true, `--simplify-parents` is appended.
     /// On unsupported flag errors, retries without the flag or shows guidance.
     pub(crate) fn execute_rebase(
         &mut self,
@@ -1128,6 +1129,7 @@ impl App {
         destination: &str,
         mode: RebaseMode,
         skip_emptied: bool,
+        simplify_parents: bool,
         use_revset: bool,
     ) {
         // Prevent rebasing to self (skip for revset — let jj validate)
@@ -1136,11 +1138,13 @@ impl App {
             return;
         }
 
-        let extra_flags: Vec<&str> = if skip_emptied {
-            vec![crate::jj::constants::flags::SKIP_EMPTIED]
-        } else {
-            vec![]
-        };
+        let mut extra_flags: Vec<&str> = Vec::new();
+        if skip_emptied {
+            extra_flags.push(crate::jj::constants::flags::SKIP_EMPTIED);
+        }
+        if simplify_parents {
+            extra_flags.push(crate::jj::constants::flags::SIMPLIFY_PARENTS);
+        }
 
         // Build args for recording
         let mut rebase_args = vec!["rebase"];
@@ -1163,71 +1167,105 @@ impl App {
 
         match result {
             Ok(output) => {
-                self.notify_rebase_success(&output, destination, mode, skip_emptied);
+                self.notify_rebase_success(
+                    &output,
+                    destination,
+                    mode,
+                    skip_emptied,
+                    simplify_parents,
+                );
             }
             Err(e) => {
                 let err_msg = format!("{}", e);
 
-                if skip_emptied && is_rebase_flag_unsupported(&err_msg) {
-                    // --skip-emptied (or mode flag) caused failure, retry without it
-                    let mut retry_args = vec!["rebase"];
-                    match mode {
-                        RebaseMode::Revision => {
-                            retry_args.extend_from_slice(&["-r", source, "-d", destination])
-                        }
-                        RebaseMode::Source => {
-                            retry_args.extend_from_slice(&["-s", source, "-d", destination])
-                        }
-                        RebaseMode::Branch => {
-                            retry_args.extend_from_slice(&["-b", source, "-d", destination])
-                        }
-                        RebaseMode::InsertAfter => {
-                            retry_args.extend_from_slice(&["-r", source, "-A", destination])
-                        }
-                        RebaseMode::InsertBefore => {
-                            retry_args.extend_from_slice(&["-r", source, "-B", destination])
-                        }
+                if !is_rebase_flag_unsupported(&err_msg) {
+                    self.set_error(format!("Rebase failed: {}", e));
+                    return;
+                }
+
+                // Fallback: remove optional flags in fixed order
+                // Step 1: remove --simplify-parents if ON
+                // Step 2: remove --skip-emptied if ON
+                // Step 3: -b not supported → warning
+                let mut unsupported_notes: Vec<&str> = Vec::new();
+                let mut retry_skip = skip_emptied;
+                let mut retry_simplify = simplify_parents;
+
+                // Step 1: try without --simplify-parents
+                if retry_simplify {
+                    retry_simplify = false;
+                    let mut retry_flags: Vec<&str> = Vec::new();
+                    if retry_skip {
+                        retry_flags.push(crate::jj::constants::flags::SKIP_EMPTIED);
                     }
-                    let retry = self.run_and_record("Rebase (retry)", &retry_args);
-                    match retry {
+                    let result = self.rebase_with_mode(source, destination, mode, &retry_flags);
+                    match result {
                         Ok(output) => {
-                            self.notify_rebase_success(&output, destination, mode, false);
-                            // Append skip-emptied note, preserving severity
-                            // (e.g., Warning for conflicts must not be downgraded to Info)
-                            if let Some(existing) = self.notification.take() {
-                                let new_msg = format!(
-                                    "{} (--skip-emptied not supported, empty commits may remain)",
-                                    existing.message
-                                );
-                                // Preserves original notification kind (success/info/warning)
-                                self.notification = Some(Notification::new(new_msg, existing.kind));
-                            }
+                            self.notify_rebase_success(
+                                &output,
+                                destination,
+                                mode,
+                                retry_skip,
+                                false,
+                            );
+                            self.append_fallback_note("--simplify-parents not supported");
+                            return;
                         }
                         Err(e2) => {
-                            // Retry also failed — if mode is Branch and error is still
-                            // "unsupported flag", the real issue is -b not being supported
-                            let retry_msg = format!("{}", e2);
-                            if mode == RebaseMode::Branch && is_rebase_flag_unsupported(&retry_msg)
-                            {
-                                self.notify_warning(
-                                    "Branch mode (-b) not supported in this jj version. Use Source mode (-s) instead.",
-                                );
-                            } else {
+                            let msg2 = format!("{}", e2);
+                            if !is_rebase_flag_unsupported(&msg2) {
                                 self.set_error(format!("Rebase failed: {}", e2));
+                                return;
                             }
+                            unsupported_notes.push("--simplify-parents");
                         }
                     }
-                } else if is_rebase_flag_unsupported(&err_msg) {
-                    // No skip_emptied — flag unsupported (e.g., -b not supported)
-                    if mode == RebaseMode::Branch {
-                        self.notify_warning(
-                            "Branch mode (-b) not supported in this jj version. Use Source mode (-s) instead.",
-                        );
-                    } else {
-                        self.set_error(format!("Rebase failed: {}", e));
+                }
+
+                // Step 2: try without --skip-emptied
+                if retry_skip {
+                    retry_skip = false;
+                    let result = self.rebase_with_mode(source, destination, mode, &[]);
+                    match result {
+                        Ok(output) => {
+                            self.notify_rebase_success(&output, destination, mode, false, false);
+                            unsupported_notes.push("--skip-emptied");
+                            let note = format!("{} not supported", unsupported_notes.join("/"));
+                            self.append_fallback_note(&note);
+                            return;
+                        }
+                        Err(e3) => {
+                            let msg3 = format!("{}", e3);
+                            if !is_rebase_flag_unsupported(&msg3) {
+                                self.set_error(format!("Rebase failed: {}", e3));
+                                return;
+                            }
+                            unsupported_notes.push("--skip-emptied");
+                        }
                     }
-                } else {
-                    self.set_error(format!("Rebase failed: {}", e));
+                }
+
+                // Step 3: no optional flags left — if Branch mode, it's -b not supported
+                if !retry_skip && !retry_simplify {
+                    // All optional flags already removed, try bare rebase
+                    let result = self.rebase_with_mode(source, destination, mode, &[]);
+                    match result {
+                        Ok(output) => {
+                            self.notify_rebase_success(&output, destination, mode, false, false);
+                            if !unsupported_notes.is_empty() {
+                                let note = format!("{} not supported", unsupported_notes.join("/"));
+                                self.append_fallback_note(&note);
+                            }
+                        }
+                        Err(_) if mode == RebaseMode::Branch => {
+                            self.notify_warning(
+                                "Branch mode (-b) not supported in this jj version. Use Source mode (-s) instead.",
+                            );
+                        }
+                        Err(e_final) => {
+                            self.set_error(format!("Rebase failed: {}", e_final));
+                        }
+                    }
                 }
             }
         }
@@ -1240,13 +1278,21 @@ impl App {
         destination: &str,
         mode: RebaseMode,
         skip_emptied: bool,
+        simplify_parents: bool,
     ) {
         self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
-        let skip_suffix = if skip_emptied {
-            " (empty commits skipped)"
+        let mut suffixes = Vec::new();
+        if skip_emptied {
+            suffixes.push("empty commits skipped");
+        }
+        if simplify_parents {
+            suffixes.push("parents simplified");
+        }
+        let suffix = if suffixes.is_empty() {
+            String::new()
         } else {
-            ""
+            format!(" ({})", suffixes.join(", "))
         };
 
         // Unified conflict detection from jj output
@@ -1255,23 +1301,51 @@ impl App {
             Notification::warning("Rebased with conflicts - resolve with jj resolve")
         } else {
             let msg = match mode {
-                RebaseMode::Revision => format!("Rebased successfully{}", skip_suffix),
+                RebaseMode::Revision => format!("Rebased successfully{}", suffix),
                 RebaseMode::Source => {
-                    format!("Rebased source and descendants successfully{}", skip_suffix)
+                    format!("Rebased source and descendants successfully{}", suffix)
                 }
-                RebaseMode::Branch => format!("Rebased branch successfully{}", skip_suffix),
+                RebaseMode::Branch => format!("Rebased branch successfully{}", suffix),
                 RebaseMode::InsertAfter => {
                     let short = &destination[..8.min(destination.len())];
-                    format!("Inserted after {} successfully{}", short, skip_suffix)
+                    format!("Inserted after {} successfully{}", short, suffix)
                 }
                 RebaseMode::InsertBefore => {
                     let short = &destination[..8.min(destination.len())];
-                    format!("Inserted before {} successfully{}", short, skip_suffix)
+                    format!("Inserted before {} successfully{}", short, suffix)
                 }
             };
             Notification::success(msg)
         };
         self.notification = Some(notification);
+    }
+
+    /// Build rebase args for a given mode and run (used by fallback retry)
+    fn rebase_with_mode(
+        &mut self,
+        source: &str,
+        destination: &str,
+        mode: RebaseMode,
+        extra_flags: &[&str],
+    ) -> Result<String, crate::jj::JjError> {
+        let mut args = vec!["rebase"];
+        match mode {
+            RebaseMode::Revision => args.extend_from_slice(&["-r", source, "-d", destination]),
+            RebaseMode::Source => args.extend_from_slice(&["-s", source, "-d", destination]),
+            RebaseMode::Branch => args.extend_from_slice(&["-b", source, "-d", destination]),
+            RebaseMode::InsertAfter => args.extend_from_slice(&["-r", source, "-A", destination]),
+            RebaseMode::InsertBefore => args.extend_from_slice(&["-r", source, "-B", destination]),
+        }
+        args.extend_from_slice(extra_flags);
+        self.run_and_record("Rebase (retry)", &args)
+    }
+
+    /// Append fallback note to existing notification, preserving severity
+    fn append_fallback_note(&mut self, note: &str) {
+        if let Some(existing) = self.notification.take() {
+            let new_msg = format!("{} ({})", existing.message, note);
+            self.notification = Some(Notification::new(new_msg, existing.kind));
+        }
     }
 
     /// Update preview cache if selected change has changed.

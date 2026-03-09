@@ -65,6 +65,7 @@
 - [x] Bugfix: プレビューペインのファイル操作 A/M/D 誤表示修正 — FileOperation をパーサーから伝播（v0.4.10）
 - [x] Phase 33: Tag View — タグ一覧表示 / 作成(@ 対象) / 削除 / revset 拡張ジャンプ + Input ダイアログ汎用化（v0.4.11）
 - [x] Phase 34: Command History View — 実行コマンド履歴表示 / 詳細展開 / RunResult 導入 / 全 execute_* 記録フック（v0.4.12）
+- [x] Phase 35: Rebase --simplify-parents — `P` キーで RebaseSelect 中にトグル、冗長親エッジを自動除去（v0.4.14）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
@@ -140,7 +141,7 @@
 - [x] `jj rebase`: `--branch`（v0.4.0）, `--skip-emptied`（v0.4.0）
 - [x] `jj rebase`: revset 入力（`:` キーで `-r`/`-s`/`-b` に revset 指定）（v0.4.5）
 - [ ] `jj rebase`: `--keep-divergent`
-- [ ] `jj rebase`: `--simplify-parents`（jj 0.39.0〜、rebase 時に冗長親を自動除去）
+- [x] `jj rebase`: `--simplify-parents`（jj 0.39.0〜、rebase 時に冗長親を自動除去）（Phase 35, v0.4.14）
 - [x] `jj diff/show` 表示オプション拡張（Phase 28, v0.4.3）
 - [x] `jj undo`: 出力改善 — 元に戻された操作名を通知に表示（jj 0.39.0〜, v0.4.13）
 - [ ] `jj git push`: `--option`（jj 0.39.0〜、push オプション指定）

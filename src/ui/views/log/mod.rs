@@ -102,6 +102,7 @@ pub enum LogAction {
         mode: RebaseMode,
         skip_emptied: bool,
         use_revset: bool,
+        simplify_parents: bool,
     },
     /// Absorb working copy changes into ancestor commits
     Absorb,
@@ -195,6 +196,8 @@ pub struct LogView {
     pub(crate) reversed: bool,
     /// Whether to pass --skip-emptied on rebase (toggled with S in RebaseSelect)
     pub(crate) skip_emptied: bool,
+    /// Whether to pass --simplify-parents on rebase (toggled with P in RebaseSelect)
+    pub(crate) simplify_parents: bool,
     /// Whether current rebase source is a revset string (vs single change_id)
     pub(crate) rebase_use_revset: bool,
 }
@@ -314,6 +317,7 @@ impl LogView {
         if let Some(change_id) = change_id {
             self.rebase_source = Some(change_id);
             self.skip_emptied = false;
+            self.simplify_parents = false;
             self.input_mode = InputMode::RebaseModeSelect;
             true
         } else {
@@ -326,6 +330,7 @@ impl LogView {
         self.rebase_source = None;
         self.rebase_mode = RebaseMode::default();
         self.skip_emptied = false;
+        self.simplify_parents = false;
         self.rebase_use_revset = false;
         self.input_mode = InputMode::Normal;
     }
@@ -351,6 +356,7 @@ impl LogView {
         self.rebase_source = None;
         self.rebase_mode = RebaseMode::default();
         self.skip_emptied = false;
+        self.simplify_parents = false;
         self.rebase_use_revset = false;
         self.input_mode = InputMode::Normal;
     }

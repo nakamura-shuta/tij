@@ -876,6 +876,8 @@ pub struct HintContext {
     pub selected_bookmark_kind: Option<BookmarkKind>,
     /// Whether --skip-emptied is toggled ON in rebase select mode
     pub skip_emptied: bool,
+    /// Whether --simplify-parents is toggled ON in rebase select mode
+    pub simplify_parents: bool,
     /// Current rebase mode (for revset hint visibility)
     pub rebase_mode: crate::model::RebaseMode,
 }
@@ -931,7 +933,9 @@ fn log_hints(input_mode: InputMode, ctx: &HintContext) -> Vec<KeyHint> {
         InputMode::Normal => log_normal_hints(ctx),
         InputMode::SquashSelect => vec![HINT_NAV, HINT_SQUASH_CONFIRM, HINT_CANCEL],
         InputMode::RebaseModeSelect => REBASE_MODE_SELECT_HINTS.to_vec(),
-        InputMode::RebaseSelect => rebase_select_hints(ctx.skip_emptied, ctx.rebase_mode),
+        InputMode::RebaseSelect => {
+            rebase_select_hints(ctx.skip_emptied, ctx.simplify_parents, ctx.rebase_mode)
+        }
         InputMode::CompareSelect => COMPARE_SELECT_HINTS.to_vec(),
         InputMode::ParallelizeSelect => PARALLELIZE_SELECT_HINTS.to_vec(),
         InputMode::RebaseRevsetInput => vec![HINT_SUBMIT, HINT_CANCEL_ESC],
@@ -1092,8 +1096,12 @@ pub const REBASE_MODE_SELECT_HINTS: &[KeyHint] = &[
     },
 ];
 
-/// Build RebaseSelect mode status bar hints (dynamic for skip-emptied state and rebase mode)
-fn rebase_select_hints(skip_emptied: bool, rebase_mode: crate::model::RebaseMode) -> Vec<KeyHint> {
+/// Build RebaseSelect mode status bar hints (dynamic for skip-emptied/simplify-parents state and rebase mode)
+fn rebase_select_hints(
+    skip_emptied: bool,
+    simplify_parents: bool,
+    rebase_mode: crate::model::RebaseMode,
+) -> Vec<KeyHint> {
     use crate::model::RebaseMode;
 
     let skip_label = if skip_emptied {
@@ -1102,6 +1110,16 @@ fn rebase_select_hints(skip_emptied: bool, rebase_mode: crate::model::RebaseMode
         "Skip-empty:OFF"
     };
     let skip_color = if skip_emptied {
+        Color::Green
+    } else {
+        Color::DarkGray
+    };
+    let simplify_label = if simplify_parents {
+        "Simplify:ON"
+    } else {
+        "Simplify:OFF"
+    };
+    let simplify_color = if simplify_parents {
         Color::Green
     } else {
         Color::DarkGray
@@ -1116,6 +1134,11 @@ fn rebase_select_hints(skip_emptied: bool, rebase_mode: crate::model::RebaseMode
             key: "S",
             label: skip_label,
             color: skip_color,
+        },
+        KeyHint {
+            key: "P",
+            label: simplify_label,
+            color: simplify_color,
         },
     ];
     // Show revset hint only for modes that support it
