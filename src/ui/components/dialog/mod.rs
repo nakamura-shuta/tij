@@ -31,8 +31,8 @@ pub enum DialogCallback {
     MoveBookmark {
         /// Bookmark name to move
         name: String,
-        /// Target change ID
-        change_id: String,
+        /// Target revision (commit_id)
+        revision: String,
     },
     /// Operation restore (future use)
     #[allow(dead_code)]
@@ -73,13 +73,13 @@ pub enum DialogCallback {
     /// Restore all files (Confirm dialog)
     RestoreAll,
     /// Revert a change (Confirm dialog, creates reverse-diff commit)
-    Revert { change_id: String },
+    Revert { revision: String },
     /// Simplify parents (Confirm dialog, removes redundant parent edges)
-    SimplifyParents { change_id: String },
+    SimplifyParents { revision: String },
     /// Parallelize commits (Confirm dialog, converts linear chain to siblings)
     Parallelize { from: String, to: String },
     /// Fix (Confirm dialog, apply code formatters to revision and descendants)
-    Fix { change_id: String },
+    Fix { revision: String, change_id: String },
     /// Git push by revision (all bookmarks on a change via --revisions)
     GitPushRevisions {
         change_id: String,

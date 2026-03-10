@@ -326,7 +326,7 @@ impl App {
             | LogAction::DiffEdit(_)
             | LogAction::Revert(_)
             | LogAction::SimplifyParents(_)
-            | LogAction::Fix(_) => {
+            | LogAction::Fix { .. } => {
                 self.handle_log_editing(action);
             }
 
@@ -375,9 +375,9 @@ impl App {
             LogAction::OpenCommandHistory => self.go_to_view(View::CommandHistory),
             LogAction::OpenEvolog(change_id) => self.open_evolog(&change_id),
             LogAction::OpenResolveList {
-                change_id,
+                revision,
                 is_working_copy,
-            } => self.open_resolve_view(&change_id, is_working_copy),
+            } => self.open_resolve_view(&revision, is_working_copy),
             _ => {}
         }
     }
@@ -386,17 +386,17 @@ impl App {
         use crate::ui::components::{Dialog, DialogCallback};
 
         match action {
-            LogAction::StartDescribe(change_id) => self.start_describe_input(&change_id),
-            LogAction::Describe { change_id, message } => {
-                self.execute_describe(&change_id, &message);
+            LogAction::StartDescribe(revision) => self.start_describe_input(&revision),
+            LogAction::Describe { revision, message } => {
+                self.execute_describe(&revision, &message);
             }
-            LogAction::DescribeExternal(change_id) => self.execute_describe_external(&change_id),
-            LogAction::Edit(change_id) => self.execute_edit(&change_id),
+            LogAction::DescribeExternal(revision) => self.execute_describe_external(&revision),
+            LogAction::Edit(revision) => self.execute_edit(&revision),
             LogAction::NewChange => self.execute_new_change(),
             LogAction::NewChangeFrom {
-                change_id,
+                revision,
                 display_name,
-            } => self.execute_new_change_from(&change_id, &display_name),
+            } => self.execute_new_change_from(&revision, &display_name),
             LogAction::NewChangeFromCurrent => {
                 self.notify_info("Use 'c' to create from current change");
             }
@@ -404,12 +404,12 @@ impl App {
                 source,
                 destination,
             } => self.execute_squash_into(&source, &destination),
-            LogAction::Abandon(change_id) => self.execute_abandon(&change_id),
-            LogAction::Split(change_id) => self.execute_split(&change_id),
-            LogAction::Duplicate(change_id) => self.duplicate(&change_id),
-            LogAction::DiffEdit(change_id) => self.execute_diffedit(&change_id, None),
-            LogAction::Revert(change_id) => {
-                let short_id = &change_id[..8.min(change_id.len())];
+            LogAction::Abandon(revision) => self.execute_abandon(&revision),
+            LogAction::Split(revision) => self.execute_split(&revision),
+            LogAction::Duplicate(revision) => self.duplicate(&revision),
+            LogAction::DiffEdit(revision) => self.execute_diffedit(&revision, None),
+            LogAction::Revert(revision) => {
+                let short_id = &revision[..8.min(revision.len())];
                 self.active_dialog = Some(Dialog::confirm(
                     "Revert Change",
                     format!("Revert changes from {}?", short_id),
@@ -417,29 +417,35 @@ impl App {
                         "Creates a new commit that undoes these changes. Undo with 'u' if needed."
                             .to_string(),
                     ),
-                    DialogCallback::Revert { change_id },
+                    DialogCallback::Revert { revision },
                 ));
             }
-            LogAction::SimplifyParents(change_id) => {
-                let short_id = &change_id[..8.min(change_id.len())];
+            LogAction::SimplifyParents(revision) => {
+                let short_id = &revision[..8.min(revision.len())];
                 self.active_dialog = Some(Dialog::confirm(
                     "Simplify Parents",
                     format!("Simplify parents for {}?", short_id),
                     None,
-                    DialogCallback::SimplifyParents { change_id },
+                    DialogCallback::SimplifyParents { revision },
                 ));
             }
-            LogAction::Fix(change_id) => {
-                if self.jj.is_immutable(&change_id) {
+            LogAction::Fix {
+                revision,
+                change_id,
+            } => {
+                if self.jj.is_immutable(&revision) {
                     self.set_error("Cannot fix: commit is immutable");
                     return;
                 }
-                let short_id = &change_id[..8.min(change_id.len())];
+                let short_id = &revision[..8.min(revision.len())];
                 self.active_dialog = Some(Dialog::confirm(
                     "Fix",
                     format!("Apply code formatters to {} and descendants?", short_id),
                     None,
-                    DialogCallback::Fix { change_id },
+                    DialogCallback::Fix {
+                        revision,
+                        change_id,
+                    },
                 ));
             }
             _ => {}
@@ -448,8 +454,8 @@ impl App {
 
     fn handle_log_bookmark(&mut self, action: LogAction) {
         match action {
-            LogAction::CreateBookmark { change_id, name } => {
-                self.execute_bookmark_create(&change_id, &name);
+            LogAction::CreateBookmark { revision, name } => {
+                self.execute_bookmark_create(&revision, &name);
             }
             LogAction::StartBookmarkDelete => self.start_bookmark_delete(),
             LogAction::StartBookmarkJump => self.start_bookmark_jump(),
@@ -634,7 +640,7 @@ impl App {
             }
             DiffAction::OpenBlame { file_path } => {
                 // Get the current change_id from diff_view for proper revision
-                let revision = self.diff_view.as_ref().map(|v| v.change_id.clone());
+                let revision = self.diff_view.as_ref().map(|v| v.revision.clone());
                 self.open_blame(&file_path, revision.as_deref());
             }
             DiffAction::ShowNotification(message) => {
@@ -733,12 +739,12 @@ impl App {
             }
             ResolveAction::ShowDiff(file_path) => {
                 // Open diff for the change, jumping to the file
-                let change_id = self
+                let revision = self
                     .resolve_view
                     .as_ref()
-                    .map(|v| v.change_id.clone())
+                    .map(|v| v.revision.clone())
                     .unwrap_or_default();
-                self.open_diff_at_file(&change_id, &file_path);
+                self.open_diff_at_file(&revision, &file_path);
             }
         }
     }

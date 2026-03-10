@@ -208,7 +208,7 @@ fn test_select_dialog_cancel() {
 fn test_dialog_callback_clone_with_data() {
     let callback = DialogCallback::MoveBookmark {
         name: "main".to_string(),
-        change_id: "abc123".to_string(),
+        revision: "abc123".to_string(),
     };
     let cloned = callback.clone();
     assert_eq!(callback, cloned);
@@ -218,17 +218,17 @@ fn test_dialog_callback_clone_with_data() {
 fn test_dialog_callback_equality_different_data() {
     let callback1 = DialogCallback::MoveBookmark {
         name: "main".to_string(),
-        change_id: "abc123".to_string(),
+        revision: "abc123".to_string(),
     };
     let callback2 = DialogCallback::MoveBookmark {
         name: "feature".to_string(), // Different name
-        change_id: "abc123".to_string(),
+        revision: "abc123".to_string(),
     };
     assert_ne!(callback1, callback2);
 
     let callback3 = DialogCallback::MoveBookmark {
         name: "main".to_string(),
-        change_id: "xyz789".to_string(), // Different change_id
+        revision: "xyz789".to_string(), // Different change_id
     };
     assert_ne!(callback1, callback3);
 }
@@ -237,7 +237,7 @@ fn test_dialog_callback_equality_different_data() {
 fn test_dialog_callback_different_variants() {
     let move_bm = DialogCallback::MoveBookmark {
         name: "main".to_string(),
-        change_id: "abc123".to_string(),
+        revision: "abc123".to_string(),
     };
     let delete_bm = DialogCallback::DeleteBookmarks;
     assert_ne!(move_bm, delete_bm);
@@ -251,7 +251,7 @@ fn test_confirm_dialog_for_move_bookmark() {
         Some("Bookmark will be updated.".to_string()),
         DialogCallback::MoveBookmark {
             name: "main".to_string(),
-            change_id: "abc123".to_string(),
+            revision: "abc123".to_string(),
         },
     );
 

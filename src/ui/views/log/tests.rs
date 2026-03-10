@@ -2,7 +2,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent};
 
-use super::{InputMode, LogAction, LogView, RebaseMode};
+use super::{InputMode, LogAction, LogView, RebaseMode, RebaseSource};
 use crate::jj::constants;
 use crate::keys;
 use crate::model::Change;
@@ -170,7 +170,7 @@ fn test_handle_key_open_diff() {
     view.set_changes(create_test_changes());
 
     let action = press_key(&mut view, keys::OPEN_DIFF);
-    assert_eq!(action, LogAction::OpenDiff("abc12345".to_string()));
+    assert_eq!(action, LogAction::OpenDiff("def67890".to_string()));
 }
 
 #[test]
@@ -471,7 +471,10 @@ fn test_squash_key_enters_select_mode() {
     let action = press_key(&mut view, keys::SQUASH);
     assert_eq!(action, LogAction::None);
     assert_eq!(view.input_mode, InputMode::SquashSelect);
-    assert_eq!(view.squash_source, Some("abc12345".to_string()));
+    assert_eq!(
+        view.squash_source,
+        Some(("abc12345".to_string(), "def67890".to_string()))
+    );
 }
 
 #[test]
@@ -497,7 +500,7 @@ fn test_squash_select_confirm() {
     assert!(matches!(
         action,
         LogAction::SquashInto { source, destination }
-        if source == "abc12345" && destination == "xyz98765"
+        if source == "def67890" && destination == "uvw43210"
     ));
     assert_eq!(view.input_mode, InputMode::Normal);
 }
@@ -512,7 +515,10 @@ fn test_squash_into_same_revision_blocked() {
     let action = press_key(&mut view, KeyCode::Enter);
     assert_eq!(action, LogAction::None); // Blocked
     assert_eq!(view.input_mode, InputMode::SquashSelect); // Still in mode
-    assert_eq!(view.squash_source, Some("abc12345".to_string())); // Source preserved
+    assert_eq!(
+        view.squash_source,
+        Some(("abc12345".to_string(), "def67890".to_string()))
+    ); // Source preserved
 }
 
 #[test]
@@ -585,7 +591,7 @@ fn test_handle_key_abandon() {
     assert_eq!(view.selected_change().unwrap().change_id, "abc12345");
 
     let action = press_key(&mut view, keys::ABANDON);
-    assert_eq!(action, LogAction::Abandon("abc12345".to_string()));
+    assert_eq!(action, LogAction::Abandon("def67890".to_string()));
 }
 
 #[test]
@@ -602,10 +608,7 @@ fn test_handle_key_abandon_on_root() {
 
     // Should still return action (state.rs will handle the guard)
     let action = press_key(&mut view, keys::ABANDON);
-    assert_eq!(
-        action,
-        LogAction::Abandon(constants::ROOT_CHANGE_ID.to_string())
-    );
+    assert_eq!(action, LogAction::Abandon("0".repeat(40)));
 }
 
 #[test]
@@ -630,7 +633,7 @@ fn test_handle_key_split() {
     assert_eq!(view.selected_change().unwrap().change_id, "abc12345");
 
     let action = press_key(&mut view, keys::SPLIT);
-    assert_eq!(action, LogAction::Split("abc12345".to_string()));
+    assert_eq!(action, LogAction::Split("def67890".to_string()));
 }
 
 #[test]
@@ -655,7 +658,7 @@ fn test_handle_key_bookmark_create() {
     let action = press_key(&mut view, keys::BOOKMARK);
     assert_eq!(action, LogAction::None);
     assert_eq!(view.input_mode, InputMode::BookmarkInput);
-    assert_eq!(view.editing_change_id, Some("abc12345".to_string()));
+    assert_eq!(view.editing_revision, Some("def67890".to_string()));
 }
 
 #[test]
@@ -686,7 +689,7 @@ fn test_bookmark_input_submit() {
     assert_eq!(
         action,
         LogAction::CreateBookmark {
-            change_id: "abc12345".to_string(),
+            revision: "def67890".to_string(),
             name: "my-bookmark".to_string()
         }
     );
@@ -722,7 +725,7 @@ fn test_bookmark_input_cancel() {
     assert_eq!(action, LogAction::None);
     assert_eq!(view.input_mode, InputMode::Normal);
     assert!(view.input_buffer.is_empty());
-    assert!(view.editing_change_id.is_none());
+    assert!(view.editing_revision.is_none());
 }
 
 #[test]
@@ -774,7 +777,11 @@ fn test_rebase_mode_enter() {
     let action = press_key(&mut view, keys::REBASE);
     assert_eq!(action, LogAction::None);
     assert_eq!(view.input_mode, InputMode::RebaseModeSelect);
-    assert_eq!(view.rebase_source, Some("abc12345".to_string()));
+    assert!(matches!(
+        view.rebase_source,
+        Some(RebaseSource::Selected { ref change_id, ref commit_id })
+        if change_id == "abc12345" && commit_id == "def67890"
+    ));
 }
 
 #[test]
@@ -842,7 +849,11 @@ fn test_rebase_action_revision_mode() {
     // Enter rebase mode -> select Revision
     press_key(&mut view, keys::REBASE);
     press_key(&mut view, KeyCode::Char('r'));
-    assert_eq!(view.rebase_source, Some("abc12345".to_string()));
+    assert!(matches!(
+        view.rebase_source,
+        Some(RebaseSource::Selected { ref change_id, .. })
+        if change_id == "abc12345"
+    ));
 
     // Move down to second change as destination
     press_key(&mut view, keys::MOVE_DOWN);
@@ -852,7 +863,7 @@ fn test_rebase_action_revision_mode() {
     let action = press_key(&mut view, KeyCode::Enter);
     assert!(
         matches!(action, LogAction::Rebase { source, destination, mode, .. }
-        if source == "abc12345" && destination == "xyz98765" && mode == RebaseMode::Revision)
+        if source == "def67890" && destination == "uvw43210" && mode == RebaseMode::Revision)
     );
     assert_eq!(view.input_mode, InputMode::Normal);
 }
@@ -974,7 +985,7 @@ fn test_rebase_source_mode_action() {
     let action = press_key(&mut view, KeyCode::Enter);
     assert!(
         matches!(action, LogAction::Rebase { source, destination, mode, .. }
-        if source == "abc12345" && destination == "xyz98765" && mode == RebaseMode::Source)
+        if source == "def67890" && destination == "uvw43210" && mode == RebaseMode::Source)
     );
 }
 
@@ -991,7 +1002,7 @@ fn test_rebase_insert_after_action() {
     let action = press_key(&mut view, KeyCode::Enter);
     assert!(
         matches!(action, LogAction::Rebase { source, destination, mode, .. }
-        if source == "abc12345" && destination == "xyz98765" && mode == RebaseMode::InsertAfter)
+        if source == "def67890" && destination == "uvw43210" && mode == RebaseMode::InsertAfter)
     );
 }
 
@@ -1008,7 +1019,7 @@ fn test_rebase_insert_before_action() {
     let action = press_key(&mut view, KeyCode::Enter);
     assert!(
         matches!(action, LogAction::Rebase { source, destination, mode, .. }
-        if source == "abc12345" && destination == "xyz98765" && mode == RebaseMode::InsertBefore)
+        if source == "def67890" && destination == "uvw43210" && mode == RebaseMode::InsertBefore)
     );
 }
 
@@ -1073,7 +1084,7 @@ fn test_describe_key_returns_start_describe_action() {
 
     // Press d - should return StartDescribe action (App will fetch full description)
     let action = press_key(&mut view, keys::DESCRIBE);
-    assert_eq!(action, LogAction::StartDescribe("abc12345".to_string()));
+    assert_eq!(action, LogAction::StartDescribe("def67890".to_string()));
     // View should NOT yet be in DescribeInput mode (App sets it via set_describe_input)
     assert_eq!(view.input_mode, InputMode::Normal);
 }
@@ -1087,7 +1098,7 @@ fn test_set_describe_input_prefills_first_line() {
     view.set_describe_input("abc12345".to_string(), "First commit".to_string());
 
     assert_eq!(view.input_mode, InputMode::DescribeInput);
-    assert_eq!(view.editing_change_id, Some("abc12345".to_string()));
+    assert_eq!(view.editing_revision, Some("abc12345".to_string()));
     // input_buffer should be prefilled with the description
     assert_eq!(view.input_buffer, "First commit");
 }
@@ -1106,7 +1117,7 @@ fn test_describe_input_cancel() {
 
     assert_eq!(view.input_mode, InputMode::Normal);
     assert!(view.input_buffer.is_empty());
-    assert!(view.editing_change_id.is_none());
+    assert!(view.editing_revision.is_none());
 }
 
 #[test]
@@ -1143,15 +1154,15 @@ fn test_describe_input_enter_submits() {
 
     // Start describe input with prefilled text
     view.set_describe_input("abc12345".to_string(), "First commit".to_string());
-    assert_eq!(view.editing_change_id, Some("abc12345".to_string()));
+    assert_eq!(view.editing_revision, Some("abc12345".to_string()));
 
     // Press Enter to submit
     let action = submit(&mut view);
 
     assert!(matches!(
         action,
-        LogAction::Describe { change_id, message }
-        if change_id == "abc12345" && message == "First commit"
+        LogAction::Describe { revision, message }
+        if revision == "abc12345" && message == "First commit"
     ));
     assert_eq!(view.input_mode, InputMode::Normal);
     assert!(view.input_buffer.is_empty());
@@ -1187,8 +1198,8 @@ fn test_describe_input_type_and_submit() {
     let action = submit(&mut view);
     assert!(matches!(
         action,
-        LogAction::Describe { change_id, message }
-        if change_id == "abc12345" && message == "new desc"
+        LogAction::Describe { revision, message }
+        if revision == "abc12345" && message == "new desc"
     ));
 }
 
@@ -1206,7 +1217,7 @@ fn test_describe_external_key_returns_action() {
     // Press Ctrl+E
     let key = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL);
     let action = view.handle_key(key);
-    assert_eq!(action, LogAction::DescribeExternal("abc12345".to_string()));
+    assert_eq!(action, LogAction::DescribeExternal("def67890".to_string()));
 }
 
 #[test]
@@ -1228,7 +1239,7 @@ fn test_e_without_ctrl_returns_edit_action() {
 
     // Plain 'e' should be Edit, not DescribeExternal
     let action = press_key(&mut view, keys::EDIT);
-    assert_eq!(action, LogAction::Edit("abc12345".to_string()));
+    assert_eq!(action, LogAction::Edit("def67890".to_string()));
 }
 
 #[test]
@@ -1291,11 +1302,11 @@ fn test_new_from_key_returns_action() {
     let result = view.handle_key(KeyEvent::from(KeyCode::Char('C')));
     match result {
         LogAction::NewChangeFrom {
-            change_id,
+            revision,
             display_name,
         } => {
-            assert_eq!(change_id, "xyz98765");
-            assert_eq!(display_name, "xyz98765"); // bookmark なし → short_id
+            assert_eq!(revision, "uvw43210"); // commit_id
+            assert_eq!(display_name, "xyz98765"); // bookmark なし → change_id short_id
         }
         _ => panic!("Expected NewChangeFrom action"),
     }
@@ -1384,7 +1395,10 @@ fn test_compare_same_revision_returns_notification() {
     let action = press_key(&mut view, KeyCode::Enter);
     assert_eq!(action, LogAction::CompareSameRevision); // Notification action
     assert_eq!(view.input_mode, InputMode::CompareSelect); // Still in mode
-    assert_eq!(view.compare_from, Some("abc12345".to_string())); // Source preserved
+    assert_eq!(
+        view.compare_from,
+        Some(("abc12345".to_string(), "def67890".to_string()))
+    ); // Source preserved
 }
 
 #[test]
@@ -1709,7 +1723,7 @@ fn test_diffedit_key_returns_action() {
     view.set_changes(create_test_changes());
 
     let action = press_key(&mut view, keys::DIFFEDIT);
-    assert_eq!(action, LogAction::DiffEdit("abc12345".to_string()));
+    assert_eq!(action, LogAction::DiffEdit("def67890".to_string()));
 }
 
 #[test]
@@ -1727,11 +1741,11 @@ fn test_diffedit_does_not_conflict_with_edit() {
 
     // 'e' (lowercase) = Edit
     let action = press_key(&mut view, keys::EDIT);
-    assert_eq!(action, LogAction::Edit("abc12345".to_string()));
+    assert_eq!(action, LogAction::Edit("def67890".to_string()));
 
     // 'E' (uppercase) = DiffEdit — different action
     let action = press_key(&mut view, keys::DIFFEDIT);
-    assert_eq!(action, LogAction::DiffEdit("abc12345".to_string()));
+    assert_eq!(action, LogAction::DiffEdit("def67890".to_string()));
 }
 
 // =============================================================================
@@ -1744,7 +1758,7 @@ fn test_evolog_key_returns_action() {
     view.set_changes(create_test_changes());
 
     let action = press_key(&mut view, keys::EVOLOG);
-    assert_eq!(action, LogAction::OpenEvolog("abc12345".to_string()));
+    assert_eq!(action, LogAction::OpenEvolog("def67890".to_string()));
 }
 
 #[test]
@@ -1762,11 +1776,11 @@ fn test_evolog_does_not_conflict_with_edit() {
 
     // 'e' (lowercase) = Edit
     let action = press_key(&mut view, keys::EDIT);
-    assert_eq!(action, LogAction::Edit("abc12345".to_string()));
+    assert_eq!(action, LogAction::Edit("def67890".to_string()));
 
     // 'L' (uppercase) = Evolog — completely different key
     let action = press_key(&mut view, keys::EVOLOG);
-    assert_eq!(action, LogAction::OpenEvolog("abc12345".to_string()));
+    assert_eq!(action, LogAction::OpenEvolog("def67890".to_string()));
 }
 
 #[test]
@@ -1804,7 +1818,7 @@ fn test_revert_key_returns_action() {
     view.set_changes(create_test_changes());
 
     let action = press_key(&mut view, keys::REVERT);
-    assert_eq!(action, LogAction::Revert("abc12345".to_string()));
+    assert_eq!(action, LogAction::Revert("def67890".to_string()));
 }
 
 #[test]
@@ -1895,7 +1909,7 @@ fn test_rebase_branch_mode_action() {
     let action = press_key(&mut view, KeyCode::Enter);
     assert!(
         matches!(action, LogAction::Rebase { source, destination, mode, .. }
-        if source == "abc12345" && destination == "xyz98765" && mode == RebaseMode::Branch)
+        if source == "def67890" && destination == "uvw43210" && mode == RebaseMode::Branch)
     );
 }
 
@@ -2127,7 +2141,7 @@ fn test_simplify_parents_key_returns_action() {
     view.set_changes(create_test_changes());
 
     let action = press_key(&mut view, keys::SIMPLIFY_PARENTS);
-    assert_eq!(action, LogAction::SimplifyParents("abc12345".to_string()));
+    assert_eq!(action, LogAction::SimplifyParents("def67890".to_string()));
 }
 
 #[test]
@@ -2175,7 +2189,10 @@ fn test_parallelize_key_enters_select_mode() {
     let action = press_key(&mut view, keys::PARALLELIZE);
     assert_eq!(action, LogAction::StartParallelize("abc12345".to_string()));
     assert_eq!(view.input_mode, InputMode::ParallelizeSelect);
-    assert_eq!(view.parallelize_from, Some("abc12345".to_string()));
+    assert_eq!(
+        view.parallelize_from,
+        Some(("abc12345".to_string(), "def67890".to_string()))
+    );
 }
 
 #[test]
@@ -2192,8 +2209,8 @@ fn test_parallelize_enter_returns_action() {
     assert_eq!(
         action,
         LogAction::Parallelize {
-            from: "abc12345".to_string(),
-            to: "xyz98765".to_string()
+            from: "def67890".to_string(),
+            to: "uvw43210".to_string()
         }
     );
     assert_eq!(view.input_mode, InputMode::Normal);
@@ -2210,7 +2227,10 @@ fn test_parallelize_same_revision_returns_notification() {
     let action = press_key(&mut view, KeyCode::Enter);
     assert_eq!(action, LogAction::ParallelizeSameRevision);
     assert_eq!(view.input_mode, InputMode::ParallelizeSelect); // Still in mode
-    assert_eq!(view.parallelize_from, Some("abc12345".to_string())); // Source preserved
+    assert_eq!(
+        view.parallelize_from,
+        Some(("abc12345".to_string(), "def67890".to_string()))
+    ); // Source preserved
 }
 
 #[test]
@@ -2236,7 +2256,10 @@ fn test_parallelize_reverse_selection() {
     press_key(&mut view, KeyCode::Char('j'));
     // Enter ParallelizeSelect mode from "xyz98765"
     press_key(&mut view, keys::PARALLELIZE);
-    assert_eq!(view.parallelize_from, Some("xyz98765".to_string()));
+    assert_eq!(
+        view.parallelize_from,
+        Some(("xyz98765".to_string(), "uvw43210".to_string()))
+    );
 
     // Move back up to first change (newer)
     press_key(&mut view, KeyCode::Char('k'));
@@ -2245,8 +2268,8 @@ fn test_parallelize_reverse_selection() {
     assert_eq!(
         action,
         LogAction::Parallelize {
-            from: "xyz98765".to_string(),
-            to: "abc12345".to_string()
+            from: "uvw43210".to_string(),
+            to: "def67890".to_string()
         }
     );
 }
@@ -2334,8 +2357,10 @@ fn test_rebase_revset_input_sets_source() {
     submit(&mut view);
 
     assert_eq!(view.input_mode, InputMode::RebaseSelect);
-    assert_eq!(view.rebase_source, Some("A|B".to_string()));
-    assert!(view.rebase_use_revset);
+    assert!(matches!(
+        view.rebase_source,
+        Some(RebaseSource::Revset(ref s)) if s == "A|B"
+    ));
 }
 
 #[test]
@@ -2350,9 +2375,10 @@ fn test_rebase_revset_input_esc_clears_revset() {
     escape(&mut view);
 
     assert_eq!(view.input_mode, InputMode::RebaseSelect);
-    assert!(!view.rebase_use_revset);
-    // Source should be restored to current selection's change_id
-    assert_eq!(view.rebase_source, Some("abc12345".to_string()));
+    assert!(matches!(
+        view.rebase_source,
+        Some(RebaseSource::Selected { ref change_id, .. }) if change_id == "abc12345"
+    ));
 }
 
 #[test]
@@ -2367,9 +2393,10 @@ fn test_rebase_revset_empty_restores_source() {
     submit(&mut view);
 
     assert_eq!(view.input_mode, InputMode::RebaseSelect);
-    assert!(!view.rebase_use_revset);
-    // Source should be restored to current selection's change_id
-    assert_eq!(view.rebase_source, Some("abc12345".to_string()));
+    assert!(matches!(
+        view.rebase_source,
+        Some(RebaseSource::Selected { ref change_id, .. }) if change_id == "abc12345"
+    ));
 }
 
 #[test]
@@ -2406,12 +2433,11 @@ fn test_rebase_revset_reset_on_cancel() {
     press_key(&mut view, KeyCode::Char(':'));
     type_text(&mut view, "A|B");
     submit(&mut view);
-    assert!(view.rebase_use_revset);
+    assert!(matches!(view.rebase_source, Some(RebaseSource::Revset(_))));
 
     // Cancel from RebaseSelect
     escape(&mut view);
     assert_eq!(view.input_mode, InputMode::Normal);
-    assert!(!view.rebase_use_revset);
     assert_eq!(view.rebase_source, None);
 }
 
@@ -2426,18 +2452,21 @@ fn test_rebase_revset_esc_after_previous_revset() {
     press_key(&mut view, KeyCode::Char(':'));
     type_text(&mut view, "A");
     submit(&mut view);
-    assert!(view.rebase_use_revset);
-    assert_eq!(view.rebase_source, Some("A".to_string()));
+    assert!(matches!(
+        view.rebase_source,
+        Some(RebaseSource::Revset(ref s)) if s == "A"
+    ));
 
     // Re-enter revset input, type "B", then Esc
     press_key(&mut view, KeyCode::Char(':'));
     type_text(&mut view, "B");
     escape(&mut view);
 
-    // Esc should fully clear revset mode
-    assert!(!view.rebase_use_revset);
-    // Source should be restored to currently selected change_id
-    assert_eq!(view.rebase_source, Some("abc12345".to_string()));
+    // Esc should restore to Selected
+    assert!(matches!(
+        view.rebase_source,
+        Some(RebaseSource::Selected { ref change_id, .. }) if change_id == "abc12345"
+    ));
     assert_eq!(view.input_mode, InputMode::RebaseSelect);
 }
 
@@ -2453,8 +2482,10 @@ fn test_rebase_revset_backspace() {
     press_key(&mut view, KeyCode::Backspace);
     submit(&mut view);
 
-    assert_eq!(view.rebase_source, Some("ab".to_string()));
-    assert!(view.rebase_use_revset);
+    assert!(matches!(
+        view.rebase_source,
+        Some(RebaseSource::Revset(ref s)) if s == "ab"
+    ));
 }
 
 // =============================================================================
@@ -2467,7 +2498,13 @@ fn test_fix_key_dispatches_action() {
     view.set_changes(create_test_changes());
 
     let action = press_key(&mut view, keys::FIX);
-    assert_eq!(action, LogAction::Fix("abc12345".to_string()));
+    assert_eq!(
+        action,
+        LogAction::Fix {
+            revision: "def67890".to_string(),
+            change_id: "abc12345".to_string()
+        }
+    );
 }
 
 #[test]

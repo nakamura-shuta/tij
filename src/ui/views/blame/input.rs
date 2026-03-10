@@ -43,10 +43,10 @@ impl BlameView {
                 self.move_to_bottom();
                 BlameAction::None
             }
-            // Open diff for selected change
+            // Open diff for selected change (use commit_id for unambiguous execution)
             KeyCode::Enter => {
-                if let Some(change_id) = self.selected_change_id() {
-                    BlameAction::OpenDiff(change_id.to_string())
+                if let Some(commit_id) = self.selected_commit_id() {
+                    BlameAction::OpenDiff(commit_id.to_string())
                 } else {
                     BlameAction::None
                 }
@@ -69,6 +69,7 @@ mod tests {
         for i in 1..=3 {
             content.lines.push(AnnotationLine {
                 change_id: format!("change{:02}", i),
+                commit_id: format!("commit{:02}", i),
                 author: "test".to_string(),
                 timestamp: "2026-01-30 10:00".to_string(),
                 line_number: i,
@@ -105,7 +106,7 @@ mod tests {
         view.set_content(make_test_content(), None);
 
         let action = view.handle_key(key_event(KeyCode::Enter));
-        assert_eq!(action, BlameAction::OpenDiff("change01".to_string()));
+        assert_eq!(action, BlameAction::OpenDiff("commit01".to_string()));
     }
 
     #[test]

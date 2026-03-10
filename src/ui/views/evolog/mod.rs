@@ -23,7 +23,7 @@ pub enum EvologAction {
 #[derive(Debug)]
 pub struct EvologView {
     /// Target change ID (the change whose history we're viewing)
-    pub change_id: String,
+    pub revision: String,
     /// Evolution entries (newest first)
     pub(super) entries: Vec<EvologEntry>,
     /// Selected entry index
@@ -34,9 +34,9 @@ pub struct EvologView {
 
 impl EvologView {
     /// Create a new Evolog View
-    pub fn new(change_id: String, entries: Vec<EvologEntry>) -> Self {
+    pub fn new(revision: String, entries: Vec<EvologEntry>) -> Self {
         Self {
-            change_id,
+            revision,
             entries,
             selected: 0,
             scroll_offset: 0,
@@ -110,7 +110,7 @@ mod tests {
     fn test_new_evolog_view() {
         let entries = create_test_entries();
         let view = EvologView::new("zxsrvopz".to_string(), entries);
-        assert_eq!(view.change_id, "zxsrvopz");
+        assert_eq!(view.revision, "zxsrvopz");
         assert_eq!(view.entries.len(), 3);
         assert_eq!(view.selected, 0);
     }

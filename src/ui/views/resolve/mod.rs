@@ -29,7 +29,7 @@ pub enum ResolveAction {
 #[derive(Debug, Clone)]
 pub struct ResolveView {
     /// Target change ID
-    pub change_id: String,
+    pub revision: String,
     /// Whether the target is the working copy (@)
     pub is_working_copy: bool,
     /// List of conflict files
@@ -42,9 +42,9 @@ pub struct ResolveView {
 
 impl ResolveView {
     /// Create a new resolve view for a change
-    pub fn new(change_id: String, is_working_copy: bool, files: Vec<ConflictFile>) -> Self {
+    pub fn new(revision: String, is_working_copy: bool, files: Vec<ConflictFile>) -> Self {
         Self {
-            change_id,
+            revision,
             is_working_copy,
             files,
             selected_index: 0,
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn test_resolve_view_new() {
         let view = ResolveView::new("abc12345".to_string(), true, make_test_files());
-        assert_eq!(view.change_id, "abc12345");
+        assert_eq!(view.revision, "abc12345");
         assert!(view.is_working_copy);
         assert_eq!(view.file_count(), 3);
         assert!(!view.is_empty());
@@ -205,6 +205,6 @@ mod tests {
     fn test_resolve_view_not_working_copy() {
         let view = ResolveView::new("lqwwsqpm".to_string(), false, make_test_files());
         assert!(!view.is_working_copy);
-        assert_eq!(view.change_id, "lqwwsqpm");
+        assert_eq!(view.revision, "lqwwsqpm");
     }
 }

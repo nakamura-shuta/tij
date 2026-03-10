@@ -223,20 +223,20 @@ impl App {
     ///
     /// If the description is multi-line, automatically opens the external
     /// editor instead of the 1-line input bar to prevent data loss.
-    pub(crate) fn start_describe_input(&mut self, change_id: &str) {
+    pub(crate) fn start_describe_input(&mut self, revision: &str) {
         // Fetch the full (multi-line) description from jj
-        match self.jj.get_description(change_id) {
+        match self.jj.get_description(revision) {
             Ok(full_description) => {
                 let description = full_description.trim_end_matches('\n').to_string();
 
                 // Multi-line: fall through to external editor directly
                 if description.lines().nth(1).is_some() {
-                    self.execute_describe_external(change_id);
+                    self.execute_describe_external(revision);
                     return;
                 }
 
                 self.log_view
-                    .set_describe_input(change_id.to_string(), description);
+                    .set_describe_input(revision.to_string(), description);
             }
             Err(e) => {
                 self.set_error(format!("Failed to get description: {}", e));
@@ -249,15 +249,15 @@ impl App {
     /// Temporarily exits TUI mode to allow the editor to run.
     /// Uses before/after description comparison to detect changes,
     /// since jj describe --edit exits 0 regardless of whether the user saved.
-    pub(crate) fn execute_describe_external(&mut self, change_id: &str) {
+    pub(crate) fn execute_describe_external(&mut self, revision: &str) {
         // Pre-check: immutable commits cannot be described
-        if self.jj.is_immutable(change_id) {
+        if self.jj.is_immutable(revision) {
             self.set_error("Cannot describe: commit is immutable");
             return;
         }
 
         // Capture description before editing for change detection
-        let before = match self.jj.get_description(change_id) {
+        let before = match self.jj.get_description(revision) {
             Ok(desc) => Some(desc.trim_end().to_string()),
             Err(_) => None,
         };
@@ -266,10 +266,10 @@ impl App {
 
         // Run jj describe --editor (blocking, interactive)
         let start = Instant::now();
-        let result = self.jj.describe_edit_interactive(change_id);
+        let result = self.jj.describe_edit_interactive(revision);
         self.record_interactive_command(
             "Describe (editor)",
-            &["describe", change_id],
+            &["describe", revision],
             start,
             &result,
         );
@@ -277,7 +277,7 @@ impl App {
         match result {
             Ok(status) if status.success() => {
                 // Compare before/after to detect actual changes
-                let after = match self.jj.get_description(change_id) {
+                let after = match self.jj.get_description(revision) {
                     Ok(desc) => Some(desc.trim_end().to_string()),
                     Err(_) => None,
                 };
@@ -313,8 +313,8 @@ impl App {
     }
 
     /// Execute describe operation
-    pub(crate) fn execute_describe(&mut self, change_id: &str, message: &str) {
-        let result = self.run_and_record("Describe", &["describe", change_id, "-m", message]);
+    pub(crate) fn execute_describe(&mut self, revision: &str, message: &str) {
+        let result = self.run_and_record("Describe", &["describe", revision, "-m", message]);
         self.run_jj_action(
             result,
             "Failed to update description",
@@ -324,10 +324,10 @@ impl App {
     }
 
     /// Execute edit operation (set working-copy to specified change)
-    pub(crate) fn execute_edit(&mut self, change_id: &str) {
-        let short_id = &change_id[..8.min(change_id.len())];
+    pub(crate) fn execute_edit(&mut self, revision: &str) {
+        let short_id = &revision[..8.min(revision.len())];
         let msg = format!("Now editing: {}", short_id);
-        let result = self.run_and_record("Edit", &["edit", change_id]);
+        let result = self.run_and_record("Edit", &["edit", revision]);
         self.run_jj_action(result, "Failed to edit", &msg, DirtyFlags::log_and_status());
     }
 
@@ -372,8 +372,15 @@ impl App {
     pub(crate) fn execute_squash_into(&mut self, source: &str, destination: &str) {
         use crate::jj::constants::ROOT_CHANGE_ID;
 
-        // Guard: cannot squash root commit (has no parent to receive changes from)
-        if source == ROOT_CHANGE_ID {
+        // Guard: cannot squash root commit (reverse-lookup from commit_id)
+        let is_root = self
+            .log_view
+            .changes
+            .iter()
+            .find(|c| c.commit_id == source)
+            .map(|c| c.change_id == ROOT_CHANGE_ID)
+            .unwrap_or(false);
+        if is_root {
             self.notify_info("Cannot squash: root commit has no parent");
             return;
         }
@@ -415,26 +422,32 @@ impl App {
     }
 
     /// Execute abandon operation (abandon a change)
-    pub(crate) fn execute_abandon(&mut self, change_id: &str) {
+    pub(crate) fn execute_abandon(&mut self, revision: &str) {
         use crate::jj::constants::ROOT_CHANGE_ID;
 
-        // Guard: cannot abandon root commit
-        if change_id == ROOT_CHANGE_ID {
+        // Guard: cannot abandon root commit (reverse-lookup from commit_id)
+        let is_root = self
+            .log_view
+            .changes
+            .iter()
+            .find(|c| c.commit_id == revision)
+            .map(|c| c.change_id == ROOT_CHANGE_ID)
+            .unwrap_or(false);
+        if is_root {
             self.notify_info("Cannot abandon: root commit");
             return;
         }
-
-        let short_id = &change_id[..8.min(change_id.len())];
+        let short_id = &revision[..8.min(revision.len())];
         let msg = format!("Abandoned {} (undo: u)", short_id);
-        let result = self.run_and_record("Abandon", &["abandon", change_id]);
+        let result = self.run_and_record("Abandon", &["abandon", revision]);
         self.run_jj_action(result, "Abandon failed", &msg, DirtyFlags::log_and_status());
     }
 
     /// Execute revert operation (creates reverse-diff commit)
-    pub(crate) fn execute_revert(&mut self, change_id: &str) {
-        let short_id = &change_id[..8.min(change_id.len())];
+    pub(crate) fn execute_revert(&mut self, revision: &str) {
+        let short_id = &revision[..8.min(revision.len())];
         let msg = format!("Reverted {} (undo: u)", short_id);
-        let result = self.run_and_record("Revert", &["revert", "-r", change_id, "--onto", "@"]);
+        let result = self.run_and_record("Revert", &["revert", "-r", revision, "--onto", "@"]);
         self.run_jj_action(result, "Revert failed", &msg, DirtyFlags::log());
     }
 
@@ -496,7 +509,7 @@ impl App {
     ///
     /// Uses scope guard to ensure terminal state is always restored,
     /// even if jj split panics or returns early.
-    pub(crate) fn execute_split(&mut self, change_id: &str) {
+    pub(crate) fn execute_split(&mut self, revision: &str) {
         // Guard: cannot split an empty commit (nothing to split)
         let is_empty = self.log_view.selected_change().is_some_and(|c| c.is_empty);
         if is_empty {
@@ -508,14 +521,14 @@ impl App {
 
         // Run jj split (blocking)
         let start = Instant::now();
-        let result = self.jj.split_interactive(change_id);
-        self.record_interactive_command("Split", &["split", "-r", change_id], start, &result);
+        let result = self.jj.split_interactive(revision);
+        self.record_interactive_command("Split", &["split", "-r", revision], start, &result);
 
         // 4. Handle result and refresh
         // Note: _guard will restore terminal when this function returns
         match result {
             Ok(status) if status.success() => {
-                let short_id = &change_id[..8.min(change_id.len())];
+                let short_id = &revision[..8.min(revision.len())];
                 self.notify_success(format!("Split {} complete (undo: u)", short_id));
             }
             Ok(_) => {
@@ -534,27 +547,27 @@ impl App {
     ///
     /// When `file` is None, opens the full diffedit for the revision.
     /// When `file` is Some, opens diffedit scoped to that file.
-    pub(crate) fn execute_diffedit(&mut self, change_id: &str, file: Option<&str>) {
+    pub(crate) fn execute_diffedit(&mut self, revision: &str, file: Option<&str>) {
         let _guard = suspend_tui();
 
         // Run jj diffedit (blocking)
         let start = Instant::now();
         let result = if let Some(f) = file {
-            self.jj.diffedit_file_interactive(change_id, f)
+            self.jj.diffedit_file_interactive(revision, f)
         } else {
-            self.jj.diffedit_interactive(change_id)
+            self.jj.diffedit_interactive(revision)
         };
         let args: Vec<&str> = if let Some(f) = file {
-            vec!["diffedit", "-r", change_id, f]
+            vec!["diffedit", "-r", revision, f]
         } else {
-            vec!["diffedit", "-r", change_id]
+            vec!["diffedit", "-r", revision]
         };
         self.record_interactive_command("Diffedit", &args, start, &result);
 
         // 4. Handle result
         match result {
             Ok(status) if status.success() => {
-                let short_id = &change_id[..8.min(change_id.len())];
+                let short_id = &revision[..8.min(revision.len())];
                 self.notify_success(format!("Diffedit {} complete (undo: u)", short_id));
             }
             Ok(_) => {
@@ -662,8 +675,8 @@ impl App {
     ///
     /// Parses the output to extract the new change ID, refreshes the log,
     /// and moves focus to the duplicated change.
-    pub(crate) fn duplicate(&mut self, change_id: &str) {
-        match self.jj.duplicate(change_id) {
+    pub(crate) fn duplicate(&mut self, revision: &str) {
+        match self.jj.duplicate(revision) {
             Ok(output) => {
                 // Parse new change_id from output
                 let new_change_id = Self::parse_duplicate_output(&output);
@@ -744,8 +757,8 @@ impl App {
     }
 
     /// Execute simplify-parents: remove redundant parent edges
-    pub(crate) fn execute_simplify_parents(&mut self, change_id: &str) {
-        match self.run_and_record("Simplify parents", &["simplify-parents", "-r", change_id]) {
+    pub(crate) fn execute_simplify_parents(&mut self, revision: &str) {
+        match self.run_and_record("Simplify parents", &["simplify-parents", "-r", revision]) {
             Ok(output) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
@@ -754,7 +767,7 @@ impl App {
                 {
                     Notification::info("No redundant parents found")
                 } else {
-                    let short_id = &change_id[..8.min(change_id.len())];
+                    let short_id = &revision[..8.min(revision.len())];
                     Notification::success(format!("Simplified parents for {} (undo: u)", short_id))
                 };
                 self.notification = Some(notification);
@@ -766,7 +779,7 @@ impl App {
     }
 
     /// Execute fix: apply configured code formatters to revision and descendants
-    pub(crate) fn execute_fix(&mut self, change_id: &str) {
+    pub(crate) fn execute_fix(&mut self, revision: &str, change_id: &str) {
         // Capture commit_id before fix to detect if changes were made
         let commit_id_before = self
             .log_view
@@ -775,7 +788,7 @@ impl App {
             .find(|c| c.change_id == change_id)
             .map(|c| c.commit_id.clone());
 
-        match self.run_and_record("Fix", &["fix", "-s", change_id]) {
+        match self.run_and_record("Fix", &["fix", "-s", revision]) {
             Ok(_) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
@@ -1029,7 +1042,7 @@ impl App {
     /// Resolve a conflict using :ours tool
     pub(crate) fn execute_resolve_ours(&mut self, file_path: &str) {
         let (change_id, is_wc) = match self.resolve_view {
-            Some(ref v) => (v.change_id.clone(), v.is_working_copy),
+            Some(ref v) => (v.revision.clone(), v.is_working_copy),
             None => return,
         };
 
@@ -1050,7 +1063,7 @@ impl App {
     /// Resolve a conflict using :theirs tool
     pub(crate) fn execute_resolve_theirs(&mut self, file_path: &str) {
         let (change_id, is_wc) = match self.resolve_view {
-            Some(ref v) => (v.change_id.clone(), v.is_working_copy),
+            Some(ref v) => (v.revision.clone(), v.is_working_copy),
             None => return,
         };
 
@@ -1073,7 +1086,7 @@ impl App {
     /// Similar to execute_split: temporarily exits TUI mode for interactive tool.
     pub(crate) fn execute_resolve_external(&mut self, file_path: &str) {
         let (change_id, is_wc) = match self.resolve_view {
-            Some(ref v) => (v.change_id.clone(), v.is_working_copy),
+            Some(ref v) => (v.revision.clone(), v.is_working_copy),
             None => return,
         };
 
@@ -1392,7 +1405,13 @@ impl App {
             .map(|c| (c.commit_id.clone(), c.bookmarks.clone()))
             .unwrap_or_default();
 
-        match self.jj.show(change_id) {
+        // Use commit_id for jj show to avoid ambiguity with divergent changes
+        let revision = if commit_id.is_empty() {
+            change_id
+        } else {
+            &commit_id
+        };
+        match self.jj.show(revision) {
             Ok(content) => {
                 self.preview_cache.insert(super::state::PreviewCacheEntry {
                     change_id: change_id.to_string(),
@@ -1435,13 +1454,13 @@ impl App {
         let Some(ref diff_view) = self.diff_view else {
             return;
         };
-        let change_id = diff_view.change_id.clone();
+        let revision = diff_view.revision.clone();
         let compare_info = diff_view.compare_info.clone();
 
         let result = if full {
             if let Some(ref ci) = compare_info {
                 // Compare mode: jj show doesn't apply, prepend from/to metadata header
-                let diff = self.jj.diff_range(&ci.from.change_id, &ci.to.change_id);
+                let diff = self.jj.diff_range(&ci.from.commit_id, &ci.to.commit_id);
                 diff.map(|d| {
                     format!(
                         "Compare: {} -> {}\nFrom: {} ({})\nTo:   {} ({})\n\n{}",
@@ -1455,14 +1474,14 @@ impl App {
                     )
                 })
             } else {
-                self.jj.show_raw(&change_id)
+                self.jj.show_raw(&revision)
             }
         } else {
             // jj diff (diff only)
             if let Some(ref ci) = compare_info {
-                self.jj.diff_range(&ci.from.change_id, &ci.to.change_id)
+                self.jj.diff_range(&ci.from.commit_id, &ci.to.commit_id)
             } else {
-                self.jj.diff_raw(&change_id)
+                self.jj.diff_raw(&revision)
             }
         };
 
@@ -1505,15 +1524,15 @@ impl App {
             match format {
                 DiffDisplayFormat::ColorWords => self
                     .jj
-                    .diff_range(&ci.from.change_id, &ci.to.change_id)
+                    .diff_range(&ci.from.commit_id, &ci.to.commit_id)
                     .map(|o| Parser::parse_diff_body(&o)),
                 DiffDisplayFormat::Stat => self
                     .jj
-                    .diff_range_stat(&ci.from.change_id, &ci.to.change_id)
+                    .diff_range_stat(&ci.from.commit_id, &ci.to.commit_id)
                     .map(|o| Parser::parse_diff_body_stat(&o)),
                 DiffDisplayFormat::Git => self
                     .jj
-                    .diff_range_git(&ci.from.change_id, &ci.to.change_id)
+                    .diff_range_git(&ci.from.commit_id, &ci.to.commit_id)
                     .map(|o| Parser::parse_diff_body_git(&o)),
             }
         } else {
@@ -1541,13 +1560,13 @@ impl App {
 
         let old_format = diff_view.display_format;
         let new_format = old_format.next();
-        let change_id = diff_view.change_id.clone();
+        let revision = diff_view.revision.clone();
         let compare_info = diff_view.compare_info.clone();
 
-        match self.fetch_diff_content(&change_id, new_format, compare_info.as_ref()) {
+        match self.fetch_diff_content(&revision, new_format, compare_info.as_ref()) {
             Ok(content) => {
                 let diff_view = self.diff_view.as_mut().unwrap();
-                diff_view.set_content(change_id, content);
+                diff_view.set_content(revision, content);
                 diff_view.compare_info = compare_info;
                 diff_view.display_format = new_format;
 
@@ -1573,7 +1592,7 @@ impl App {
         let Some(ref diff_view) = self.diff_view else {
             return;
         };
-        let change_id = diff_view.change_id.clone();
+        let revision = diff_view.revision.clone();
         let compare_info = diff_view.compare_info.clone();
 
         // Determine filename and content based on mode
@@ -1583,11 +1602,11 @@ impl App {
             let from_short = &ci.from.change_id[..ci.from.change_id.len().min(8)];
             let to_short = &ci.to.change_id[..ci.to.change_id.len().min(8)];
             let label = format!("{}_{}", from_short, to_short);
-            let result = self.jj.diff_range_git(&ci.from.change_id, &ci.to.change_id);
+            let result = self.jj.diff_range_git(&ci.from.commit_id, &ci.to.commit_id);
             (label, result)
         } else {
-            let short = change_id[..change_id.len().min(8)].to_string();
-            let result = self.jj.diff_git_raw(&change_id);
+            let short = revision[..revision.len().min(8)].to_string();
+            let result = self.jj.diff_git_raw(&revision);
             (short, result)
         };
 
@@ -1868,6 +1887,7 @@ mod tests {
         let compare_info = CompareInfo {
             from: CompareRevisionInfo {
                 change_id: "aaaa1111".to_string(),
+                commit_id: "ff001111".to_string(),
                 bookmarks: vec![],
                 author: "user@test.com".to_string(),
                 timestamp: "2024-01-01".to_string(),
@@ -1875,6 +1895,7 @@ mod tests {
             },
             to: CompareRevisionInfo {
                 change_id: "bbbb2222".to_string(),
+                commit_id: "ff002222".to_string(),
                 bookmarks: vec![],
                 author: "user@test.com".to_string(),
                 timestamp: "2024-01-02".to_string(),
@@ -1904,6 +1925,7 @@ mod tests {
         let compare_info = CompareInfo {
             from: CompareRevisionInfo {
                 change_id: "cccc3333".to_string(),
+                commit_id: "ff003333".to_string(),
                 bookmarks: vec![],
                 author: "user@test.com".to_string(),
                 timestamp: "2024-01-01".to_string(),
@@ -1911,6 +1933,7 @@ mod tests {
             },
             to: CompareRevisionInfo {
                 change_id: "dddd4444".to_string(),
+                commit_id: "ff004444".to_string(),
                 bookmarks: vec![],
                 author: "user@test.com".to_string(),
                 timestamp: "2024-01-02".to_string(),

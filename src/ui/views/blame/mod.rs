@@ -80,12 +80,20 @@ impl BlameView {
         self.content.len()
     }
 
-    /// Get the currently selected line's change_id
+    /// Get the currently selected line's change_id (for UI identification)
     pub fn selected_change_id(&self) -> Option<&str> {
         self.content
             .lines
             .get(self.selected_index)
             .map(|line| line.change_id.as_str())
+    }
+
+    /// Get the currently selected line's commit_id (for jj command execution)
+    pub fn selected_commit_id(&self) -> Option<&str> {
+        self.content
+            .lines
+            .get(self.selected_index)
+            .map(|line| line.commit_id.as_str())
     }
 
     /// Move selection down
@@ -127,6 +135,7 @@ mod tests {
         for i in 1..=10 {
             content.lines.push(AnnotationLine {
                 change_id: format!("change{:02}", i),
+                commit_id: format!("commit{:02}", i),
                 author: "test".to_string(),
                 timestamp: "2026-01-30 10:00".to_string(),
                 line_number: i,

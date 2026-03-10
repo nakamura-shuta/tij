@@ -66,6 +66,7 @@
 - [x] Phase 33: Tag View — タグ一覧表示 / 作成(@ 対象) / 削除 / revset 拡張ジャンプ + Input ダイアログ汎用化（v0.4.11）
 - [x] Phase 34: Command History View — 実行コマンド履歴表示 / 詳細展開 / RunResult 導入 / 全 execute_* 記録フック（v0.4.12）
 - [x] Phase 35: Rebase --simplify-parents — `P` キーで RebaseSelect 中にトグル、冗長親エッジを自動除去（v0.4.14）
+- [x] Phase 36: Divergent change_id 対応 — change_id（UI識別）と commit_id（コマンド実行）の分離 + パラメータ命名統一（v0.4.15）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）

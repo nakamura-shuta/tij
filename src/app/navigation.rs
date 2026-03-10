@@ -8,10 +8,10 @@ use super::state::{App, View};
 
 impl App {
     /// Open diff view for a specific change
-    pub(crate) fn open_diff(&mut self, change_id: &str) {
-        match self.jj.show(change_id) {
+    pub(crate) fn open_diff(&mut self, revision: &str) {
+        match self.jj.show(revision) {
             Ok(content) => {
-                self.diff_view = Some(DiffView::new(change_id.to_string(), content));
+                self.diff_view = Some(DiffView::new(revision.to_string(), content));
                 self.go_to_view(View::Diff);
                 self.error_message = None;
             }
@@ -22,10 +22,10 @@ impl App {
     }
 
     /// Open diff view for a specific change and jump to a file
-    pub(crate) fn open_diff_at_file(&mut self, change_id: &str, file_path: &str) {
-        match self.jj.show(change_id) {
+    pub(crate) fn open_diff_at_file(&mut self, revision: &str, file_path: &str) {
+        match self.jj.show(revision) {
             Ok(content) => {
-                let mut diff_view = DiffView::new(change_id.to_string(), content);
+                let mut diff_view = DiffView::new(revision.to_string(), content);
                 // Jump to the specified file
                 diff_view.jump_to_file(file_path);
                 self.diff_view = Some(diff_view);
@@ -77,6 +77,7 @@ impl App {
         let from_info = match from_result {
             Ok((change_id, bookmarks, author, timestamp, description)) => CompareRevisionInfo {
                 change_id,
+                commit_id: from.to_string(),
                 bookmarks,
                 author,
                 timestamp,
@@ -91,6 +92,7 @@ impl App {
         let to_info = match to_result {
             Ok((change_id, bookmarks, author, timestamp, description)) => CompareRevisionInfo {
                 change_id,
+                commit_id: to.to_string(),
                 bookmarks,
                 author,
                 timestamp,
@@ -122,15 +124,15 @@ impl App {
     }
 
     /// Open evolution log view for a change
-    pub(crate) fn open_evolog(&mut self, change_id: &str) {
-        match self.jj.evolog(change_id) {
+    pub(crate) fn open_evolog(&mut self, revision: &str) {
+        match self.jj.evolog(revision) {
             Ok(output) => {
                 let entries = parse_evolog(&output);
                 if entries.is_empty() {
                     self.notification =
                         Some(Notification::info("No evolution history for this change"));
                 } else {
-                    self.evolog_view = Some(EvologView::new(change_id.to_string(), entries));
+                    self.evolog_view = Some(EvologView::new(revision.to_string(), entries));
                     self.go_to_view(View::Evolog);
                 }
             }
@@ -143,14 +145,14 @@ impl App {
     /// Open resolve view for a change
     ///
     /// Runs `jj resolve --list` and opens the Resolve List View if conflicts exist.
-    pub(crate) fn open_resolve_view(&mut self, change_id: &str, is_working_copy: bool) {
-        match self.jj.resolve_list(Some(change_id)) {
+    pub(crate) fn open_resolve_view(&mut self, revision: &str, is_working_copy: bool) {
+        match self.jj.resolve_list(Some(revision)) {
             Ok(files) => {
                 if files.is_empty() {
                     self.notify_info("No conflicts in this change");
                 } else {
                     self.resolve_view = Some(ResolveView::new(
-                        change_id.to_string(),
+                        revision.to_string(),
                         is_working_copy,
                         files,
                     ));

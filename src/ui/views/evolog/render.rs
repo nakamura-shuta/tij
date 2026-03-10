@@ -15,7 +15,7 @@ use crate::ui::{components, navigation, theme};
 impl EvologView {
     /// Render the evolog view
     pub fn render(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
-        let title = Line::from(format!(" Evolution Log: {} ", self.change_id))
+        let title = Line::from(format!(" Evolution Log: {} ", self.revision))
             .bold()
             .cyan()
             .centered();

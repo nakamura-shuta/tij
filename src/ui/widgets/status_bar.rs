@@ -162,7 +162,7 @@ pub fn render_diff_status_bar(frame: &mut Frame, diff_view: &DiffView) {
     let context = diff_view.current_context();
     let prefix = vec![
         Span::styled(
-            format!(" {} ", diff_view.change_id),
+            format!(" {} ", diff_view.revision),
             Style::default().fg(Color::Black).bg(Color::Yellow),
         ),
         Span::raw(" "),

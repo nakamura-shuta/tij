@@ -181,8 +181,8 @@ impl App {
             DialogCallback::DeleteBookmarks => {
                 self.execute_bookmark_delete(&values);
             }
-            DialogCallback::MoveBookmark { name, change_id } => {
-                self.execute_bookmark_move(&name, &change_id);
+            DialogCallback::MoveBookmark { name, revision } => {
+                self.execute_bookmark_move(&name, &revision);
             }
             DialogCallback::BookmarkJump => {
                 if let Some(change_id) = values.first() {
@@ -217,17 +217,20 @@ impl App {
             DialogCallback::RestoreAll => {
                 self.execute_restore_all();
             }
-            DialogCallback::Revert { change_id } => {
-                self.execute_revert(&change_id);
+            DialogCallback::Revert { revision } => {
+                self.execute_revert(&revision);
             }
-            DialogCallback::SimplifyParents { change_id } => {
-                self.execute_simplify_parents(&change_id);
+            DialogCallback::SimplifyParents { revision } => {
+                self.execute_simplify_parents(&revision);
             }
             DialogCallback::Parallelize { from, to } => {
                 self.execute_parallelize(&from, &to);
             }
-            DialogCallback::Fix { change_id } => {
-                self.execute_fix(&change_id);
+            DialogCallback::Fix {
+                revision,
+                change_id,
+            } => {
+                self.execute_fix(&revision, &change_id);
             }
             _ => {}
         }
@@ -255,7 +258,7 @@ mod tests {
             "Revert changes from abc12345?",
             Some("Creates a new commit that undoes these changes.".to_string()),
             DialogCallback::Revert {
-                change_id: "abc12345".to_string(),
+                revision: "abc12345".to_string(),
             },
         ));
         app.handle_dialog_result(DialogResult::Confirmed(vec![]));
@@ -282,7 +285,7 @@ mod tests {
             "Revert changes from abc12345?",
             None,
             DialogCallback::Revert {
-                change_id: "abc12345".to_string(),
+                revision: "abc12345".to_string(),
             },
         ));
         app.handle_dialog_result(DialogResult::Cancelled);
@@ -303,7 +306,7 @@ mod tests {
             "Simplify parents for abc12345?",
             None,
             DialogCallback::SimplifyParents {
-                change_id: "abc12345".to_string(),
+                revision: "abc12345".to_string(),
             },
         ));
         app.handle_dialog_result(DialogResult::Confirmed(vec![]));
@@ -330,7 +333,7 @@ mod tests {
             "Simplify parents for abc12345?",
             None,
             DialogCallback::SimplifyParents {
-                change_id: "abc12345".to_string(),
+                revision: "abc12345".to_string(),
             },
         ));
         app.handle_dialog_result(DialogResult::Cancelled);

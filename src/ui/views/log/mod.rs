@@ -57,6 +57,18 @@ impl InputMode {
     }
 }
 
+/// Source specification for rebase operation
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RebaseSource {
+    /// Single selected change (change_id for highlight, commit_id for execution)
+    Selected {
+        change_id: String,
+        commit_id: String,
+    },
+    /// Revset expression (passed directly to jj as-is)
+    Revset(String),
+}
+
 /// Actions that LogView can request from App
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LogAction {
@@ -71,7 +83,7 @@ pub enum LogAction {
     /// Start describe input mode (App should fetch full description and call set_describe_input)
     StartDescribe(String),
     /// Update change description
-    Describe { change_id: String, message: String },
+    Describe { revision: String, message: String },
     /// Open external editor for describe (jj describe --edit)
     DescribeExternal(String),
     /// Edit a specific change (jj edit)
@@ -80,7 +92,7 @@ pub enum LogAction {
     NewChange,
     /// Create a new change with selected revision as parent (jj new <revision>)
     NewChangeFrom {
-        change_id: String,
+        revision: String,
         display_name: String,
     },
     /// User pressed C on @ - show info notification suggesting 'c'
@@ -92,7 +104,7 @@ pub enum LogAction {
     /// Split a change (jj split, opens external editor)
     Split(String),
     /// Create a bookmark on a change
-    CreateBookmark { change_id: String, name: String },
+    CreateBookmark { revision: String, name: String },
     /// Start bookmark deletion (opens selection dialog)
     StartBookmarkDelete,
     /// Rebase source change to destination with specified mode
@@ -108,7 +120,7 @@ pub enum LogAction {
     Absorb,
     /// Open resolve list view for a change
     OpenResolveList {
-        change_id: String,
+        revision: String,
         is_working_copy: bool,
     },
     /// Fetch from remote
@@ -150,7 +162,7 @@ pub enum LogAction {
     /// Parallelize commits (convert linear chain to siblings)
     Parallelize { from: String, to: String },
     /// Fix (apply configured code formatters to revision and descendants)
-    Fix(String),
+    Fix { revision: String, change_id: String },
     /// Entered parallelize mode (notification with from_id)
     StartParallelize(String),
     /// Parallelize blocked: same revision selected
@@ -176,30 +188,28 @@ pub struct LogView {
     pub current_revset: Option<String>,
     /// Last search query for n/N navigation
     pub(crate) last_search_query: Option<String>,
-    /// Change ID being edited (for DescribeInput mode)
-    pub editing_change_id: Option<String>,
+    /// Revision (commit_id) being edited (for DescribeInput/BookmarkInput mode)
+    pub editing_revision: Option<String>,
     /// Indices of selectable changes (not graph-only)
     selectable_indices: Vec<usize>,
     /// Current position in selectable_indices
     selection_cursor: usize,
-    /// Source change ID for rebase (set when entering RebaseSelect mode)
-    pub(crate) rebase_source: Option<String>,
+    /// Source for rebase (set when entering RebaseSelect mode)
+    pub(crate) rebase_source: Option<RebaseSource>,
     /// Current rebase mode (set during RebaseModeSelect)
     pub(crate) rebase_mode: RebaseMode,
-    /// Source change ID for squash (set when entering SquashSelect mode)
-    pub(crate) squash_source: Option<String>,
-    /// "From" change ID for compare (set when entering CompareSelect mode)
-    pub(crate) compare_from: Option<String>,
-    /// "From" change ID for parallelize (set when entering ParallelizeSelect mode)
-    pub(crate) parallelize_from: Option<String>,
+    /// Source change for squash (change_id, commit_id)
+    pub(crate) squash_source: Option<(String, String)>,
+    /// "From" change for compare (change_id, commit_id)
+    pub(crate) compare_from: Option<(String, String)>,
+    /// "From" change for parallelize (change_id, commit_id)
+    pub(crate) parallelize_from: Option<(String, String)>,
     /// Whether to display log in reversed order (oldest first)
     pub(crate) reversed: bool,
     /// Whether to pass --skip-emptied on rebase (toggled with S in RebaseSelect)
     pub(crate) skip_emptied: bool,
     /// Whether to pass --simplify-parents on rebase (toggled with P in RebaseSelect)
     pub(crate) simplify_parents: bool,
-    /// Whether current rebase source is a revset string (vs single change_id)
-    pub(crate) rebase_use_revset: bool,
 }
 
 pub mod empty_text {
@@ -282,26 +292,26 @@ impl LogView {
     pub fn cancel_input(&mut self) {
         self.input_mode = InputMode::Normal;
         self.input_buffer.clear();
-        self.editing_change_id = None;
+        self.editing_revision = None;
     }
 
     /// Set describe input mode with the description text (single-line only)
     ///
     /// Called by App after verifying the description is single-line.
     /// Multi-line descriptions are blocked at the App layer (directed to Ctrl+E).
-    pub fn set_describe_input(&mut self, change_id: String, description: String) {
-        self.editing_change_id = Some(change_id);
+    pub fn set_describe_input(&mut self, revision: String, description: String) {
+        self.editing_revision = Some(revision);
         self.input_buffer = description;
         self.input_mode = InputMode::DescribeInput;
     }
 
     /// Start bookmark input mode for the selected change
     pub fn start_bookmark_input(&mut self) {
-        // Clone change_id first to avoid borrow conflict
-        let change_id = self.selected_change().map(|c| c.change_id.clone());
+        // Clone commit_id first to avoid borrow conflict
+        let commit_id = self.selected_change().map(|c| c.commit_id.clone());
 
-        if let Some(change_id) = change_id {
-            self.editing_change_id = Some(change_id);
+        if let Some(commit_id) = commit_id {
+            self.editing_revision = Some(commit_id);
             self.input_buffer.clear();
             self.input_mode = InputMode::BookmarkInput;
         }
@@ -312,10 +322,15 @@ impl LogView {
     /// Saves the source change and enters RebaseModeSelect mode.
     /// Returns true if mode was entered, false if no change is selected.
     pub fn start_rebase_mode_select(&mut self) -> bool {
-        let change_id = self.selected_change().map(|c| c.change_id.clone());
+        let source = self
+            .selected_change()
+            .map(|c| (c.change_id.clone(), c.commit_id.clone()));
 
-        if let Some(change_id) = change_id {
-            self.rebase_source = Some(change_id);
+        if let Some((change_id, commit_id)) = source {
+            self.rebase_source = Some(RebaseSource::Selected {
+                change_id,
+                commit_id,
+            });
             self.skip_emptied = false;
             self.simplify_parents = false;
             self.input_mode = InputMode::RebaseModeSelect;
@@ -331,7 +346,6 @@ impl LogView {
         self.rebase_mode = RebaseMode::default();
         self.skip_emptied = false;
         self.simplify_parents = false;
-        self.rebase_use_revset = false;
         self.input_mode = InputMode::Normal;
     }
 
@@ -339,11 +353,16 @@ impl LogView {
     ///
     /// Returns true if mode was entered, false if no change is selected.
     pub fn start_rebase_select(&mut self) -> bool {
-        // Clone change_id first to avoid borrow conflict
-        let change_id = self.selected_change().map(|c| c.change_id.clone());
+        // Clone change data first to avoid borrow conflict
+        let source = self
+            .selected_change()
+            .map(|c| (c.change_id.clone(), c.commit_id.clone()));
 
-        if let Some(change_id) = change_id {
-            self.rebase_source = Some(change_id);
+        if let Some((change_id, commit_id)) = source {
+            self.rebase_source = Some(RebaseSource::Selected {
+                change_id,
+                commit_id,
+            });
             self.input_mode = InputMode::RebaseSelect;
             true
         } else {
@@ -357,7 +376,6 @@ impl LogView {
         self.rebase_mode = RebaseMode::default();
         self.skip_emptied = false;
         self.simplify_parents = false;
-        self.rebase_use_revset = false;
         self.input_mode = InputMode::Normal;
     }
 
@@ -365,11 +383,12 @@ impl LogView {
     ///
     /// Returns true if mode was entered, false if no change is selected.
     pub fn start_squash_select(&mut self) -> bool {
-        // Clone change_id first to avoid borrow conflict
-        let change_id = self.selected_change().map(|c| c.change_id.clone());
+        let source = self
+            .selected_change()
+            .map(|c| (c.change_id.clone(), c.commit_id.clone()));
 
-        if let Some(change_id) = change_id {
-            self.squash_source = Some(change_id);
+        if let Some(pair) = source {
+            self.squash_source = Some(pair);
             self.input_mode = InputMode::SquashSelect;
             true
         } else {
@@ -389,10 +408,12 @@ impl LogView {
     /// The user then selects the "to" revision.
     /// Returns true if mode was entered, false if no change is selected.
     pub fn start_compare_select(&mut self) -> bool {
-        let change_id = self.selected_change().map(|c| c.change_id.clone());
+        let source = self
+            .selected_change()
+            .map(|c| (c.change_id.clone(), c.commit_id.clone()));
 
-        if let Some(change_id) = change_id {
-            self.compare_from = Some(change_id);
+        if let Some(pair) = source {
+            self.compare_from = Some(pair);
             self.input_mode = InputMode::CompareSelect;
             true
         } else {
@@ -412,10 +433,12 @@ impl LogView {
     /// The user then selects the "to" revision to define the range.
     /// Returns true if mode was entered, false if no change is selected.
     pub fn start_parallelize_select(&mut self) -> bool {
-        let change_id = self.selected_change().map(|c| c.change_id.clone());
+        let source = self
+            .selected_change()
+            .map(|c| (c.change_id.clone(), c.commit_id.clone()));
 
-        if let Some(change_id) = change_id {
-            self.parallelize_from = Some(change_id);
+        if let Some(pair) = source {
+            self.parallelize_from = Some(pair);
             self.input_mode = InputMode::ParallelizeSelect;
             true
         } else {

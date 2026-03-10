@@ -12,7 +12,7 @@ use crate::jj::constants;
 use crate::model::{Change, Notification};
 use crate::ui::{components, symbols, theme};
 
-use super::{InputMode, LogView, RebaseMode, empty_text};
+use super::{InputMode, LogView, RebaseMode, RebaseSource, empty_text};
 
 impl LogView {
     /// Render the view with optional notification in title bar
@@ -116,8 +116,11 @@ impl LogView {
         // Special title for RebaseSelect mode (varies by rebase_mode)
         if self.input_mode == InputMode::RebaseSelect {
             // When revset is active, show the revset string in the title
-            if self.rebase_use_revset {
-                let revset_src = self.rebase_source.as_deref().unwrap_or("?");
+            if matches!(self.rebase_source, Some(RebaseSource::Revset(_))) {
+                let revset_src = match &self.rebase_source {
+                    Some(RebaseSource::Revset(s)) => s.as_str(),
+                    _ => "?",
+                };
                 let mode_label = match self.rebase_mode {
                     RebaseMode::Revision => "-r",
                     RebaseMode::Source => "-s",
@@ -162,7 +165,11 @@ impl LogView {
 
         // Special title for CompareSelect mode
         if self.input_mode == InputMode::CompareSelect {
-            let from_id = self.compare_from.as_deref().unwrap_or("?");
+            let from_id = self
+                .compare_from
+                .as_ref()
+                .map(|(cid, _)| cid.as_str())
+                .unwrap_or("?");
             return Line::from(format!(
                 " Tij - Log View [Compare: From={}, Select To] ",
                 from_id
@@ -174,7 +181,11 @@ impl LogView {
 
         // Special title for ParallelizeSelect mode
         if self.input_mode == InputMode::ParallelizeSelect {
-            let from_id = self.parallelize_from.as_deref().unwrap_or("?");
+            let from_id = self
+                .parallelize_from
+                .as_ref()
+                .map(|(cid, _)| cid.as_str())
+                .unwrap_or("?");
             return Line::from(format!(
                 " Tij - Log View [Parallelize: From={}, Select end] ",
                 from_id
@@ -291,19 +302,31 @@ impl LogView {
         let is_rebase_source = matches!(
             self.input_mode,
             InputMode::RebaseModeSelect | InputMode::RebaseSelect | InputMode::RebaseRevsetInput
-        ) && self.rebase_source.as_ref() == Some(&change.change_id);
+        ) && matches!(
+            &self.rebase_source,
+            Some(RebaseSource::Selected { change_id, .. }) if *change_id == change.change_id
+        );
 
         // Check if this is the squash source (in SquashSelect mode)
         let is_squash_source = self.input_mode == InputMode::SquashSelect
-            && self.squash_source.as_ref() == Some(&change.change_id);
+            && self
+                .squash_source
+                .as_ref()
+                .is_some_and(|(cid, _)| *cid == change.change_id);
 
         // Check if this is the compare "from" (in CompareSelect mode)
         let is_compare_from = self.input_mode == InputMode::CompareSelect
-            && self.compare_from.as_ref() == Some(&change.change_id);
+            && self
+                .compare_from
+                .as_ref()
+                .is_some_and(|(cid, _)| *cid == change.change_id);
 
         // Check if this is the parallelize "from" (in ParallelizeSelect mode)
         let is_parallelize_from = self.input_mode == InputMode::ParallelizeSelect
-            && self.parallelize_from.as_ref() == Some(&change.change_id);
+            && self
+                .parallelize_from
+                .as_ref()
+                .is_some_and(|(cid, _)| *cid == change.change_id);
 
         // Apply styling
         if is_rebase_source || is_squash_source || is_compare_from || is_parallelize_from {

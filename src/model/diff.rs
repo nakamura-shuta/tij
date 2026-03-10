@@ -187,8 +187,10 @@ impl DiffDisplayFormat {
 /// Info for a revision in a compare diff
 #[derive(Debug, Clone)]
 pub struct CompareRevisionInfo {
-    /// Change ID (short)
+    /// Change ID (short) — for UI display
     pub change_id: String,
+    /// Commit ID (short) — for jj command execution (unambiguous)
+    pub commit_id: String,
     /// Bookmarks on this revision
     pub bookmarks: Vec<String>,
     /// Author

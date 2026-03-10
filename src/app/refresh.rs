@@ -108,8 +108,8 @@ impl App {
     }
 
     /// Refresh the resolve list for the current resolve view
-    pub(crate) fn refresh_resolve_list(&mut self, change_id: &str, is_working_copy: bool) {
-        match self.jj.resolve_list(Some(change_id)) {
+    pub(crate) fn refresh_resolve_list(&mut self, revision: &str, is_working_copy: bool) {
+        match self.jj.resolve_list(Some(revision)) {
             Ok(files) => {
                 if files.is_empty() {
                     // All resolved - go back (simple message for Log View title bar)
@@ -123,7 +123,7 @@ impl App {
                     view.set_files(files);
                 } else {
                     self.resolve_view = Some(ResolveView::new(
-                        change_id.to_string(),
+                        revision.to_string(),
                         is_working_copy,
                         files,
                     ));
@@ -177,13 +177,13 @@ impl App {
                 if let Some(ref diff_view) = self.diff_view {
                     if let Some(ref compare_info) = diff_view.compare_info {
                         // Compare mode: re-run diff --from --to
-                        let from = compare_info.from.change_id.clone();
-                        let to = compare_info.to.change_id.clone();
+                        let from = compare_info.from.commit_id.clone();
+                        let to = compare_info.to.commit_id.clone();
                         self.open_compare_diff(&from, &to);
                     } else {
                         // Normal mode: re-run jj show
-                        let change_id = diff_view.change_id.clone();
-                        self.open_diff(&change_id);
+                        let revision = diff_view.revision.clone();
+                        self.open_diff(&revision);
                     }
                     self.notify_info("Refreshed");
                 }
@@ -192,9 +192,9 @@ impl App {
             View::Resolve => {
                 // Refresh resolve list
                 if let Some(ref resolve_view) = self.resolve_view {
-                    let change_id = resolve_view.change_id.clone();
+                    let revision = resolve_view.revision.clone();
                     let is_wc = resolve_view.is_working_copy;
-                    self.refresh_resolve_list(&change_id, is_wc);
+                    self.refresh_resolve_list(&revision, is_wc);
                     self.notify_info("Refreshed");
                 }
             }
@@ -215,8 +215,8 @@ impl App {
             View::Evolog => {
                 // Refresh evolog view
                 if let Some(ref evolog_view) = self.evolog_view {
-                    let change_id = evolog_view.change_id.clone();
-                    self.open_evolog(&change_id);
+                    let revision = evolog_view.revision.clone();
+                    self.open_evolog(&revision);
                     // Only show "Refreshed" if open_evolog didn't set an error/notification
                     if self.error_message.is_none() && self.notification.is_none() {
                         self.notify_info("Refreshed");

@@ -35,10 +35,10 @@ impl Parser {
         Ok(content)
     }
 
-    /// Parse a single line of `jj file annotate` default output using regex
+    /// Parse a single line of `jj file annotate` output using regex
     ///
-    /// Format: `<change_id> <author> <timestamp>  <line_number>: <content>`
-    /// Example: `twzksoxt nakamura 2026-01-30 10:43:19    1: //! Tij`
+    /// Format: `<change_id>\t<commit_id> <author> <timestamp>  <line_number>: <content>`
+    /// Example: `twzksoxt\tabcd1234 nakamura 2026-01-30 10:43:19    1: //! Tij`
     pub(super) fn parse_annotate_line(
         line: &str,
         prev_change_id: &Option<String>,
@@ -46,11 +46,12 @@ impl Parser {
         let caps = ANNOTATE_LINE_REGEX.captures(line)?;
 
         let change_id = caps.get(1)?.as_str().to_string();
-        let author = caps.get(2)?.as_str().trim().to_string();
-        let timestamp = caps.get(3)?.as_str().to_string();
-        let line_number: usize = caps.get(4)?.as_str().parse().ok()?;
+        let commit_id = caps.get(2)?.as_str().to_string();
+        let author = caps.get(3)?.as_str().trim().to_string();
+        let timestamp = caps.get(4)?.as_str().to_string();
+        let line_number: usize = caps.get(5)?.as_str().parse().ok()?;
         let content = caps
-            .get(5)
+            .get(6)
             .map(|m| m.as_str().to_string())
             .unwrap_or_default();
 
@@ -62,6 +63,7 @@ impl Parser {
 
         Some(AnnotationLine {
             change_id,
+            commit_id,
             author,
             timestamp,
             line_number,

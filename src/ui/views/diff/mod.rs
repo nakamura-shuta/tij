@@ -33,7 +33,7 @@ pub enum DiffAction {
 #[derive(Debug)]
 pub struct DiffView {
     /// Change ID being displayed
-    pub change_id: String,
+    pub revision: String,
     /// Parsed diff content
     pub content: DiffContent,
     /// Scroll offset (line index)
@@ -65,7 +65,7 @@ impl DiffView {
     /// Create a new empty DiffView
     pub fn empty() -> Self {
         Self {
-            change_id: String::new(),
+            revision: String::new(),
             content: DiffContent::default(),
             scroll_offset: 0,
             file_header_positions: Vec::new(),
@@ -78,24 +78,24 @@ impl DiffView {
     }
 
     /// Create a new DiffView with content
-    pub fn new(change_id: String, content: DiffContent) -> Self {
+    pub fn new(revision: String, content: DiffContent) -> Self {
         let mut view = Self::empty();
-        view.set_content(change_id, content);
+        view.set_content(revision, content);
         view
     }
 
     /// Create a new DiffView in compare mode (two-revision diff)
     pub fn new_compare(content: DiffContent, compare_info: CompareInfo) -> Self {
         let mut view = Self::empty();
-        // Use the "from" change_id as the primary ID
-        let change_id = compare_info.from.change_id.clone();
-        view.set_content(change_id, content);
+        // Use the "from" commit_id as the primary ID (divergent-safe)
+        let revision = compare_info.from.commit_id.clone();
+        view.set_content(revision, content);
         view.compare_info = Some(compare_info);
         view
     }
 
     /// Set the content to display
-    pub fn set_content(&mut self, change_id: String, content: DiffContent) {
+    pub fn set_content(&mut self, revision: String, content: DiffContent) {
         use crate::model::DiffLineKind;
 
         // Extract file header positions and names
@@ -109,7 +109,7 @@ impl DiffView {
 
         self.file_header_positions = positions;
         self.file_names = names;
-        self.change_id = change_id;
+        self.revision = revision;
         self.content = content;
         self.scroll_offset = 0;
         self.current_file_index = 0;
@@ -118,7 +118,7 @@ impl DiffView {
     /// Clear the view (test-only helper)
     #[cfg(test)]
     pub fn clear(&mut self) {
-        self.change_id.clear();
+        self.revision.clear();
         self.content = DiffContent::default();
         self.scroll_offset = 0;
         self.file_header_positions.clear();
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn test_diff_view_empty() {
         let view = DiffView::empty();
-        assert!(view.change_id.is_empty());
+        assert!(view.revision.is_empty());
         assert!(!view.has_changes());
         assert_eq!(view.file_count(), 0);
     }
@@ -383,7 +383,7 @@ mod tests {
     fn test_diff_view_new() {
         let view = DiffView::new("testchange".to_string(), create_test_content());
 
-        assert_eq!(view.change_id, "testchange");
+        assert_eq!(view.revision, "testchange");
         assert!(view.has_changes());
         assert_eq!(view.file_count(), 2);
         assert_eq!(view.file_names, vec!["src/main.rs", "src/lib.rs"]);
@@ -516,7 +516,7 @@ mod tests {
 
         assert!(!view.has_changes());
         assert_eq!(view.scroll_offset, 0);
-        assert!(view.change_id.is_empty());
+        assert!(view.revision.is_empty());
     }
 
     #[test]
@@ -624,6 +624,7 @@ mod tests {
         let compare_info = CompareInfo {
             from: CompareRevisionInfo {
                 change_id: "aaaa1111".to_string(),
+                commit_id: "ff001111".to_string(),
                 bookmarks: vec![],
                 author: "user@test.com".to_string(),
                 timestamp: "2024-01-01".to_string(),
@@ -631,6 +632,7 @@ mod tests {
             },
             to: CompareRevisionInfo {
                 change_id: "bbbb2222".to_string(),
+                commit_id: "ff002222".to_string(),
                 bookmarks: vec![],
                 author: "user@test.com".to_string(),
                 timestamp: "2024-01-02".to_string(),

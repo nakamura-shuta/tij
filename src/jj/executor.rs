@@ -240,39 +240,34 @@ impl JjExecutor {
     }
 
     /// Run `jj show` for a specific change
-    pub fn show_raw(&self, change_id: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::SHOW, flags::REVISION, change_id])
+    pub fn show_raw(&self, revision: &str) -> Result<String, JjError> {
+        self.run_str(&[commands::SHOW, flags::REVISION, revision])
     }
 
     /// Run `jj show` and parse the output into DiffContent
     ///
     /// This is the preferred API for application code, following the same pattern as log_changes().
-    pub fn show(&self, change_id: &str) -> Result<DiffContent, JjError> {
-        let output = self.show_raw(change_id)?;
+    pub fn show(&self, revision: &str) -> Result<DiffContent, JjError> {
+        let output = self.show_raw(revision)?;
         Parser::parse_show(&output)
     }
 
     /// Run `jj show --stat` for a specific change (histogram overview)
-    pub fn show_stat(&self, change_id: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::SHOW, flags::STAT, flags::REVISION, change_id])
+    pub fn show_stat(&self, revision: &str) -> Result<String, JjError> {
+        self.run_str(&[commands::SHOW, flags::STAT, flags::REVISION, revision])
     }
 
     /// Run `jj show --git` for a specific change (git unified diff)
-    pub fn show_git(&self, change_id: &str) -> Result<String, JjError> {
-        self.run_str(&[
-            commands::SHOW,
-            flags::GIT_FORMAT,
-            flags::REVISION,
-            change_id,
-        ])
+    pub fn show_git(&self, revision: &str) -> Result<String, JjError> {
+        self.run_str(&[commands::SHOW, flags::GIT_FORMAT, flags::REVISION, revision])
     }
 
     /// Run `jj describe` to update change description
     ///
     /// Uses positional argument format: `jj describe <change-id> -m <message>`
     /// Note: `-r` is accepted as an alias for compatibility but positional is preferred.
-    pub fn describe(&self, change_id: &str, message: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::DESCRIBE, change_id, "-m", message])
+    pub fn describe(&self, revision: &str, message: &str) -> Result<String, JjError> {
+        self.run_str(&[commands::DESCRIBE, revision, "-m", message])
     }
 
     /// Get the full description (multi-line) for a change
@@ -280,12 +275,12 @@ impl JjExecutor {
     /// Uses `jj log -r <change-id> -T 'description'` to fetch the complete description.
     /// Unlike the normal log output which uses `description.first_line()`, this returns
     /// the entire description including all lines.
-    pub fn get_description(&self, change_id: &str) -> Result<String, JjError> {
+    pub fn get_description(&self, revision: &str) -> Result<String, JjError> {
         let output = self.run_str(&[
             commands::LOG,
             flags::NO_GRAPH,
             flags::REVISION,
-            change_id,
+            revision,
             flags::TEMPLATE,
             "description",
         ])?;
@@ -293,12 +288,12 @@ impl JjExecutor {
     }
 
     /// Check if a revision is immutable
-    pub fn is_immutable(&self, change_id: &str) -> bool {
+    pub fn is_immutable(&self, revision: &str) -> bool {
         self.run_str(&[
             commands::LOG,
             flags::NO_GRAPH,
             flags::REVISION,
-            change_id,
+            revision,
             flags::TEMPLATE,
             r#"if(immutable, "true", "false")"#,
         ])
@@ -306,8 +301,8 @@ impl JjExecutor {
     }
 
     /// Run `jj edit` to set working-copy revision
-    pub fn edit(&self, change_id: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::EDIT, change_id])
+    pub fn edit(&self, revision: &str) -> Result<String, JjError> {
+        self.run_str(&[commands::EDIT, revision])
     }
 
     /// Run `jj new` to create a new empty change
@@ -344,18 +339,18 @@ impl JjExecutor {
     ///
     /// Descendants are automatically rebased onto the parent.
     /// If @ is abandoned, a new empty change is created.
-    pub fn abandon(&self, change_id: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::ABANDON, change_id])
+    pub fn abandon(&self, revision: &str) -> Result<String, JjError> {
+        self.run_str(&[commands::ABANDON, revision])
     }
 
     /// Run `jj revert -r <change_id> --onto @` to create a reverse-diff commit
     ///
     /// Creates a new commit on top of @ that undoes the changes from the specified revision.
-    pub fn revert(&self, change_id: &str) -> Result<String, JjError> {
+    pub fn revert(&self, revision: &str) -> Result<String, JjError> {
         self.run_str(&[
             commands::REVERT,
             flags::REVISION,
-            change_id,
+            revision,
             flags::ONTO,
             "@",
         ])
@@ -372,7 +367,7 @@ impl JjExecutor {
     }
 
     /// Run `jj evolog -r <change_id>` with template output
-    pub fn evolog(&self, change_id: &str) -> Result<String, JjError> {
+    pub fn evolog(&self, revision: &str) -> Result<String, JjError> {
         // evolog template context is EvolutionEntry, not Commit.
         // Fields must be accessed via `commit.` prefix (e.g. commit.commit_id()).
         // Uses committer timestamp (when each version was created), not author
@@ -390,7 +385,7 @@ impl JjExecutor {
         self.run_str(&[
             commands::EVOLOG,
             flags::REVISION,
-            change_id,
+            revision,
             flags::TEMPLATE,
             template,
         ])
@@ -527,13 +522,13 @@ impl JjExecutor {
     ///
     /// Creates a new bookmark pointing to the specified change.
     /// Returns an error if a bookmark with the same name already exists.
-    pub fn bookmark_create(&self, name: &str, change_id: &str) -> Result<String, JjError> {
+    pub fn bookmark_create(&self, name: &str, revision: &str) -> Result<String, JjError> {
         self.run_str(&[
             commands::BOOKMARK,
             commands::BOOKMARK_CREATE,
             name,
             "-r",
-            change_id,
+            revision,
         ])
     }
 
@@ -541,13 +536,13 @@ impl JjExecutor {
     ///
     /// Moves an existing bookmark to point to the specified change.
     /// Uses `--allow-backwards` to permit moving in any direction.
-    pub fn bookmark_set(&self, name: &str, change_id: &str) -> Result<String, JjError> {
+    pub fn bookmark_set(&self, name: &str, revision: &str) -> Result<String, JjError> {
         self.run_str(&[
             commands::BOOKMARK,
             commands::BOOKMARK_SET,
             name,
             "-r",
-            change_id,
+            revision,
             "--allow-backwards",
         ])
     }
@@ -723,12 +718,12 @@ impl JjExecutor {
     ///
     /// Uses `jj log -r <change_id> -T 'conflict'` to query the conflict status.
     /// Returns true if the change has unresolved conflicts.
-    pub fn has_conflict(&self, change_id: &str) -> Result<bool, JjError> {
+    pub fn has_conflict(&self, revision: &str) -> Result<bool, JjError> {
         let output = self.run_str(&[
             commands::LOG,
             flags::NO_GRAPH,
             flags::REVISION,
-            change_id,
+            revision,
             flags::TEMPLATE,
             "conflict",
         ])?;
@@ -751,16 +746,16 @@ impl JjExecutor {
     ///
     /// Removes parents that are ancestors of other parents, simplifying the DAG
     /// without changing content. Returns the command output.
-    pub fn simplify_parents(&self, change_id: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::SIMPLIFY_PARENTS, flags::REVISION, change_id])
+    pub fn simplify_parents(&self, revision: &str) -> Result<String, JjError> {
+        self.run_str(&[commands::SIMPLIFY_PARENTS, flags::REVISION, revision])
     }
 
     /// Run `jj fix -s <change_id>`
     ///
     /// Applies configured code formatters to the specified revision
     /// and its descendants. Requires `[fix.tools.*]` in jj config.
-    pub fn fix(&self, change_id: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::FIX, flags::SOURCE, change_id])
+    pub fn fix(&self, revision: &str) -> Result<String, JjError> {
+        self.run_str(&[commands::FIX, flags::SOURCE, revision])
     }
 
     /// Run `jj parallelize` to convert a linear chain into parallel (sibling) commits
@@ -777,10 +772,10 @@ impl JjExecutor {
     ///
     /// Runs `jj resolve --list [-r <change_id>]` and parses the output.
     /// Returns an empty list if there are no conflicts.
-    pub fn resolve_list(&self, change_id: Option<&str>) -> Result<Vec<ConflictFile>, JjError> {
+    pub fn resolve_list(&self, revision: Option<&str>) -> Result<Vec<ConflictFile>, JjError> {
         let mut args = vec![commands::RESOLVE, resolve_flags::LIST];
 
-        if let Some(rev) = change_id {
+        if let Some(rev) = revision {
             args.push(flags::REVISION);
             args.push(rev);
         }
@@ -796,11 +791,11 @@ impl JjExecutor {
         &self,
         file_path: &str,
         tool: &str,
-        change_id: Option<&str>,
+        revision: Option<&str>,
     ) -> Result<String, JjError> {
         let mut args = vec![commands::RESOLVE, resolve_flags::TOOL, tool];
 
-        if let Some(rev) = change_id {
+        if let Some(rev) = revision {
             args.push(flags::REVISION);
             args.push(rev);
         }
@@ -847,13 +842,13 @@ impl JjExecutor {
     /// Returns the jj stderr output containing the new change ID.
     /// Note: `jj duplicate` writes its result to stderr, not stdout.
     /// Output format: "Duplicated <commit_id> as <new_change_id> <new_commit_id> <description>"
-    pub fn duplicate(&self, change_id: &str) -> Result<String, JjError> {
+    pub fn duplicate(&self, revision: &str) -> Result<String, JjError> {
         let mut cmd = Command::new(constants::JJ_COMMAND);
         if let Some(ref path) = self.repo_path {
             cmd.arg(flags::REPO_PATH).arg(path);
         }
         cmd.arg(flags::NO_COLOR);
-        cmd.args([commands::DUPLICATE, change_id]);
+        cmd.args([commands::DUPLICATE, revision]);
 
         let output = cmd.output().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -1294,14 +1289,14 @@ impl JjExecutor {
     /// Run `jj git push --revisions <change_id>` with extra flags
     pub fn git_push_revisions_with_flags(
         &self,
-        change_id: &str,
+        revision: &str,
         extra_flags: &[&str],
     ) -> Result<String, JjError> {
         let mut args = vec![
             commands::GIT,
             commands::GIT_PUSH,
             flags::REVISIONS,
-            change_id,
+            revision,
         ];
         args.extend_from_slice(extra_flags);
         self.run_str(&args)
@@ -1310,7 +1305,7 @@ impl JjExecutor {
     /// Run `jj git push --revisions <change_id> --remote <remote>` with extra flags
     pub fn git_push_revisions_to_remote_with_flags(
         &self,
-        change_id: &str,
+        revision: &str,
         remote: &str,
         extra_flags: &[&str],
     ) -> Result<String, JjError> {
@@ -1318,7 +1313,7 @@ impl JjExecutor {
             commands::GIT,
             commands::GIT_PUSH,
             flags::REVISIONS,
-            change_id,
+            revision,
             flags::REMOTE,
             remote,
         ];
@@ -1332,26 +1327,26 @@ impl JjExecutor {
     }
 
     /// Run `jj git push --revisions <change_id>` to push all bookmarks on a revision
-    pub fn git_push_revisions(&self, change_id: &str) -> Result<String, JjError> {
+    pub fn git_push_revisions(&self, revision: &str) -> Result<String, JjError> {
         self.run_str(&[
             commands::GIT,
             commands::GIT_PUSH,
             flags::REVISIONS,
-            change_id,
+            revision,
         ])
     }
 
     /// Run `jj git push --revisions <change_id> --remote <remote>`
     pub fn git_push_revisions_to_remote(
         &self,
-        change_id: &str,
+        revision: &str,
         remote: &str,
     ) -> Result<String, JjError> {
         self.run_str(&[
             commands::GIT,
             commands::GIT_PUSH,
             flags::REVISIONS,
-            change_id,
+            revision,
             flags::REMOTE,
             remote,
         ])
@@ -1360,7 +1355,7 @@ impl JjExecutor {
     /// Run `jj git push --dry-run --revisions <change_id>` to preview push
     ///
     /// Returns stderr output (jj git push --dry-run outputs to stderr).
-    pub fn git_push_revisions_dry_run(&self, change_id: &str) -> Result<String, JjError> {
+    pub fn git_push_revisions_dry_run(&self, revision: &str) -> Result<String, JjError> {
         let mut cmd = Command::new(constants::JJ_COMMAND);
         if let Some(ref path) = self.repo_path {
             cmd.arg(flags::REPO_PATH).arg(path);
@@ -1371,7 +1366,7 @@ impl JjExecutor {
             commands::GIT_PUSH,
             flags::DRY_RUN,
             flags::REVISIONS,
-            change_id,
+            revision,
         ]);
 
         let output = cmd.output().map_err(|e| {
@@ -1394,7 +1389,7 @@ impl JjExecutor {
     /// Run `jj git push --dry-run --revisions <change_id> --remote <remote>`
     pub fn git_push_revisions_dry_run_to_remote(
         &self,
-        change_id: &str,
+        revision: &str,
         remote: &str,
     ) -> Result<String, JjError> {
         let mut cmd = Command::new(constants::JJ_COMMAND);
@@ -1407,7 +1402,7 @@ impl JjExecutor {
             commands::GIT_PUSH,
             flags::DRY_RUN,
             flags::REVISIONS,
-            change_id,
+            revision,
             flags::REMOTE,
             remote,
         ]);
@@ -1460,20 +1455,15 @@ impl JjExecutor {
     /// Run `jj diff -r <change_id>` for a specific change (raw output, no parse)
     ///
     /// Returns diff-only output without the commit header (unlike `jj show`).
-    pub fn diff_raw(&self, change_id: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::DIFF, flags::REVISION, change_id])
+    pub fn diff_raw(&self, revision: &str) -> Result<String, JjError> {
+        self.run_str(&[commands::DIFF, flags::REVISION, revision])
     }
 
     /// Run `jj diff --git -r <change_id>` for git-compatible unified patch output
     ///
     /// Produces output suitable for `git apply`.
-    pub fn diff_git_raw(&self, change_id: &str) -> Result<String, JjError> {
-        self.run_str(&[
-            commands::DIFF,
-            flags::GIT_FORMAT,
-            flags::REVISION,
-            change_id,
-        ])
+    pub fn diff_git_raw(&self, revision: &str) -> Result<String, JjError> {
+        self.run_str(&[commands::DIFF, flags::GIT_FORMAT, flags::REVISION, revision])
     }
 
     /// Run `jj diff --from <from> --to <to>` to compare two revisions

@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::keys;
 use crate::model::Change;
 
-use super::{InputMode, LogAction, LogView, RebaseMode};
+use super::{InputMode, LogAction, LogView, RebaseMode, RebaseSource};
 
 /// Search direction/mode
 #[derive(Clone, Copy)]
@@ -43,7 +43,7 @@ impl LogView {
             && matches!(key.code, KeyCode::Char('e') | KeyCode::Char('E'))
         {
             return if let Some(change) = self.selected_change() {
-                LogAction::DescribeExternal(change.change_id.clone())
+                LogAction::DescribeExternal(change.commit_id.clone())
             } else {
                 LogAction::None
             };
@@ -76,14 +76,14 @@ impl LogView {
             }
             k if k == keys::DESCRIBE => {
                 if let Some(change) = self.selected_change() {
-                    LogAction::StartDescribe(change.change_id.clone())
+                    LogAction::StartDescribe(change.commit_id.clone())
                 } else {
                     LogAction::None
                 }
             }
             k if k == keys::EDIT => {
                 if let Some(change) = self.selected_change() {
-                    LogAction::Edit(change.change_id.clone())
+                    LogAction::Edit(change.commit_id.clone())
                 } else {
                     LogAction::None
                 }
@@ -100,7 +100,7 @@ impl LogView {
                             change.change_id[..8.min(change.change_id.len())].to_string()
                         });
                         LogAction::NewChangeFrom {
-                            change_id: change.change_id.clone(),
+                            revision: change.commit_id.clone(),
                             display_name,
                         }
                     }
@@ -115,16 +115,14 @@ impl LogView {
             }
             k if k == keys::ABANDON => {
                 if let Some(change) = self.selected_change() {
-                    // Let state.rs handle validation and show appropriate notification
-                    LogAction::Abandon(change.change_id.clone())
+                    LogAction::Abandon(change.commit_id.clone())
                 } else {
                     LogAction::None
                 }
             }
             k if k == keys::SPLIT => {
                 if let Some(change) = self.selected_change() {
-                    // Let state.rs handle the interactive split
-                    LogAction::Split(change.change_id.clone())
+                    LogAction::Split(change.commit_id.clone())
                 } else {
                     LogAction::None
                 }
@@ -145,7 +143,7 @@ impl LogView {
             k if k == keys::RESOLVE_LIST => {
                 if let Some(change) = self.selected_change() {
                     LogAction::OpenResolveList {
-                        change_id: change.change_id.clone(),
+                        revision: change.commit_id.clone(),
                         is_working_copy: change.is_working_copy,
                     }
                 } else {
@@ -162,7 +160,7 @@ impl LogView {
             }
             k if k == keys::OPEN_DIFF => {
                 if let Some(change) = self.selected_change() {
-                    LogAction::OpenDiff(change.change_id.clone())
+                    LogAction::OpenDiff(change.commit_id.clone())
                 } else {
                     LogAction::None
                 }
@@ -173,7 +171,7 @@ impl LogView {
             k if k == keys::BOOKMARK_JUMP => LogAction::StartBookmarkJump,
             k if k == keys::COMPARE => {
                 if self.start_compare_select() {
-                    let from_id = self.compare_from.as_ref().unwrap().clone();
+                    let from_id = self.compare_from.as_ref().unwrap().0.clone();
                     LogAction::StartCompare(from_id)
                 } else {
                     LogAction::None
@@ -187,21 +185,21 @@ impl LogView {
             k if k == keys::LOG_REVERSE => LogAction::ToggleReversed,
             k if k == keys::DUPLICATE => {
                 if let Some(change) = self.selected_change() {
-                    LogAction::Duplicate(change.change_id.clone())
+                    LogAction::Duplicate(change.commit_id.clone())
                 } else {
                     LogAction::None
                 }
             }
             k if k == keys::DIFFEDIT => {
                 if let Some(change) = self.selected_change() {
-                    LogAction::DiffEdit(change.change_id.clone())
+                    LogAction::DiffEdit(change.commit_id.clone())
                 } else {
                     LogAction::None
                 }
             }
             k if k == keys::EVOLOG => {
                 if let Some(change) = self.selected_change() {
-                    LogAction::OpenEvolog(change.change_id.clone())
+                    LogAction::OpenEvolog(change.commit_id.clone())
                 } else {
                     LogAction::None
                 }
@@ -212,7 +210,7 @@ impl LogView {
                         // Empty commit has nothing to revert
                         LogAction::None
                     } else {
-                        LogAction::Revert(change.change_id.clone())
+                        LogAction::Revert(change.commit_id.clone())
                     }
                 } else {
                     LogAction::None
@@ -220,21 +218,24 @@ impl LogView {
             }
             k if k == keys::SIMPLIFY_PARENTS => {
                 if let Some(change) = self.selected_change() {
-                    LogAction::SimplifyParents(change.change_id.clone())
+                    LogAction::SimplifyParents(change.commit_id.clone())
                 } else {
                     LogAction::None
                 }
             }
             k if k == keys::FIX => {
                 if let Some(change) = self.selected_change() {
-                    LogAction::Fix(change.change_id.clone())
+                    LogAction::Fix {
+                        revision: change.commit_id.clone(),
+                        change_id: change.change_id.clone(),
+                    }
                 } else {
                     LogAction::None
                 }
             }
             k if k == keys::PARALLELIZE => {
                 if self.start_parallelize_select() {
-                    let from_id = self.parallelize_from.as_ref().unwrap().clone();
+                    let from_id = self.parallelize_from.as_ref().unwrap().0.clone();
                     LogAction::StartParallelize(from_id)
                 } else {
                     LogAction::None
@@ -272,11 +273,11 @@ impl LogView {
 
     fn handle_describe_input_key(&mut self, key: KeyEvent) -> LogAction {
         self.handle_text_input(key, |view, message| {
-            if let Some(change_id) = view.editing_change_id.take() {
+            if let Some(revision) = view.editing_revision.take() {
                 if message.trim().is_empty() {
                     LogAction::None // Empty = cancel
                 } else {
-                    LogAction::Describe { change_id, message }
+                    LogAction::Describe { revision, message }
                 }
             } else {
                 LogAction::None
@@ -286,12 +287,12 @@ impl LogView {
 
     fn handle_bookmark_input_key(&mut self, key: KeyEvent) -> LogAction {
         self.handle_text_input(key, |view, name| {
-            if let Some(change_id) = view.editing_change_id.take() {
+            if let Some(revision) = view.editing_revision.take() {
                 if name.is_empty() {
                     // Empty name = cancel
                     LogAction::None
                 } else {
-                    LogAction::CreateBookmark { change_id, name }
+                    LogAction::CreateBookmark { revision, name }
                 }
             } else {
                 LogAction::None
@@ -384,25 +385,33 @@ impl LogView {
             }
             // Confirm rebase
             KeyCode::Enter => {
-                if let (Some(source), Some(dest_change)) =
+                if let (Some(rebase_src), Some(dest_change)) =
                     (self.rebase_source.clone(), self.selected_change())
                 {
-                    let destination = dest_change.change_id.clone();
+                    let destination = dest_change.commit_id.clone();
 
-                    // Prevent rebasing to self (skip for revset — let jj validate)
-                    if !self.rebase_use_revset && source == destination {
-                        return LogAction::None;
-                    }
+                    // Extract source string and use_revset flag from RebaseSource
+                    let (source, use_revset) = match &rebase_src {
+                        RebaseSource::Selected {
+                            commit_id,
+                            change_id: _,
+                        } => {
+                            // Prevent rebasing to self (compare by commit_id for divergent support)
+                            if *commit_id == dest_change.commit_id {
+                                return LogAction::None;
+                            }
+                            (commit_id.clone(), false)
+                        }
+                        RebaseSource::Revset(revset) => (revset.clone(), true),
+                    };
 
                     let mode = self.rebase_mode;
                     let skip_emptied = self.skip_emptied;
                     let simplify_parents = self.simplify_parents;
-                    let use_revset = self.rebase_use_revset;
                     self.rebase_source = None;
                     self.rebase_mode = RebaseMode::default();
                     self.skip_emptied = false;
                     self.simplify_parents = false;
-                    self.rebase_use_revset = false;
                     self.input_mode = InputMode::Normal;
                     LogAction::Rebase {
                         source,
@@ -451,21 +460,21 @@ impl LogView {
             }
             // Confirm squash
             KeyCode::Enter => {
-                if let (Some(source), Some(dest_change)) =
+                if let (Some(source_pair), Some(dest_change)) =
                     (self.squash_source.take(), self.selected_change())
                 {
-                    let destination = dest_change.change_id.clone();
+                    let destination = dest_change.commit_id.clone();
 
-                    // Prevent squashing into self
-                    if source == destination {
+                    // Prevent squashing into self (compare by commit_id for divergent support)
+                    if source_pair.1 == dest_change.commit_id {
                         // Restore squash_source and stay in mode
-                        self.squash_source = Some(source);
+                        self.squash_source = Some(source_pair);
                         return LogAction::None;
                     }
 
                     self.input_mode = InputMode::Normal;
                     LogAction::SquashInto {
-                        source,
+                        source: source_pair.1,
                         destination,
                     }
                 } else {
@@ -507,20 +516,22 @@ impl LogView {
             }
             // Confirm compare
             KeyCode::Enter => {
-                if let (Some(from), Some(to_change)) =
+                if let (Some(from_pair), Some(to_change)) =
                     (self.compare_from.take(), self.selected_change())
                 {
-                    let to = to_change.change_id.clone();
-
-                    // Prevent comparing a revision with itself
-                    if from == to {
+                    // Prevent comparing a revision with itself (compare by commit_id for divergent support)
+                    if from_pair.1 == to_change.commit_id {
                         // Restore compare_from and stay in mode
-                        self.compare_from = Some(from);
+                        self.compare_from = Some(from_pair);
                         return LogAction::CompareSameRevision;
                     }
 
+                    let to = to_change.commit_id.clone();
                     self.input_mode = InputMode::Normal;
-                    LogAction::Compare { from, to }
+                    LogAction::Compare {
+                        from: from_pair.1,
+                        to,
+                    }
                 } else {
                     LogAction::None
                 }
@@ -560,20 +571,22 @@ impl LogView {
             }
             // Confirm parallelize
             KeyCode::Enter => {
-                if let (Some(from), Some(to_change)) =
+                if let (Some(from_pair), Some(to_change)) =
                     (self.parallelize_from.take(), self.selected_change())
                 {
-                    let to = to_change.change_id.clone();
-
-                    // Prevent parallelizing a single revision
-                    if from == to {
+                    // Prevent parallelizing a single revision (compare by commit_id for divergent support)
+                    if from_pair.1 == to_change.commit_id {
                         // Restore parallelize_from and stay in mode
-                        self.parallelize_from = Some(from);
+                        self.parallelize_from = Some(from_pair);
                         return LogAction::ParallelizeSameRevision;
                     }
 
+                    let to = to_change.commit_id.clone();
                     self.input_mode = InputMode::Normal;
-                    LogAction::Parallelize { from, to }
+                    LogAction::Parallelize {
+                        from: from_pair.1,
+                        to,
+                    }
                 } else {
                     LogAction::None
                 }
@@ -596,12 +609,13 @@ impl LogView {
     fn handle_rebase_revset_input_key(&mut self, key: KeyEvent) -> LogAction {
         match key.code {
             k if k == keys::ESC => {
-                // Esc: discard input + clear revset mode entirely
+                // Esc: discard input + restore single change source
                 self.input_buffer.clear();
-                self.rebase_use_revset = false;
-                // Restore source to currently selected change_id
                 if let Some(change) = self.selected_change() {
-                    self.rebase_source = Some(change.change_id.clone());
+                    self.rebase_source = Some(RebaseSource::Selected {
+                        change_id: change.change_id.clone(),
+                        commit_id: change.commit_id.clone(),
+                    });
                 }
                 self.input_mode = InputMode::RebaseSelect;
                 LogAction::None
@@ -609,14 +623,15 @@ impl LogView {
             k if k == keys::SUBMIT => {
                 let revset = std::mem::take(&mut self.input_buffer);
                 if revset.is_empty() {
-                    // Empty Enter: clear revset mode + restore single change_id
-                    self.rebase_use_revset = false;
+                    // Empty Enter: restore single change source
                     if let Some(change) = self.selected_change() {
-                        self.rebase_source = Some(change.change_id.clone());
+                        self.rebase_source = Some(RebaseSource::Selected {
+                            change_id: change.change_id.clone(),
+                            commit_id: change.commit_id.clone(),
+                        });
                     }
                 } else {
-                    self.rebase_source = Some(revset);
-                    self.rebase_use_revset = true;
+                    self.rebase_source = Some(RebaseSource::Revset(revset));
                 }
                 self.input_mode = InputMode::RebaseSelect;
                 LogAction::None

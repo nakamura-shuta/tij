@@ -5,6 +5,8 @@
 pub struct AnnotationLine {
     /// Change ID (short form, 8 chars)
     pub change_id: String,
+    /// Commit ID (short form, 8 chars) — used for jj command execution
+    pub commit_id: String,
     /// Author name
     pub author: String,
     /// Timestamp (YYYY-MM-DD HH:MM format)
@@ -85,6 +87,7 @@ mod tests {
     fn test_annotation_line_short_timestamp() {
         let line = AnnotationLine {
             change_id: "twzksoxt".to_string(),
+            commit_id: "abcd1234".to_string(),
             author: "nakamura".to_string(),
             timestamp: "2026-01-30 10:43".to_string(),
             line_number: 1,
@@ -98,6 +101,7 @@ mod tests {
     fn test_annotation_line_short_author() {
         let line = AnnotationLine {
             change_id: "twzksoxt".to_string(),
+            commit_id: "abcd1234".to_string(),
             author: "nakamura.shuta".to_string(),
             timestamp: "2026-01-30 10:43".to_string(),
             line_number: 1,

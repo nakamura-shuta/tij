@@ -24,18 +24,19 @@ mod tests;
 use regex::Regex;
 use std::sync::LazyLock;
 
-/// Regex for parsing jj file annotate default output
-/// Format: `<change_id> <author> <timestamp>  <line_number>: <content>`
-/// Example: `twzksoxt nakamura 2026-01-30 10:43:19    1: //! Tij`
+/// Regex for parsing jj file annotate output with commit_id
+/// Format: `<change_id>\t<commit_id> <author> <timestamp>  <line_number>: <content>`
+/// Example: `twzksoxt\tabcd1234 nakamura 2026-01-30 10:43:19    1: //! Tij`
 ///
 /// Groups:
-/// 1. change_id (first token, variable length)
-/// 2. author (between change_id and timestamp)
-/// 3. timestamp (YYYY-MM-DD HH:MM:SS)
-/// 4. line_number (digits after timestamp, before colon)
-/// 5. content (everything after `: ` or `:`)
+/// 1. change_id (first token before tab)
+/// 2. commit_id (token after tab, before space)
+/// 3. author (between commit_id and timestamp)
+/// 4. timestamp (YYYY-MM-DD HH:MM:SS)
+/// 5. line_number (digits after timestamp, before colon)
+/// 6. content (everything after `: ` or `:`)
 static ANNOTATE_LINE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(\S+)\s+(.+?)\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\d+):\s?(.*)$")
+    Regex::new(r"^(\S+)\t(\S+)\s+(.+?)\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\d+):\s?(.*)$")
         .expect("Invalid annotate line regex")
 });
 

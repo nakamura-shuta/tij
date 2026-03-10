@@ -70,7 +70,7 @@ impl DiffView {
             Span::raw(" Tij - Diff View ").bold(),
             Span::raw("["),
             Span::styled(
-                self.change_id.chars().take(8).collect::<String>(),
+                self.revision.chars().take(8).collect::<String>(),
                 Style::default().fg(theme::log_view::CHANGE_ID),
             ),
             Span::raw("]"),

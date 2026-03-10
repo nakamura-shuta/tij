@@ -46,14 +46,14 @@ impl JjExecutor {
     ///
     /// Note: Unlike `run()`, this method does NOT use `--color=never`
     /// because interactive mode benefits from the editor's native behavior.
-    pub fn describe_edit_interactive(&self, change_id: &str) -> io::Result<ExitStatus> {
+    pub fn describe_edit_interactive(&self, revision: &str) -> io::Result<ExitStatus> {
         let mut cmd = Command::new(constants::JJ_COMMAND);
 
         if let Some(repo_path) = self.repo_path() {
             cmd.arg(flags::REPO_PATH).arg(repo_path);
         }
 
-        cmd.args([commands::DESCRIBE, "-r", change_id, flags::EDITOR_FLAG])
+        cmd.args([commands::DESCRIBE, "-r", revision, flags::EDITOR_FLAG])
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
@@ -68,7 +68,7 @@ impl JjExecutor {
     ///
     /// Note: Unlike `run()`, this method does NOT use `--color=never`
     /// because interactive mode benefits from color output in the diff editor.
-    pub fn split_interactive(&self, change_id: &str) -> io::Result<ExitStatus> {
+    pub fn split_interactive(&self, revision: &str) -> io::Result<ExitStatus> {
         let mut cmd = Command::new(constants::JJ_COMMAND);
 
         // repo_path がある場合は -R を付与（tij /path/to/repo 対応）
@@ -76,7 +76,7 @@ impl JjExecutor {
             cmd.arg(flags::REPO_PATH).arg(repo_path);
         }
 
-        cmd.args([commands::SPLIT, "-r", change_id])
+        cmd.args([commands::SPLIT, "-r", revision])
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
@@ -127,7 +127,7 @@ impl JjExecutor {
     pub fn resolve_interactive(
         &self,
         file_path: &str,
-        change_id: Option<&str>,
+        revision: Option<&str>,
     ) -> io::Result<ExitStatus> {
         let mut cmd = Command::new(constants::JJ_COMMAND);
 
@@ -136,7 +136,7 @@ impl JjExecutor {
         }
 
         let mut args = vec![commands::RESOLVE];
-        if let Some(rev) = change_id {
+        if let Some(rev) = revision {
             args.push(flags::REVISION);
             args.push(rev);
         }

@@ -10,8 +10,8 @@ impl App {
     ///
     /// First tries `jj bookmark create`. If the bookmark already exists,
     /// shows a confirmation dialog before moving it.
-    pub(crate) fn execute_bookmark_create(&mut self, change_id: &str, name: &str) {
-        match self.jj.bookmark_create(name, change_id) {
+    pub(crate) fn execute_bookmark_create(&mut self, revision: &str, name: &str) {
+        match self.jj.bookmark_create(name, revision) {
             Ok(_) => {
                 self.notification =
                     Some(Notification::success(format!("Created bookmark: {}", name)));
@@ -21,14 +21,14 @@ impl App {
                 // Check if bookmark already exists - show confirmation dialog
                 if is_bookmark_exists_error(&e) {
                     // Build detail with From/To info
-                    let detail = self.build_bookmark_move_detail(name, change_id);
+                    let detail = self.build_bookmark_move_detail(name, revision);
                     self.active_dialog = Some(Dialog::confirm(
                         "Move Bookmark",
                         format!("Move bookmark \"{}\" to this change?", name),
                         Some(detail),
                         DialogCallback::MoveBookmark {
                             name: name.to_string(),
-                            change_id: change_id.to_string(),
+                            revision: revision.to_string(),
                         },
                     ));
                 } else {
@@ -84,18 +84,11 @@ impl App {
     }
 
     /// Execute bookmark move (called after confirmation)
-    pub(super) fn execute_bookmark_move(&mut self, name: &str, change_id: &str) {
+    pub(super) fn execute_bookmark_move(&mut self, name: &str, revision: &str) {
         let msg = format!("Moved bookmark: {}", name);
         let result = self.run_and_record(
             "Bookmark set",
-            &[
-                "bookmark",
-                "set",
-                name,
-                "-r",
-                change_id,
-                "--allow-backwards",
-            ],
+            &["bookmark", "set", name, "-r", revision, "--allow-backwards"],
         );
         self.run_jj_action(
             result,

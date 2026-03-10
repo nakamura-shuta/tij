@@ -50,7 +50,7 @@ impl ResolveView {
             Line::from(vec![
                 Span::styled("  Working copy: ", Style::default().fg(Color::Gray)),
                 Span::styled(
-                    self.change_id.clone(),
+                    self.revision.clone(),
                     Style::default()
                         .fg(Color::Cyan)
                         .add_modifier(Modifier::BOLD),
@@ -60,7 +60,7 @@ impl ResolveView {
             Line::from(vec![
                 Span::styled("  Change: ", Style::default().fg(Color::Gray)),
                 Span::styled(
-                    self.change_id.clone(),
+                    self.revision.clone(),
                     Style::default()
                         .fg(Color::Cyan)
                         .add_modifier(Modifier::BOLD),

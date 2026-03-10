@@ -546,10 +546,10 @@ fn test_parse_op_log_malformed_lines_skipped() {
 
 #[test]
 fn test_parse_file_annotate_basic() {
-    // Default output format: "<change_id> <author> <timestamp>  <line_number>: <content>"
-    let output = "twzksoxt nakamura 2026-01-30 10:43:19    1: //! Tij\n\
-                  twzksoxt nakamura 2026-01-30 10:43:19    2: //!\n\
-                  qplomrst taro 2026-01-28 15:22:00    3: mod app;";
+    // Format: "<change_id>\t<commit_id> <author> <timestamp>  <line_number>: <content>"
+    let output = "twzksoxt\taaa11111 nakamura 2026-01-30 10:43:19    1: //! Tij\n\
+                  twzksoxt\taaa11111 nakamura 2026-01-30 10:43:19    2: //!\n\
+                  qplomrst\tbbb22222 taro 2026-01-28 15:22:00    3: mod app;";
 
     let content = Parser::parse_file_annotate(output, "src/main.rs").unwrap();
     assert_eq!(content.file_path, "src/main.rs");
@@ -557,6 +557,7 @@ fn test_parse_file_annotate_basic() {
 
     // First line - first in hunk
     assert_eq!(content.lines[0].change_id, "twzksoxt");
+    assert_eq!(content.lines[0].commit_id, "aaa11111");
     assert_eq!(content.lines[0].author, "nakamura");
     assert_eq!(content.lines[0].line_number, 1);
     assert!(content.lines[0].first_in_hunk);
@@ -564,11 +565,13 @@ fn test_parse_file_annotate_basic() {
 
     // Second line - continuation (same change_id)
     assert_eq!(content.lines[1].change_id, "twzksoxt");
+    assert_eq!(content.lines[1].commit_id, "aaa11111");
     assert_eq!(content.lines[1].line_number, 2);
     assert!(!content.lines[1].first_in_hunk);
 
     // Third line - new hunk (different change_id)
     assert_eq!(content.lines[2].change_id, "qplomrst");
+    assert_eq!(content.lines[2].commit_id, "bbb22222");
     assert_eq!(content.lines[2].line_number, 3);
     assert!(content.lines[2].first_in_hunk);
 }
@@ -576,7 +579,7 @@ fn test_parse_file_annotate_basic() {
 #[test]
 fn test_parse_file_annotate_with_tabs_in_content() {
     // Content contains tabs - should be handled correctly
-    let output = "twzksoxt nakamura 2026-01-30 10:43:19    1: \tindented\twith\ttabs";
+    let output = "twzksoxt\taaa11111 nakamura 2026-01-30 10:43:19    1: \tindented\twith\ttabs";
 
     let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
     assert_eq!(content.len(), 1);
@@ -586,7 +589,7 @@ fn test_parse_file_annotate_with_tabs_in_content() {
 #[test]
 fn test_parse_file_annotate_empty_content() {
     // Empty content after line number
-    let output = "twzksoxt nakamura 2026-01-30 10:43:19    1:";
+    let output = "twzksoxt\taaa11111 nakamura 2026-01-30 10:43:19    1:";
 
     let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
     assert_eq!(content.len(), 1);
@@ -596,7 +599,7 @@ fn test_parse_file_annotate_empty_content() {
 #[test]
 fn test_parse_file_annotate_skips_empty_lines() {
     // Empty lines in output are skipped
-    let output = "twzksoxt nakamura 2026-01-30 10:43:19    1: line1\n\n\nqplomrst taro 2026-01-28 15:22:00    4: line4";
+    let output = "twzksoxt\taaa11111 nakamura 2026-01-30 10:43:19    1: line1\n\n\nqplomrst\tbbb22222 taro 2026-01-28 15:22:00    4: line4";
 
     let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
     assert_eq!(content.len(), 2);
@@ -607,11 +610,12 @@ fn test_parse_file_annotate_skips_empty_lines() {
 #[test]
 fn test_parse_file_annotate_author_with_digits() {
     // Author name contains digits - should still parse correctly
-    let output = "abc12345 user1 2026-01-30 10:43:19    1: some content";
+    let output = "abc12345\tccc33333 user1 2026-01-30 10:43:19    1: some content";
 
     let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
     assert_eq!(content.len(), 1);
     assert_eq!(content.lines[0].change_id, "abc12345");
+    assert_eq!(content.lines[0].commit_id, "ccc33333");
     assert_eq!(content.lines[0].author, "user1");
     assert_eq!(content.lines[0].line_number, 1);
     assert_eq!(content.lines[0].content, "some content");
@@ -620,7 +624,7 @@ fn test_parse_file_annotate_author_with_digits() {
 #[test]
 fn test_parse_file_annotate_content_with_colon_pattern() {
     // Content contains patterns like "1: foo" - should not confuse parser
-    let output = "twzksoxt nakamura 2026-01-30 10:43:19   10: let x = 1: foo";
+    let output = "twzksoxt\taaa11111 nakamura 2026-01-30 10:43:19   10: let x = 1: foo";
 
     let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
     assert_eq!(content.len(), 1);
@@ -631,24 +635,26 @@ fn test_parse_file_annotate_content_with_colon_pattern() {
 #[test]
 fn test_parse_file_annotate_variable_change_id_length() {
     // change_id longer than 8 chars (if jj config changes)
-    let output = "abcdefghij user 2026-01-30 10:43:19    1: content";
+    let output = "abcdefghij\txyz1234567 user 2026-01-30 10:43:19    1: content";
 
     let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
     assert_eq!(content.len(), 1);
     assert_eq!(content.lines[0].change_id, "abcdefghij");
+    assert_eq!(content.lines[0].commit_id, "xyz1234567");
 
-    // change_id shorter than 8 chars
-    let output2 = "abc user 2026-01-30 10:43:19    1: content";
+    // change_id and commit_id shorter than 8 chars
+    let output3 = "abc\txyz user 2026-01-30 10:43:19    1: content";
 
-    let content2 = Parser::parse_file_annotate(output2, "test.rs").unwrap();
-    assert_eq!(content2.len(), 1);
-    assert_eq!(content2.lines[0].change_id, "abc");
+    let content3 = Parser::parse_file_annotate(output3, "test.rs").unwrap();
+    assert_eq!(content3.len(), 1);
+    assert_eq!(content3.lines[0].change_id, "abc");
+    assert_eq!(content3.lines[0].commit_id, "xyz");
 }
 
 #[test]
 fn test_parse_file_annotate_complex_author_name() {
     // Author with spaces (full name) or special characters
-    let output = "twzksoxt John Doe 2026-01-30 10:43:19    1: content";
+    let output = "twzksoxt\taaa11111 John Doe 2026-01-30 10:43:19    1: content";
 
     let content = Parser::parse_file_annotate(output, "test.rs").unwrap();
     assert_eq!(content.len(), 1);

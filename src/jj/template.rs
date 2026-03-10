@@ -97,16 +97,20 @@ impl Templates {
 
     /// Template for `jj file annotate` output
     ///
-    /// Uses `commit.change_id().short(8)` to ensure change_id length matches
-    /// the log template (8 chars), enabling reliable cross-view ID matching.
+    /// Uses `commit.change_id().short(8)` and `commit.commit_id().short(8)` to ensure
+    /// ID lengths match the log template (8 chars), enabling reliable cross-view ID matching.
     ///
-    /// Output format (same structure as default but with fixed-length change_id):
-    /// `<change_id> <author> <timestamp>  <line_number>: <content>`
+    /// Output format:
+    /// `<change_id>\t<commit_id> <author> <timestamp>  <line_number>: <content>`
     ///
     /// Note: Uses AnnotationLine template methods available in jj 0.38+.
+    /// The tab separator between change_id and commit_id distinguishes them
+    /// from the space-separated remaining fields.
     pub fn file_annotate() -> &'static str {
         concat!(
             "commit.change_id().short(8)",
+            " ++ \"\\t\" ++ ",
+            "commit.commit_id().short(8)",
             " ++ \" \" ++ ",
             "commit.author().name()",
             " ++ \" \" ++ ",
@@ -147,6 +151,7 @@ mod tests {
     fn test_file_annotate_template_has_required_fields() {
         let template = Templates::file_annotate();
         assert!(template.contains("change_id"));
+        assert!(template.contains("commit_id"));
         assert!(template.contains("author"));
         assert!(template.contains("line_number"));
         assert!(template.contains("content"));
