@@ -177,8 +177,8 @@ impl App {
                 if let Some(ref diff_view) = self.diff_view {
                     if let Some(ref compare_info) = diff_view.compare_info {
                         // Compare mode: re-run diff --from --to
-                        let from = compare_info.from.commit_id.clone();
-                        let to = compare_info.to.commit_id.clone();
+                        let from = compare_info.from.commit_id.to_string();
+                        let to = compare_info.to.commit_id.to_string();
                         self.open_compare_diff(&from, &to);
                     } else {
                         // Normal mode: re-run jj show

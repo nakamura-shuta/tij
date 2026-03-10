@@ -620,8 +620,8 @@ mod tests {
         });
 
         let changes = vec![Change {
-            change_id: "aaa".to_string(),
-            commit_id: "c1".to_string(),
+            change_id: crate::model::ChangeId::new("aaa".to_string()),
+            commit_id: crate::model::CommitId::new("c1".to_string()),
             bookmarks: vec!["new-bm".to_string()],
             ..Change::default()
         }];
@@ -641,8 +641,8 @@ mod tests {
         cache.insert(make_entry("aaa", "c1"));
 
         let changes = vec![Change {
-            change_id: "aaa".to_string(),
-            commit_id: "c2".to_string(), // different commit_id
+            change_id: crate::model::ChangeId::new("aaa".to_string()),
+            commit_id: crate::model::CommitId::new("c2".to_string()), // different commit_id
             ..Change::default()
         }];
 
@@ -667,8 +667,8 @@ mod tests {
 
         // Graph-only line with matching change_id should be ignored
         let changes = vec![Change {
-            change_id: "aaa".to_string(),
-            commit_id: "c1".to_string(),
+            change_id: crate::model::ChangeId::new("aaa".to_string()),
+            commit_id: crate::model::CommitId::new("c1".to_string()),
             is_graph_only: true,
             ..Change::default()
         }];
@@ -686,8 +686,8 @@ mod tests {
     fn update_preview_schedules_pending_on_cache_miss() {
         let mut app = App::new_for_test();
         app.log_view.set_changes(vec![Change {
-            change_id: "aaa".to_string(),
-            commit_id: "c1".to_string(),
+            change_id: crate::model::ChangeId::new("aaa".to_string()),
+            commit_id: crate::model::CommitId::new("c1".to_string()),
             ..Change::default()
         }]);
         app.preview_enabled = true;
@@ -701,8 +701,8 @@ mod tests {
     fn update_preview_skips_when_cache_hit() {
         let mut app = App::new_for_test();
         app.log_view.set_changes(vec![Change {
-            change_id: "aaa".to_string(),
-            commit_id: "c1".to_string(),
+            change_id: crate::model::ChangeId::new("aaa".to_string()),
+            commit_id: crate::model::CommitId::new("c1".to_string()),
             ..Change::default()
         }]);
         app.preview_enabled = true;
@@ -716,8 +716,8 @@ mod tests {
     fn update_preview_schedules_on_stale_commit_id() {
         let mut app = App::new_for_test();
         app.log_view.set_changes(vec![Change {
-            change_id: "aaa".to_string(),
-            commit_id: "c2".to_string(), // new commit_id
+            change_id: crate::model::ChangeId::new("aaa".to_string()),
+            commit_id: crate::model::CommitId::new("c2".to_string()), // new commit_id
             ..Change::default()
         }]);
         app.preview_enabled = true;
@@ -731,8 +731,8 @@ mod tests {
     fn update_preview_noop_when_disabled() {
         let mut app = App::new_for_test();
         app.log_view.set_changes(vec![Change {
-            change_id: "aaa".to_string(),
-            commit_id: "c1".to_string(),
+            change_id: crate::model::ChangeId::new("aaa".to_string()),
+            commit_id: crate::model::CommitId::new("c1".to_string()),
             ..Change::default()
         }]);
         app.preview_enabled = false;

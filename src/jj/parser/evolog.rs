@@ -1,6 +1,6 @@
 //! Parser for `jj evolog` output
 
-use crate::model::EvologEntry;
+use crate::model::{ChangeId, CommitId, EvologEntry};
 
 /// Parse `jj evolog` tab-separated output into EvologEntry list
 pub fn parse_evolog(output: &str) -> Vec<EvologEntry> {
@@ -13,8 +13,8 @@ pub fn parse_evolog(output: &str) -> Vec<EvologEntry> {
                 return None;
             }
             Some(EvologEntry {
-                commit_id: parts[0].to_string(),
-                change_id: parts[1].to_string(),
+                commit_id: CommitId::new(parts[0].to_string()),
+                change_id: ChangeId::new(parts[1].to_string()),
                 author: parts[2].to_string(),
                 timestamp: parts[3].to_string(),
                 is_empty: parts[4] == "[empty]",

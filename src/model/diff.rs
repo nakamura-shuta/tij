@@ -2,11 +2,13 @@
 //!
 //! Represents parsed output from `jj show` command.
 
+use super::id::{ChangeId, CommitId};
+
 /// Parsed diff content from `jj show`
 #[derive(Debug, Default, Clone)]
 pub struct DiffContent {
     /// Commit ID (full hash)
-    pub commit_id: String,
+    pub commit_id: CommitId,
     /// Author name and email
     pub author: String,
     /// Timestamp
@@ -188,9 +190,9 @@ impl DiffDisplayFormat {
 #[derive(Debug, Clone)]
 pub struct CompareRevisionInfo {
     /// Change ID (short) — for UI display
-    pub change_id: String,
+    pub change_id: ChangeId,
     /// Commit ID (short) — for jj command execution (unambiguous)
-    pub commit_id: String,
+    pub commit_id: CommitId,
     /// Bookmarks on this revision
     pub bookmarks: Vec<String>,
     /// Author

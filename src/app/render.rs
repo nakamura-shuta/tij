@@ -7,6 +7,7 @@ use ratatui::{
 };
 
 use super::state::{App, View};
+use crate::app::helpers::revision::short_id;
 use crate::keys::{self, BookmarkKind, DialogHintKind, HintContext};
 use crate::model::{DiffContent, DiffLineKind, FileOperation};
 use crate::ui::components::dialog::DialogKind;
@@ -174,11 +175,7 @@ impl App {
 
         let title = match cached {
             Some(entry) => {
-                let commit_short = if entry.content.commit_id.len() >= 8 {
-                    &entry.content.commit_id[..8]
-                } else {
-                    &entry.content.commit_id
-                };
+                let commit_short = short_id(entry.content.commit_id.as_str());
                 format!(" Preview: {} ({}) ", &entry.change_id, commit_short)
             }
             None => " Preview ".to_string(),
@@ -1117,8 +1114,8 @@ mod tests {
 
         // Simulate refresh_log with same commit_id → entry kept
         let changes = vec![Change {
-            change_id: "abc12345".to_string(),
-            commit_id: "commit_aaa".to_string(),
+            change_id: crate::model::ChangeId::new("abc12345".to_string()),
+            commit_id: crate::model::CommitId::new("commit_aaa".to_string()),
             bookmarks: vec!["main".to_string(), "dev".to_string()],
             ..Change::default()
         }];
@@ -1130,8 +1127,8 @@ mod tests {
 
         // Now commit_id changes → entry evicted
         let changes_stale = vec![Change {
-            change_id: "abc12345".to_string(),
-            commit_id: "commit_bbb".to_string(),
+            change_id: crate::model::ChangeId::new("abc12345".to_string()),
+            commit_id: crate::model::CommitId::new("commit_bbb".to_string()),
             ..Change::default()
         }];
         cache.validate(&changes_stale);

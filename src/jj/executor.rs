@@ -14,8 +14,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use crate::model::{
-    AnnotationContent, Bookmark, BookmarkInfo, Change, ConflictFile, DiffContent, Operation,
-    RebaseMode, Status, TagInfo,
+    AnnotationContent, Bookmark, BookmarkInfo, Change, ChangeId, CommitId, ConflictFile,
+    DiffContent, Operation, RebaseMode, Status, TagInfo,
 };
 
 use super::JjError;
@@ -640,8 +640,8 @@ impl JjExecutor {
                     None
                 };
                 BookmarkInfo {
-                    change_id: info.map(|(c, _, _)| c.clone()),
-                    commit_id: info.map(|(_, c, _)| c.clone()),
+                    change_id: info.map(|(c, _, _)| ChangeId::new(c.clone())),
+                    commit_id: info.map(|(_, c, _)| CommitId::new(c.clone())),
                     description: info.map(|(_, _, d)| d.clone()),
                     bookmark,
                 }

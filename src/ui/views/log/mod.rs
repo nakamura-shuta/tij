@@ -308,7 +308,7 @@ impl LogView {
     /// Start bookmark input mode for the selected change
     pub fn start_bookmark_input(&mut self) {
         // Clone commit_id first to avoid borrow conflict
-        let commit_id = self.selected_change().map(|c| c.commit_id.clone());
+        let commit_id = self.selected_change().map(|c| c.commit_id.to_string());
 
         if let Some(commit_id) = commit_id {
             self.editing_revision = Some(commit_id);
@@ -324,7 +324,7 @@ impl LogView {
     pub fn start_rebase_mode_select(&mut self) -> bool {
         let source = self
             .selected_change()
-            .map(|c| (c.change_id.clone(), c.commit_id.clone()));
+            .map(|c| (c.change_id.to_string(), c.commit_id.to_string()));
 
         if let Some((change_id, commit_id)) = source {
             self.rebase_source = Some(RebaseSource::Selected {
@@ -356,7 +356,7 @@ impl LogView {
         // Clone change data first to avoid borrow conflict
         let source = self
             .selected_change()
-            .map(|c| (c.change_id.clone(), c.commit_id.clone()));
+            .map(|c| (c.change_id.to_string(), c.commit_id.to_string()));
 
         if let Some((change_id, commit_id)) = source {
             self.rebase_source = Some(RebaseSource::Selected {
@@ -385,7 +385,7 @@ impl LogView {
     pub fn start_squash_select(&mut self) -> bool {
         let source = self
             .selected_change()
-            .map(|c| (c.change_id.clone(), c.commit_id.clone()));
+            .map(|c| (c.change_id.to_string(), c.commit_id.to_string()));
 
         if let Some(pair) = source {
             self.squash_source = Some(pair);
@@ -410,7 +410,7 @@ impl LogView {
     pub fn start_compare_select(&mut self) -> bool {
         let source = self
             .selected_change()
-            .map(|c| (c.change_id.clone(), c.commit_id.clone()));
+            .map(|c| (c.change_id.to_string(), c.commit_id.to_string()));
 
         if let Some(pair) = source {
             self.compare_from = Some(pair);
@@ -435,7 +435,7 @@ impl LogView {
     pub fn start_parallelize_select(&mut self) -> bool {
         let source = self
             .selected_change()
-            .map(|c| (c.change_id.clone(), c.commit_id.clone()));
+            .map(|c| (c.change_id.to_string(), c.commit_id.to_string()));
 
         if let Some(pair) = source {
             self.parallelize_from = Some(pair);

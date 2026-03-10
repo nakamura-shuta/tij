@@ -5,13 +5,13 @@ use crossterm::event::{KeyCode, KeyEvent};
 use super::{InputMode, LogAction, LogView, RebaseMode, RebaseSource};
 use crate::jj::constants;
 use crate::keys;
-use crate::model::Change;
+use crate::model::{Change, ChangeId, CommitId};
 
 fn create_test_changes() -> Vec<Change> {
     vec![
         Change {
-            change_id: "abc12345".to_string(),
-            commit_id: "def67890".to_string(),
+            change_id: ChangeId::new("abc12345".to_string()),
+            commit_id: CommitId::new("def67890".to_string()),
             author: "user@example.com".to_string(),
             timestamp: "2024-01-29".to_string(),
             description: "First commit".to_string(),
@@ -23,8 +23,8 @@ fn create_test_changes() -> Vec<Change> {
             has_conflict: false,
         },
         Change {
-            change_id: "xyz98765".to_string(),
-            commit_id: "uvw43210".to_string(),
+            change_id: ChangeId::new("xyz98765".to_string()),
+            commit_id: CommitId::new("uvw43210".to_string()),
             author: "user@example.com".to_string(),
             timestamp: "2024-01-28".to_string(),
             description: "Initial commit".to_string(),
@@ -36,8 +36,8 @@ fn create_test_changes() -> Vec<Change> {
             has_conflict: false,
         },
         Change {
-            change_id: constants::ROOT_CHANGE_ID.to_string(),
-            commit_id: "0".repeat(40),
+            change_id: ChangeId::new(constants::ROOT_CHANGE_ID.to_string()),
+            commit_id: CommitId::new("0".repeat(40)),
             author: "".to_string(),
             timestamp: "".to_string(),
             description: "".to_string(),
@@ -1560,8 +1560,8 @@ fn test_select_working_copy_not_found() {
     // Create changes with no working copy
     let changes = vec![
         Change {
-            change_id: "abc12345".to_string(),
-            commit_id: "def67890".to_string(),
+            change_id: ChangeId::new("abc12345".to_string()),
+            commit_id: CommitId::new("def67890".to_string()),
             author: "user@example.com".to_string(),
             timestamp: "2024-01-29".to_string(),
             description: "First commit".to_string(),
@@ -1573,8 +1573,8 @@ fn test_select_working_copy_not_found() {
             has_conflict: false,
         },
         Change {
-            change_id: "xyz98765".to_string(),
-            commit_id: "uvw43210".to_string(),
+            change_id: ChangeId::new("xyz98765".to_string()),
+            commit_id: CommitId::new("uvw43210".to_string()),
             author: "user@example.com".to_string(),
             timestamp: "2024-01-28".to_string(),
             description: "Second commit".to_string(),
@@ -1677,8 +1677,8 @@ fn test_reverse_falls_back_to_working_copy() {
     view.reversed = true;
     let changes = vec![
         Change {
-            change_id: "new11111".to_string(),
-            commit_id: "com11111".to_string(),
+            change_id: ChangeId::new("new11111".to_string()),
+            commit_id: CommitId::new("com11111".to_string()),
             author: "user@example.com".to_string(),
             timestamp: "2024-01-30".to_string(),
             description: "New change".to_string(),
@@ -1690,8 +1690,8 @@ fn test_reverse_falls_back_to_working_copy() {
             has_conflict: false,
         },
         Change {
-            change_id: "abc12345".to_string(),
-            commit_id: "def67890".to_string(),
+            change_id: ChangeId::new("abc12345".to_string()),
+            commit_id: CommitId::new("def67890".to_string()),
             author: "user@example.com".to_string(),
             timestamp: "2024-01-29".to_string(),
             description: "First commit".to_string(),

@@ -30,7 +30,7 @@ impl EvologView {
             // Actions
             KeyCode::Enter => {
                 if let Some(entry) = self.selected_entry() {
-                    EvologAction::OpenDiff(entry.commit_id.clone())
+                    EvologAction::OpenDiff(entry.commit_id.to_string())
                 } else {
                     EvologAction::None
                 }

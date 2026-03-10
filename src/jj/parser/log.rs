@@ -2,7 +2,7 @@
 
 use super::super::JjError;
 use super::super::template::FIELD_SEPARATOR;
-use crate::model::Change;
+use crate::model::{Change, ChangeId, CommitId};
 
 use super::Parser;
 
@@ -93,8 +93,8 @@ impl Parser {
         }
 
         Ok(Change {
-            change_id: change_id.to_string(),
-            commit_id: fields[0].to_string(),
+            change_id: ChangeId::new(change_id.to_string()),
+            commit_id: CommitId::new(fields[0].to_string()),
             author: fields[1].to_string(),
             timestamp: fields[2].to_string(),
             description: fields[3].to_string(),
@@ -125,8 +125,8 @@ impl Parser {
         }
 
         Ok(Change {
-            change_id: fields[0].to_string(),
-            commit_id: fields[1].to_string(),
+            change_id: ChangeId::new(fields[0].to_string()),
+            commit_id: CommitId::new(fields[1].to_string()),
             author: fields[2].to_string(),
             timestamp: fields[3].to_string(),
             description: fields[4].to_string(),

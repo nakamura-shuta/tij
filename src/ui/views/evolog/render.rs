@@ -69,7 +69,7 @@ impl EvologView {
         let empty_style = Style::default().fg(Color::DarkGray);
 
         let mut spans = vec![
-            Span::styled(entry.commit_id.clone(), id_style),
+            Span::styled(entry.commit_id.to_string(), id_style),
             Span::raw("  "),
             Span::styled(entry.timestamp.clone(), time_style),
             Span::raw("  "),

@@ -255,7 +255,7 @@ fn bookmark_group_order(bookmark: &crate::model::Bookmark) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Bookmark;
+    use crate::model::{Bookmark, ChangeId};
     use crossterm::event::{KeyCode, KeyEvent};
 
     fn make_local(name: &str, change_id: Option<&str>, desc: Option<&str>) -> BookmarkInfo {
@@ -265,7 +265,7 @@ mod tests {
                 remote: None,
                 is_tracked: false,
             },
-            change_id: change_id.map(|s| s.to_string()),
+            change_id: change_id.map(|s| ChangeId::new(s.to_string())),
             commit_id: None,
             description: desc.map(|s| s.to_string()),
         }

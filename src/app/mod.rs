@@ -10,6 +10,7 @@
 
 mod actions;
 pub(crate) mod clipboard;
+pub(crate) mod helpers;
 mod input;
 mod navigation;
 mod refresh;

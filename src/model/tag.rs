@@ -1,5 +1,7 @@
 //! Tag model for `jj tag list`
 
+use super::id::{ChangeId, CommitId};
+
 /// Tag information with target commit details
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagInfo {
@@ -10,9 +12,9 @@ pub struct TagInfo {
     /// Whether the tag is present (not deleted on remote)
     pub present: bool,
     /// Target change_id (short form, 8 chars)
-    pub change_id: Option<String>,
+    pub change_id: Option<ChangeId>,
     /// Target commit_id (short form, 8 chars)
-    pub commit_id: Option<String>,
+    pub commit_id: Option<CommitId>,
     /// Target commit description (first line)
     pub description: Option<String>,
 }
@@ -47,8 +49,8 @@ mod tests {
             name: "v0.4.10".into(),
             remote: None,
             present: true,
-            change_id: Some("mzslzzzz".into()),
-            commit_id: Some("57d01adc".into()),
+            change_id: Some(ChangeId::from("mzslzzzz")),
+            commit_id: Some(CommitId::from("57d01adc")),
             description: Some("fix: something".into()),
         };
         assert_eq!(tag.full_name(), "v0.4.10");
@@ -73,7 +75,7 @@ mod tests {
             name: "v1.0".into(),
             remote: None,
             present: true,
-            change_id: Some("abc".into()),
+            change_id: Some(ChangeId::from("abc")),
             commit_id: None,
             description: None,
         };
@@ -96,8 +98,8 @@ mod tests {
             name: "v1.0".into(),
             remote: None,
             present: true,
-            change_id: Some("abc12345".into()),
-            commit_id: Some("def67890".into()),
+            change_id: Some(ChangeId::from("abc12345")),
+            commit_id: Some(CommitId::from("def67890")),
             description: Some("release".into()),
         };
         assert!(jumpable.is_jumpable());

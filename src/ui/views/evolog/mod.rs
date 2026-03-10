@@ -78,26 +78,27 @@ mod tests {
     use super::*;
 
     fn create_test_entries() -> Vec<EvologEntry> {
+        use crate::model::{ChangeId, CommitId};
         vec![
             EvologEntry {
-                commit_id: "43a4bc7d".to_string(),
-                change_id: "zxsrvopz".to_string(),
+                commit_id: CommitId::new("43a4bc7d".to_string()),
+                change_id: ChangeId::new("zxsrvopz".to_string()),
                 author: "user@example.com".to_string(),
                 timestamp: "2025-10-03 18:10:00".to_string(),
                 is_empty: false,
                 description: "my feature description".to_string(),
             },
             EvologEntry {
-                commit_id: "7aa68914".to_string(),
-                change_id: "zxsrvopz".to_string(),
+                commit_id: CommitId::new("7aa68914".to_string()),
+                change_id: ChangeId::new("zxsrvopz".to_string()),
                 author: "user@example.com".to_string(),
                 timestamp: "2025-10-03 18:08:05".to_string(),
                 is_empty: false,
                 description: "(no description set)".to_string(),
             },
             EvologEntry {
-                commit_id: "initial1".to_string(),
-                change_id: "zxsrvopz".to_string(),
+                commit_id: CommitId::new("initial1".to_string()),
+                change_id: ChangeId::new("zxsrvopz".to_string()),
                 author: "user@example.com".to_string(),
                 timestamp: "2025-10-03 18:05:00".to_string(),
                 is_empty: true,

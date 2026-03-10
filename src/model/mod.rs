@@ -11,6 +11,7 @@ mod conflict;
 mod diff;
 mod evolog;
 mod file_status;
+mod id;
 mod notification;
 mod operation;
 mod rebase;
@@ -27,6 +28,7 @@ pub use diff::{
 };
 pub use evolog::EvologEntry;
 pub use file_status::{FileState, FileStatus, Status};
+pub use id::{ChangeId, CommitId};
 pub use notification::{Notification, NotificationKind};
 pub use operation::Operation;
 pub use rebase::RebaseMode;

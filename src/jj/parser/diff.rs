@@ -2,7 +2,7 @@
 
 use super::super::JjError;
 use super::Parser;
-use crate::model::{DiffContent, DiffLine, DiffLineKind, FileOperation};
+use crate::model::{CommitId, DiffContent, DiffLine, DiffLineKind, FileOperation};
 
 impl Parser {
     /// Parse `jj show` output into DiffContent
@@ -31,7 +31,7 @@ impl Parser {
             // Parse header fields (before diff section)
             if !header_done {
                 if let Some(commit_id) = line.strip_prefix("Commit ID: ") {
-                    content.commit_id = commit_id.trim().to_string();
+                    content.commit_id = CommitId::new(commit_id.trim().to_string());
                     continue;
                 }
 
@@ -414,7 +414,7 @@ impl Parser {
             let line_end = byte_offset + line.len() + 1; // +1 for '\n'
 
             if let Some(commit_id) = line.strip_prefix("Commit ID: ") {
-                content.commit_id = commit_id.trim().to_string();
+                content.commit_id = CommitId::new(commit_id.trim().to_string());
                 byte_offset = line_end;
                 continue;
             }

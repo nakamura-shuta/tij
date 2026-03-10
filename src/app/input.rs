@@ -2,6 +2,8 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use crate::app::helpers::revision::short_id;
+
 use super::state::{App, View};
 use crate::keys;
 use crate::ui::views::{
@@ -409,7 +411,7 @@ impl App {
             LogAction::Duplicate(revision) => self.duplicate(&revision),
             LogAction::DiffEdit(revision) => self.execute_diffedit(&revision, None),
             LogAction::Revert(revision) => {
-                let short_id = &revision[..8.min(revision.len())];
+                let short_id = short_id(&revision);
                 self.active_dialog = Some(Dialog::confirm(
                     "Revert Change",
                     format!("Revert changes from {}?", short_id),
@@ -421,7 +423,7 @@ impl App {
                 ));
             }
             LogAction::SimplifyParents(revision) => {
-                let short_id = &revision[..8.min(revision.len())];
+                let short_id = short_id(&revision);
                 self.active_dialog = Some(Dialog::confirm(
                     "Simplify Parents",
                     format!("Simplify parents for {}?", short_id),
@@ -437,7 +439,7 @@ impl App {
                     self.set_error("Cannot fix: commit is immutable");
                     return;
                 }
-                let short_id = &revision[..8.min(revision.len())];
+                let short_id = short_id(&revision);
                 self.active_dialog = Some(Dialog::confirm(
                     "Fix",
                     format!("Apply code formatters to {} and descendants?", short_id),
@@ -536,7 +538,10 @@ impl App {
             LogAction::NextChange => self.execute_next(),
             LogAction::PrevChange => self.execute_prev(),
             LogAction::ToggleReversed => {
-                let selected_id = self.log_view.selected_change().map(|c| c.change_id.clone());
+                let selected_id = self
+                    .log_view
+                    .selected_change()
+                    .map(|c| c.change_id.to_string());
                 self.log_view.reversed = !self.log_view.reversed;
                 let revset = self.log_view.current_revset.clone();
                 self.refresh_log(revset.as_deref());

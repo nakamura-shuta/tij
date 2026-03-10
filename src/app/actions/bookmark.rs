@@ -1,5 +1,6 @@
 //! Bookmark operations (create, move, delete, rename, forget, track, jump)
 
+use crate::app::helpers::revision::short_id;
 use crate::model::Notification;
 use crate::ui::components::{Dialog, DialogCallback, SelectItem};
 
@@ -50,7 +51,7 @@ impl App {
             .changes
             .iter()
             .find(|c| !c.is_graph_only && c.bookmarks.contains(&name.to_string()))
-            .map(|c| (c.change_id.clone(), c.description.clone()));
+            .map(|c| (c.change_id.to_string(), c.description.clone()));
 
         // Fallback: query jj directly if not in current view
         let from_info = from_info.or_else(|| {
@@ -104,7 +105,7 @@ impl App {
     pub(crate) fn start_bookmark_delete(&mut self) {
         // Get bookmarks from currently selected change
         let (change_id, bookmarks) = match self.log_view.selected_change() {
-            Some(change) => (change.change_id.clone(), change.bookmarks.clone()),
+            Some(change) => (change.change_id.to_string(), change.bookmarks.clone()),
             None => return,
         };
 
@@ -211,9 +212,9 @@ impl App {
             .bookmark_view
             .selected_bookmark()
             .map(|info| {
-                let id = info.change_id.as_deref().unwrap_or("?");
+                let id = info.change_id.as_ref().map(|id| id.as_str()).unwrap_or("?");
                 let desc = info.description.as_deref().unwrap_or("(no description)");
-                let short_id = &id[..id.len().min(8)];
+                let short_id = short_id(id);
                 format!("{} {}", short_id, desc)
             })
             .unwrap_or_else(|| "?".to_string());
@@ -229,7 +230,7 @@ impl App {
                 } else {
                     &c.description
                 };
-                let short_id = &c.change_id[..c.change_id.len().min(8)];
+                let short_id = c.change_id.short();
                 format!("{} {}", short_id, desc)
             })
             .unwrap_or_else(|| "@".to_string());
@@ -340,7 +341,11 @@ impl App {
                     .iter()
                     .map(|b| {
                         let label = b.display_label(40);
-                        let value = b.change_id.clone().unwrap_or_default();
+                        let value = b
+                            .change_id
+                            .as_ref()
+                            .map(|id| id.to_string())
+                            .unwrap_or_default();
                         SelectItem {
                             label,
                             value,
@@ -370,7 +375,7 @@ impl App {
     pub(crate) fn jump_to_log(&mut self, change_id: &str) {
         // Step 1: Try to find in current log view
         if self.log_view.select_change_by_prefix(change_id) {
-            let short_id = &change_id[..8.min(change_id.len())];
+            let short_id = short_id(change_id);
             self.notify_success(format!("Jumped to {} in log", short_id));
             self.pending_jump_change_id = None;
             self.previous_view = None;
@@ -395,7 +400,7 @@ impl App {
             }
 
             if self.log_view.select_change_by_prefix(change_id) {
-                let short_id = &change_id[..8.min(change_id.len())];
+                let short_id = short_id(change_id);
                 self.notify_success(format!(
                     "Jumped to {} (revset expanded, r+Enter to reset)",
                     short_id
@@ -415,7 +420,7 @@ impl App {
     /// Execute bookmark jump - select the change in log view
     pub(crate) fn execute_bookmark_jump(&mut self, change_id: &str) {
         if self.log_view.select_change_by_id(change_id) {
-            let short_id = &change_id[..8.min(change_id.len())];
+            let short_id = short_id(change_id);
             self.notify_success(format!("Jumped to {}", short_id));
         } else {
             // The change might not be visible in current revset

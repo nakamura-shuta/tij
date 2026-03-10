@@ -16,6 +16,8 @@ use crate::model::{
 };
 use crate::ui::components::{Dialog, DialogCallback, SelectItem};
 
+use crate::app::helpers::revision::{SelectedRevision, is_root_by_commit_id, short_id};
+
 use super::state::{App, DirtyFlags, View};
 
 /// Suspend TUI mode (raw mode off, leave alternate screen).
@@ -325,7 +327,7 @@ impl App {
 
     /// Execute edit operation (set working-copy to specified change)
     pub(crate) fn execute_edit(&mut self, revision: &str) {
-        let short_id = &revision[..8.min(revision.len())];
+        let short_id = short_id(revision);
         let msg = format!("Now editing: {}", short_id);
         let result = self.run_and_record("Edit", &["edit", revision]);
         self.run_jj_action(result, "Failed to edit", &msg, DirtyFlags::log_and_status());
@@ -370,17 +372,7 @@ impl App {
     /// jj squash --from/--into may open an editor when both source and destination
     /// have non-empty descriptions. Temporarily exits TUI mode to allow editor interaction.
     pub(crate) fn execute_squash_into(&mut self, source: &str, destination: &str) {
-        use crate::jj::constants::ROOT_CHANGE_ID;
-
-        // Guard: cannot squash root commit (reverse-lookup from commit_id)
-        let is_root = self
-            .log_view
-            .changes
-            .iter()
-            .find(|c| c.commit_id == source)
-            .map(|c| c.change_id == ROOT_CHANGE_ID)
-            .unwrap_or(false);
-        if is_root {
+        if is_root_by_commit_id(&self.log_view.changes, source) {
             self.notify_info("Cannot squash: root commit has no parent");
             return;
         }
@@ -400,8 +392,8 @@ impl App {
         // 4. Handle result (io::Result<ExitStatus>)
         match result {
             Ok(status) if status.success() => {
-                let src_short = &source[..8.min(source.len())];
-                let dst_short = &destination[..8.min(destination.len())];
+                let src_short = short_id(source);
+                let dst_short = short_id(destination);
                 self.notify_success(format!(
                     "Squashed {} into {} (undo: u)",
                     src_short, dst_short
@@ -423,21 +415,11 @@ impl App {
 
     /// Execute abandon operation (abandon a change)
     pub(crate) fn execute_abandon(&mut self, revision: &str) {
-        use crate::jj::constants::ROOT_CHANGE_ID;
-
-        // Guard: cannot abandon root commit (reverse-lookup from commit_id)
-        let is_root = self
-            .log_view
-            .changes
-            .iter()
-            .find(|c| c.commit_id == revision)
-            .map(|c| c.change_id == ROOT_CHANGE_ID)
-            .unwrap_or(false);
-        if is_root {
+        if is_root_by_commit_id(&self.log_view.changes, revision) {
             self.notify_info("Cannot abandon: root commit");
             return;
         }
-        let short_id = &revision[..8.min(revision.len())];
+        let short_id = short_id(revision);
         let msg = format!("Abandoned {} (undo: u)", short_id);
         let result = self.run_and_record("Abandon", &["abandon", revision]);
         self.run_jj_action(result, "Abandon failed", &msg, DirtyFlags::log_and_status());
@@ -445,7 +427,7 @@ impl App {
 
     /// Execute revert operation (creates reverse-diff commit)
     pub(crate) fn execute_revert(&mut self, revision: &str) {
-        let short_id = &revision[..8.min(revision.len())];
+        let short_id = short_id(revision);
         let msg = format!("Reverted {} (undo: u)", short_id);
         let result = self.run_and_record("Revert", &["revert", "-r", revision, "--onto", "@"]);
         self.run_jj_action(result, "Revert failed", &msg, DirtyFlags::log());
@@ -528,7 +510,7 @@ impl App {
         // Note: _guard will restore terminal when this function returns
         match result {
             Ok(status) if status.success() => {
-                let short_id = &revision[..8.min(revision.len())];
+                let short_id = short_id(revision);
                 self.notify_success(format!("Split {} complete (undo: u)", short_id));
             }
             Ok(_) => {
@@ -567,7 +549,7 @@ impl App {
         // 4. Handle result
         match result {
             Ok(status) if status.success() => {
-                let short_id = &revision[..8.min(revision.len())];
+                let short_id = short_id(revision);
                 self.notify_success(format!("Diffedit {} complete (undo: u)", short_id));
             }
             Ok(_) => {
@@ -767,7 +749,7 @@ impl App {
                 {
                     Notification::info("No redundant parents found")
                 } else {
-                    let short_id = &revision[..8.min(revision.len())];
+                    let short_id = short_id(revision);
                     Notification::success(format!("Simplified parents for {} (undo: u)", short_id))
                 };
                 self.notification = Some(notification);
@@ -786,13 +768,13 @@ impl App {
             .changes
             .iter()
             .find(|c| c.change_id == change_id)
-            .map(|c| c.commit_id.clone());
+            .map(|c| c.commit_id.to_string());
 
         match self.run_and_record("Fix", &["fix", "-s", revision]) {
             Ok(_) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
-                let short_id = &change_id[..8.min(change_id.len())];
+                let short_id = short_id(change_id);
 
                 // Compare commit_id after refresh to detect actual changes
                 let commit_id_after = self
@@ -800,7 +782,7 @@ impl App {
                     .changes
                     .iter()
                     .find(|c| c.change_id == change_id)
-                    .map(|c| c.commit_id.clone());
+                    .map(|c| c.commit_id.to_string());
 
                 let notification = if commit_id_before == commit_id_after {
                     Notification::info("No fixes needed")
@@ -1374,23 +1356,23 @@ impl App {
             return;
         }
 
-        let (current_change_id, current_commit_id) = match self.log_view.selected_change() {
-            Some(c) => (c.change_id.clone(), c.commit_id.clone()),
+        let sel = match SelectedRevision::from_log_view(&self.log_view) {
+            Some(s) => s,
             None => return, // No selection — keep cache intact
         };
 
         // Cache hit — same change_id with matching commit_id
-        if let Some(cached) = self.preview_cache.peek(&current_change_id)
-            && cached.commit_id == current_commit_id
+        if let Some(cached) = self.preview_cache.peek(sel.change_id.as_str())
+            && cached.commit_id == sel.commit_id.as_str()
         {
-            self.preview_cache.touch(&current_change_id);
+            self.preview_cache.touch(sel.change_id.as_str());
             return;
         }
         // commit_id mismatch — stale, need re-fetch
 
         // Always defer to idle tick — never block key handling with jj show.
         // resolve_pending_preview() will fetch on the next poll timeout.
-        self.preview_pending_id = Some(current_change_id);
+        self.preview_pending_id = Some(sel.change_id.to_string());
     }
 
     /// Actually fetch preview content via jj show
@@ -1402,7 +1384,7 @@ impl App {
             .log_view
             .selected_change()
             .filter(|c| c.change_id == change_id)
-            .map(|c| (c.commit_id.clone(), c.bookmarks.clone()))
+            .map(|c| (c.commit_id.to_string(), c.bookmarks.clone()))
             .unwrap_or_default();
 
         // Use commit_id for jj show to avoid ambiguity with divergent changes
@@ -1460,7 +1442,9 @@ impl App {
         let result = if full {
             if let Some(ref ci) = compare_info {
                 // Compare mode: jj show doesn't apply, prepend from/to metadata header
-                let diff = self.jj.diff_range(&ci.from.commit_id, &ci.to.commit_id);
+                let diff = self
+                    .jj
+                    .diff_range(ci.from.commit_id.as_str(), ci.to.commit_id.as_str());
                 diff.map(|d| {
                     format!(
                         "Compare: {} -> {}\nFrom: {} ({})\nTo:   {} ({})\n\n{}",
@@ -1479,7 +1463,8 @@ impl App {
         } else {
             // jj diff (diff only)
             if let Some(ref ci) = compare_info {
-                self.jj.diff_range(&ci.from.commit_id, &ci.to.commit_id)
+                self.jj
+                    .diff_range(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
             } else {
                 self.jj.diff_raw(&revision)
             }
@@ -1524,15 +1509,15 @@ impl App {
             match format {
                 DiffDisplayFormat::ColorWords => self
                     .jj
-                    .diff_range(&ci.from.commit_id, &ci.to.commit_id)
+                    .diff_range(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
                     .map(|o| Parser::parse_diff_body(&o)),
                 DiffDisplayFormat::Stat => self
                     .jj
-                    .diff_range_stat(&ci.from.commit_id, &ci.to.commit_id)
+                    .diff_range_stat(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
                     .map(|o| Parser::parse_diff_body_stat(&o)),
                 DiffDisplayFormat::Git => self
                     .jj
-                    .diff_range_git(&ci.from.commit_id, &ci.to.commit_id)
+                    .diff_range_git(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
                     .map(|o| Parser::parse_diff_body_git(&o)),
             }
         } else {
@@ -1599,13 +1584,15 @@ impl App {
         // Uses `jj diff --git` for git-compatible unified patch format (git apply compatible)
         let (short_id, result) = if let Some(ref ci) = compare_info {
             // Compare mode: use diff --git --from --to
-            let from_short = &ci.from.change_id[..ci.from.change_id.len().min(8)];
-            let to_short = &ci.to.change_id[..ci.to.change_id.len().min(8)];
+            let from_short = short_id(ci.from.change_id.as_str());
+            let to_short = short_id(ci.to.change_id.as_str());
             let label = format!("{}_{}", from_short, to_short);
-            let result = self.jj.diff_range_git(&ci.from.commit_id, &ci.to.commit_id);
+            let result = self
+                .jj
+                .diff_range_git(ci.from.commit_id.as_str(), ci.to.commit_id.as_str());
             (label, result)
         } else {
-            let short = revision[..revision.len().min(8)].to_string();
+            let short = short_id(&revision).to_string();
             let result = self.jj.diff_git_raw(&revision);
             (short, result)
         };
@@ -1879,23 +1866,23 @@ mod tests {
 
     #[test]
     fn test_export_compare_mode_uses_diff_range_not_show() {
-        use crate::model::{CompareInfo, CompareRevisionInfo, DiffContent};
+        use crate::model::{ChangeId, CommitId, CompareInfo, CompareRevisionInfo, DiffContent};
         use crate::ui::views::DiffView;
 
         let mut app = App::new_for_test();
 
         let compare_info = CompareInfo {
             from: CompareRevisionInfo {
-                change_id: "aaaa1111".to_string(),
-                commit_id: "ff001111".to_string(),
+                change_id: ChangeId::new("aaaa1111".to_string()),
+                commit_id: CommitId::new("ff001111".to_string()),
                 bookmarks: vec![],
                 author: "user@test.com".to_string(),
                 timestamp: "2024-01-01".to_string(),
                 description: "from revision".to_string(),
             },
             to: CompareRevisionInfo {
-                change_id: "bbbb2222".to_string(),
-                commit_id: "ff002222".to_string(),
+                change_id: ChangeId::new("bbbb2222".to_string()),
+                commit_id: CommitId::new("ff002222".to_string()),
                 bookmarks: vec![],
                 author: "user@test.com".to_string(),
                 timestamp: "2024-01-02".to_string(),
@@ -1917,23 +1904,23 @@ mod tests {
 
     #[test]
     fn test_copy_clipboard_compare_mode_uses_diff_range() {
-        use crate::model::{CompareInfo, CompareRevisionInfo, DiffContent};
+        use crate::model::{ChangeId, CommitId, CompareInfo, CompareRevisionInfo, DiffContent};
         use crate::ui::views::DiffView;
 
         let mut app = App::new_for_test();
 
         let compare_info = CompareInfo {
             from: CompareRevisionInfo {
-                change_id: "cccc3333".to_string(),
-                commit_id: "ff003333".to_string(),
+                change_id: ChangeId::new("cccc3333".to_string()),
+                commit_id: CommitId::new("ff003333".to_string()),
                 bookmarks: vec![],
                 author: "user@test.com".to_string(),
                 timestamp: "2024-01-01".to_string(),
                 description: "from".to_string(),
             },
             to: CompareRevisionInfo {
-                change_id: "dddd4444".to_string(),
-                commit_id: "ff004444".to_string(),
+                change_id: ChangeId::new("dddd4444".to_string()),
+                commit_id: CommitId::new("ff004444".to_string()),
                 bookmarks: vec![],
                 author: "user@test.com".to_string(),
                 timestamp: "2024-01-02".to_string(),

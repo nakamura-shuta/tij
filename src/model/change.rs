@@ -1,13 +1,15 @@
 //! Change (commit) data model
 
+use super::id::{ChangeId, CommitId};
+
 /// Represents a jj change (similar to a Git commit)
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Change {
     /// Short change ID (jj's unique identifier)
-    pub change_id: String,
+    pub change_id: ChangeId,
 
     /// Short commit ID (Git-compatible)
-    pub commit_id: String,
+    pub commit_id: CommitId,
 
     /// Author email
     pub author: String,
@@ -46,7 +48,7 @@ pub struct Change {
 impl Change {
     /// Get a display-friendly short ID
     pub fn short_id(&self) -> &str {
-        &self.change_id
+        self.change_id.as_str()
     }
 
     /// Get a display string for the description
@@ -72,8 +74,8 @@ mod tests {
 
     fn sample_change() -> Change {
         Change {
-            change_id: "abc12345".to_string(),
-            commit_id: "def67890".to_string(),
+            change_id: ChangeId::new("abc12345".to_string()),
+            commit_id: CommitId::new("def67890".to_string()),
             author: "user@example.com".to_string(),
             timestamp: "2024-01-29T15:30:00+0900".to_string(),
             description: "Initial commit".to_string(),

@@ -20,8 +20,8 @@ fn make_change(
     has_conflict: bool,
 ) -> Change {
     Change {
-        change_id: change_id.to_string(),
-        commit_id: commit_id.to_string(),
+        change_id: change_id.to_string().into(),
+        commit_id: commit_id.to_string().into(),
         author: "test@example.com".to_string(),
         timestamp: "2025-01-15 10:30:00".to_string(),
         description: description.to_string(),

@@ -61,7 +61,7 @@ impl BookmarkView {
             KeyCode::Enter => {
                 if let Some(info) = self.selected_bookmark() {
                     if let Some(change_id) = &info.change_id {
-                        BookmarkAction::Jump(change_id.clone())
+                        BookmarkAction::Jump(change_id.to_string())
                     } else {
                         BookmarkAction::None
                     }

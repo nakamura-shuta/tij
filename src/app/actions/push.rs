@@ -1,5 +1,6 @@
 //! Git push operations
 
+use crate::app::helpers::revision::short_id;
 use crate::jj::{PushBulkMode, PushPreviewResult, parse_push_dry_run};
 use crate::ui::components::{Dialog, DialogCallback, SelectItem};
 
@@ -19,7 +20,7 @@ impl App {
     /// is re-called with `push_target_remote` populated.
     pub(crate) fn start_push(&mut self) {
         let (change_id, bookmarks) = match self.log_view.selected_change() {
-            Some(change) => (change.change_id.clone(), change.bookmarks.clone()),
+            Some(change) => (change.change_id.to_string(), change.bookmarks.clone()),
             None => return,
         };
 
@@ -171,7 +172,7 @@ impl App {
             }
         } else {
             // Multiple bookmarks: first ask user to choose push mode
-            let short_id = &change_id[..change_id.len().min(8)];
+            let short_id = short_id(&change_id);
             let items = vec![
                 SelectItem {
                     label: "All bookmarks on this revision (--revisions)".to_string(),
@@ -402,7 +403,7 @@ impl App {
         extra_flags: &[&str],
     ) {
         let bookmark_name = Self::parse_push_change_bookmark(output, change_id);
-        let short_id = &change_id[..change_id.len().min(8)];
+        let short_id = short_id(change_id);
         let notes = retry_notes_from_flags(extra_flags);
         let suffix = build_push_suffix(false, &notes);
         let msg = match (bookmark_name, remote) {
@@ -436,7 +437,7 @@ impl App {
             }
         }
         // Fallback: construct expected name
-        Some(format!("push-{}", &change_id[..change_id.len().min(8)]))
+        Some(format!("push-{}", short_id(change_id)))
     }
 
     /// Start push-by-change flow (extracted for reuse from mode selection)
@@ -451,7 +452,7 @@ impl App {
         match dry_run_result {
             Ok(output) => {
                 let preview = output.trim();
-                let short_id = &change_id[..change_id.len().min(8)];
+                let short_id = short_id(change_id);
                 let body = if preview.is_empty() {
                     format!("Push by change ID? (creates push-{})", short_id)
                 } else {
@@ -475,7 +476,7 @@ impl App {
                 let err_msg = format!("{}", e);
                 let retry_flags = detect_push_retry_flags(&err_msg);
                 if !retry_flags.is_empty() {
-                    let short_id = &change_id[..change_id.len().min(8)];
+                    let short_id = short_id(change_id);
                     self.active_dialog = Some(Dialog::confirm(
                         "Push to Remote",
                         format!(
@@ -642,10 +643,7 @@ impl App {
 
         self.active_dialog = Some(Dialog::select(
             "Push to Remote",
-            format!(
-                "Select bookmarks to push from {}:",
-                &change_id[..change_id.len().min(8)]
-            ),
+            format!("Select bookmarks to push from {}:", short_id(change_id)),
             items,
             Some("Remote changes cannot be undone with 'u'.".to_string()),
             DialogCallback::GitPush,
@@ -688,7 +686,7 @@ impl App {
                             is_immutable_bookmark(name)
                         });
 
-                        let short_id = &change_id[..change_id.len().min(8)];
+                        let short_id = short_id(change_id);
                         let (body, detail) = if is_force && has_protected {
                             (
                                 format!(
@@ -726,7 +724,7 @@ impl App {
                     }
                     PushPreviewResult::Unparsed => {
                         // Fallback: show confirm without parsed preview
-                        let short_id = &change_id[..change_id.len().min(8)];
+                        let short_id = short_id(change_id);
                         self.active_dialog = Some(Dialog::confirm(
                             "Push to Remote",
                             format!("Push all bookmarks on {}?", short_id),
@@ -750,7 +748,7 @@ impl App {
                 } else if !detect_push_retry_flags(&err_msg).is_empty() {
                     // Dry-run failed due to private/empty-description: show confirm
                     // dialog anyway. The actual push will retry with flags.
-                    let short_id = &change_id[..change_id.len().min(8)];
+                    let short_id = short_id(change_id);
                     self.active_dialog = Some(Dialog::confirm(
                         "Push to Remote",
                         format!(
@@ -792,11 +790,11 @@ impl App {
 
         match result {
             Ok(_) => {
-                let short_id = &change_id[..change_id.len().min(8)];
+                let sid = short_id(change_id);
                 let msg = if let Some(r) = remote.as_deref() {
-                    format!("Pushed all bookmarks on {} to {}", short_id, r)
+                    format!("Pushed all bookmarks on {} to {}", sid, r)
                 } else {
-                    format!("Pushed all bookmarks on {}", short_id)
+                    format!("Pushed all bookmarks on {}", sid)
                 };
                 self.notify_success(msg);
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
@@ -838,16 +836,13 @@ impl App {
 
                         match retry {
                             Ok(_) => {
-                                let short_id = &change_id[..change_id.len().min(8)];
+                                let sid = short_id(change_id);
                                 let notes = retry_notes_from_flags(&extra_flags);
                                 let suffix = build_push_suffix(false, &notes);
                                 let msg = if let Some(r) = remote.as_deref() {
-                                    format!(
-                                        "Pushed all bookmarks on {} to {}{}",
-                                        short_id, r, suffix
-                                    )
+                                    format!("Pushed all bookmarks on {} to {}{}", sid, r, suffix)
                                 } else {
-                                    format!("Pushed all bookmarks on {}{}", short_id, suffix)
+                                    format!("Pushed all bookmarks on {}{}", sid, suffix)
                                 };
                                 self.notify_success(msg);
                                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
@@ -910,36 +905,34 @@ fn format_preview_actions(actions: &[crate::jj::PushPreviewAction]) -> String {
         .iter()
         .map(|action| match action {
             PushPreviewAction::MoveForward { bookmark, from, to } => {
-                let from_short = &from[..8.min(from.len())];
-                let to_short = &to[..8.min(to.len())];
                 format!(
                     "Move forward {} from {}.. to {}..",
-                    bookmark, from_short, to_short
+                    bookmark,
+                    short_id(from),
+                    short_id(to)
                 )
             }
             PushPreviewAction::MoveSideways { bookmark, from, to } => {
-                let from_short = &from[..8.min(from.len())];
-                let to_short = &to[..8.min(to.len())];
                 format!(
                     "\u{26A0} Move sideways {} from {}.. to {}..",
-                    bookmark, from_short, to_short
+                    bookmark,
+                    short_id(from),
+                    short_id(to)
                 )
             }
             PushPreviewAction::MoveBackward { bookmark, from, to } => {
-                let from_short = &from[..8.min(from.len())];
-                let to_short = &to[..8.min(to.len())];
                 format!(
                     "\u{26A0} Move backward {} from {}.. to {}..",
-                    bookmark, from_short, to_short
+                    bookmark,
+                    short_id(from),
+                    short_id(to)
                 )
             }
             PushPreviewAction::Add { bookmark, to } => {
-                let to_short = &to[..8.min(to.len())];
-                format!("Add {} to {}..", bookmark, to_short)
+                format!("Add {} to {}..", bookmark, short_id(to))
             }
             PushPreviewAction::Delete { bookmark, from } => {
-                let from_short = &from[..8.min(from.len())];
-                format!("Delete {} from {}..", bookmark, from_short)
+                format!("Delete {} from {}..", bookmark, short_id(from))
             }
         })
         .collect::<Vec<_>>()
@@ -954,8 +947,7 @@ fn format_bookmark_status(preview: &crate::jj::PushPreviewResult, name: &str) ->
             .iter()
             .find_map(|a| match a {
                 PushPreviewAction::MoveForward { bookmark, from, .. } if bookmark == name => {
-                    let short = &from[..8.min(from.len())];
-                    Some(format!("move from {}..", short))
+                    Some(format!("move from {}..", short_id(from)))
                 }
                 PushPreviewAction::MoveSideways { bookmark, .. } if bookmark == name => {
                     if is_immutable_bookmark(name) {

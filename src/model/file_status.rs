@@ -1,5 +1,7 @@
 //! File status data model
 
+use super::id::ChangeId;
+
 /// Overall repository status
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Status {
@@ -10,10 +12,10 @@ pub struct Status {
     pub has_conflicts: bool,
 
     /// Current working copy change ID
-    pub working_copy_change_id: String,
+    pub working_copy_change_id: ChangeId,
 
     /// Parent change ID
-    pub parent_change_id: String,
+    pub parent_change_id: ChangeId,
 }
 
 impl Status {
@@ -86,8 +88,8 @@ mod tests {
         let clean = Status {
             files: vec![],
             has_conflicts: false,
-            working_copy_change_id: "abc".to_string(),
-            parent_change_id: "xyz".to_string(),
+            working_copy_change_id: ChangeId::new("abc".to_string()),
+            parent_change_id: ChangeId::new("xyz".to_string()),
         };
         assert!(clean.is_clean());
 
@@ -97,8 +99,8 @@ mod tests {
                 state: FileState::Modified,
             }],
             has_conflicts: false,
-            working_copy_change_id: "abc".to_string(),
-            parent_change_id: "xyz".to_string(),
+            working_copy_change_id: ChangeId::new("abc".to_string()),
+            parent_change_id: ChangeId::new("xyz".to_string()),
         };
         assert!(!dirty.is_clean());
     }
@@ -121,8 +123,8 @@ mod tests {
                 },
             ],
             has_conflicts: false,
-            working_copy_change_id: "abc".to_string(),
-            parent_change_id: "xyz".to_string(),
+            working_copy_change_id: ChangeId::new("abc".to_string()),
+            parent_change_id: ChangeId::new("xyz".to_string()),
         };
 
         assert_eq!(status.count_by_state(&FileState::Added), 2);

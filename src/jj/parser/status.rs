@@ -1,7 +1,7 @@
 //! Status output parser (jj status)
 
 use super::super::JjError;
-use crate::model::{FileState, FileStatus, Status};
+use crate::model::{ChangeId, FileState, FileStatus, Status};
 
 use super::Parser;
 
@@ -10,8 +10,8 @@ impl Parser {
     pub fn parse_status(output: &str) -> Result<Status, JjError> {
         let mut files = Vec::new();
         let mut has_conflicts = false;
-        let mut working_copy_change_id = String::new();
-        let mut parent_change_id = String::new();
+        let mut working_copy_change_id = ChangeId::default();
+        let mut parent_change_id = ChangeId::default();
 
         for line in output.lines() {
             let line = line.trim();
@@ -31,7 +31,7 @@ impl Parser {
             {
                 let info = &line[colon_pos + 2..];
                 if let Some(change_id) = info.split_whitespace().next() {
-                    working_copy_change_id = change_id.to_string();
+                    working_copy_change_id = ChangeId::new(change_id.to_string());
                 }
             }
 
@@ -42,7 +42,7 @@ impl Parser {
             {
                 let info = &line[colon_pos + 2..];
                 if let Some(change_id) = info.split_whitespace().next() {
-                    parent_change_id = change_id.to_string();
+                    parent_change_id = ChangeId::new(change_id.to_string());
                 }
             }
         }

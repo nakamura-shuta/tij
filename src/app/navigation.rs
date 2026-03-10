@@ -1,7 +1,7 @@
 //! View navigation (opening views with data loading)
 
 use crate::jj::parser::{Parser, parse_evolog};
-use crate::model::{CompareInfo, CompareRevisionInfo, Notification};
+use crate::model::{ChangeId, CommitId, CompareInfo, CompareRevisionInfo, Notification};
 use crate::ui::views::{BlameView, DiffView, EvologView, ResolveView};
 
 use super::state::{App, View};
@@ -76,8 +76,8 @@ impl App {
 
         let from_info = match from_result {
             Ok((change_id, bookmarks, author, timestamp, description)) => CompareRevisionInfo {
-                change_id,
-                commit_id: from.to_string(),
+                change_id: ChangeId::new(change_id),
+                commit_id: CommitId::new(from.to_string()),
                 bookmarks,
                 author,
                 timestamp,
@@ -91,8 +91,8 @@ impl App {
 
         let to_info = match to_result {
             Ok((change_id, bookmarks, author, timestamp, description)) => CompareRevisionInfo {
-                change_id,
-                commit_id: to.to_string(),
+                change_id: ChangeId::new(change_id),
+                commit_id: CommitId::new(to.to_string()),
                 bookmarks,
                 author,
                 timestamp,

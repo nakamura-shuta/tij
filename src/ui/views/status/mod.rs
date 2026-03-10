@@ -195,7 +195,7 @@ impl StatusView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::FileStatus;
+    use crate::model::{ChangeId, FileStatus};
     use crossterm::event::{KeyCode, KeyEvent};
 
     fn sample_status() -> Status {
@@ -215,8 +215,8 @@ mod tests {
                 },
             ],
             has_conflicts: false,
-            working_copy_change_id: "abc12345".to_string(),
-            parent_change_id: "xyz98765".to_string(),
+            working_copy_change_id: ChangeId::new("abc12345".to_string()),
+            parent_change_id: ChangeId::new("xyz98765".to_string()),
         }
     }
 
@@ -336,8 +336,8 @@ mod tests {
         let empty_status = Status {
             files: vec![],
             has_conflicts: false,
-            working_copy_change_id: "abc".to_string(),
-            parent_change_id: "xyz".to_string(),
+            working_copy_change_id: ChangeId::new("abc".to_string()),
+            parent_change_id: ChangeId::new("xyz".to_string()),
         };
         view.set_status(empty_status);
 
@@ -355,8 +355,8 @@ mod tests {
         let no_conflict_status = Status {
             files: vec![],
             has_conflicts: false,
-            working_copy_change_id: "abc".to_string(),
-            parent_change_id: "xyz".to_string(),
+            working_copy_change_id: ChangeId::new("abc".to_string()),
+            parent_change_id: ChangeId::new("xyz".to_string()),
         };
         view.set_status(no_conflict_status);
         assert!(!view.has_conflicts());
@@ -365,8 +365,8 @@ mod tests {
         let conflict_status = Status {
             files: vec![],
             has_conflicts: true,
-            working_copy_change_id: "abc".to_string(),
-            parent_change_id: "xyz".to_string(),
+            working_copy_change_id: ChangeId::new("abc".to_string()),
+            parent_change_id: ChangeId::new("xyz".to_string()),
         };
         view.set_status(conflict_status);
         assert!(view.has_conflicts());
@@ -389,8 +389,8 @@ mod tests {
                 },
             ],
             has_conflicts: true,
-            working_copy_change_id: "abc12345".to_string(),
-            parent_change_id: "xyz98765".to_string(),
+            working_copy_change_id: ChangeId::new("abc12345".to_string()),
+            parent_change_id: ChangeId::new("xyz98765".to_string()),
         }
     }
 
@@ -479,8 +479,8 @@ mod tests {
         let empty_status = Status {
             files: vec![],
             has_conflicts: false,
-            working_copy_change_id: "abc".to_string(),
-            parent_change_id: "xyz".to_string(),
+            working_copy_change_id: ChangeId::new("abc".to_string()),
+            parent_change_id: ChangeId::new("xyz".to_string()),
         };
         view.set_status(empty_status);
 
@@ -495,8 +495,8 @@ mod tests {
         let empty_status = Status {
             files: vec![],
             has_conflicts: false,
-            working_copy_change_id: "abc".to_string(),
-            parent_change_id: "xyz".to_string(),
+            working_copy_change_id: ChangeId::new("abc".to_string()),
+            parent_change_id: ChangeId::new("xyz".to_string()),
         };
         view.set_status(empty_status);
 

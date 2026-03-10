@@ -61,15 +61,15 @@ impl BlameView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{AnnotationContent, AnnotationLine};
+    use crate::model::{AnnotationContent, AnnotationLine, ChangeId, CommitId};
     use crossterm::event::KeyModifiers;
 
     fn make_test_content() -> AnnotationContent {
         let mut content = AnnotationContent::new("test.rs".to_string());
         for i in 1..=3 {
             content.lines.push(AnnotationLine {
-                change_id: format!("change{:02}", i),
-                commit_id: format!("commit{:02}", i),
+                change_id: ChangeId::new(format!("change{:02}", i)),
+                commit_id: CommitId::new(format!("commit{:02}", i)),
                 author: "test".to_string(),
                 timestamp: "2026-01-30 10:00".to_string(),
                 line_number: i,

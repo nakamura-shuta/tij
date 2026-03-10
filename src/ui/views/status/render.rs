@@ -138,14 +138,14 @@ impl StatusView {
                 " Working copy: ",
                 Style::default().fg(theme::status_view::HEADER),
             ),
-            Span::raw(&status.working_copy_change_id),
+            Span::raw(status.working_copy_change_id.to_string()),
         ]));
         lines.push(Line::from(vec![
             Span::styled(
                 " Parent:       ",
                 Style::default().fg(theme::status_view::HEADER),
             ),
-            Span::raw(&status.parent_change_id),
+            Span::raw(status.parent_change_id.to_string()),
         ]));
 
         // Conflict count header (only when conflicts exist)

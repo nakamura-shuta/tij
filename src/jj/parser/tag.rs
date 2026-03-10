@@ -1,6 +1,6 @@
 //! Parser for `jj tag list` output
 
-use crate::model::TagInfo;
+use crate::model::{ChangeId, CommitId, TagInfo};
 
 /// Parse `jj tag list` output with template:
 ///
@@ -25,8 +25,8 @@ pub fn parse_tag_list(output: &str) -> Vec<TagInfo> {
                     name: parts[0].to_string(),
                     remote: None,
                     present: parts[1] == "true",
-                    change_id: non_empty(parts[3]),
-                    commit_id: non_empty(parts[4]),
+                    change_id: non_empty(parts[3]).map(ChangeId::new),
+                    commit_id: non_empty(parts[4]).map(CommitId::new),
                     description: None,
                 }),
                 // Local tag with description: name\tpresent\ttracked\tchange_id\tcommit_id\tdescription
@@ -40,8 +40,8 @@ pub fn parse_tag_list(output: &str) -> Vec<TagInfo> {
                             name: parts[0].to_string(),
                             remote: None,
                             present: parts[1] == "true",
-                            change_id: non_empty(parts[3]),
-                            commit_id: non_empty(parts[4]),
+                            change_id: non_empty(parts[3]).map(ChangeId::new),
+                            commit_id: non_empty(parts[4]).map(CommitId::new),
                             description: non_empty(parts[5]),
                         })
                     } else {
@@ -50,8 +50,8 @@ pub fn parse_tag_list(output: &str) -> Vec<TagInfo> {
                             name: parts[0].to_string(),
                             remote: Some(parts[1].to_string()),
                             present: parts[2] == "true",
-                            change_id: non_empty(parts[4]),
-                            commit_id: non_empty(parts[5]),
+                            change_id: non_empty(parts[4]).map(ChangeId::new),
+                            commit_id: non_empty(parts[5]).map(CommitId::new),
                             description: None,
                         })
                     }
@@ -61,8 +61,8 @@ pub fn parse_tag_list(output: &str) -> Vec<TagInfo> {
                     name: parts[0].to_string(),
                     remote: Some(parts[1].to_string()),
                     present: parts[2] == "true",
-                    change_id: non_empty(parts[4]),
-                    commit_id: non_empty(parts[5]),
+                    change_id: non_empty(parts[4]).map(ChangeId::new),
+                    commit_id: non_empty(parts[5]).map(CommitId::new),
                     description: non_empty(parts[6]),
                 }),
                 _ => None, // Malformed line
@@ -92,8 +92,14 @@ mod tests {
         assert_eq!(tags[0].name, "v0.4.10");
         assert!(tags[0].remote.is_none());
         assert!(tags[0].present);
-        assert_eq!(tags[0].change_id.as_deref(), Some("mzslzzzz"));
-        assert_eq!(tags[0].commit_id.as_deref(), Some("57d01adc"));
+        assert_eq!(
+            tags[0].change_id.as_ref().map(|id| id.as_str()),
+            Some("mzslzzzz")
+        );
+        assert_eq!(
+            tags[0].commit_id.as_ref().map(|id| id.as_str()),
+            Some("57d01adc")
+        );
         assert_eq!(tags[0].description.as_deref(), Some("fix: preview pane"));
     }
 
@@ -132,7 +138,10 @@ mod tests {
         assert_eq!(tags[0].name, "v0.4.10");
         assert_eq!(tags[0].remote.as_deref(), Some("origin"));
         assert!(tags[0].present);
-        assert_eq!(tags[0].change_id.as_deref(), Some("mzslzzzz"));
+        assert_eq!(
+            tags[0].change_id.as_ref().map(|id| id.as_str()),
+            Some("mzslzzzz")
+        );
         assert_eq!(tags[0].description.as_deref(), Some("fix: something"));
     }
 

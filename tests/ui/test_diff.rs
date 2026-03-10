@@ -11,7 +11,7 @@ use tij::ui::views::DiffView;
 /// Create a color-words style test content (with line numbers)
 fn create_colorwords_content() -> DiffContent {
     let mut content = DiffContent {
-        commit_id: "abc123def456".to_string(),
+        commit_id: "abc123def456".to_string().into(),
         author: "Test User <test@example.com>".to_string(),
         timestamp: "2024-01-30 12:00:00".to_string(),
         description: "Add new feature".to_string(),
@@ -50,7 +50,7 @@ fn create_colorwords_content() -> DiffContent {
 /// Create a stat-style content (no line numbers)
 fn create_stat_content() -> DiffContent {
     DiffContent {
-        commit_id: "abc123def456".to_string(),
+        commit_id: "abc123def456".to_string().into(),
         author: "Test User <test@example.com>".to_string(),
         timestamp: "2024-01-30 12:00:00".to_string(),
         description: "Add new feature".to_string(),
@@ -80,7 +80,7 @@ fn create_stat_content() -> DiffContent {
 /// Create a git-style content (no line numbers, +/- prefix)
 fn create_git_content() -> DiffContent {
     DiffContent {
-        commit_id: "abc123def456".to_string(),
+        commit_id: "abc123def456".to_string().into(),
         author: "Test User <test@example.com>".to_string(),
         timestamp: "2024-01-30 12:00:00".to_string(),
         description: "Add new feature".to_string(),

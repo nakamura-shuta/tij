@@ -28,7 +28,7 @@ impl TagView {
             KeyCode::Enter => {
                 if let Some(tag) = self.selected_tag() {
                     if let Some(change_id) = &tag.change_id {
-                        TagAction::Jump(change_id.clone())
+                        TagAction::Jump(change_id.to_string())
                     } else {
                         TagAction::None
                     }

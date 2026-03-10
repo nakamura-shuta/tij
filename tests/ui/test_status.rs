@@ -29,8 +29,8 @@ fn test_status_view_clean() {
     view.set_status(Status {
         files: vec![],
         has_conflicts: false,
-        working_copy_change_id: "kxryzmql".to_string(),
-        parent_change_id: "mzvwqtsr".to_string(),
+        working_copy_change_id: "kxryzmql".to_string().into(),
+        parent_change_id: "mzvwqtsr".to_string().into(),
     });
 
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
@@ -68,8 +68,8 @@ fn test_status_view_with_files() {
             },
         ],
         has_conflicts: false,
-        working_copy_change_id: "kxryzmql".to_string(),
-        parent_change_id: "mzvwqtsr".to_string(),
+        working_copy_change_id: "kxryzmql".to_string().into(),
+        parent_change_id: "mzvwqtsr".to_string().into(),
     });
 
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
@@ -101,8 +101,8 @@ fn test_status_view_with_conflicts() {
             },
         ],
         has_conflicts: true,
-        working_copy_change_id: "kxryzmql".to_string(),
-        parent_change_id: "mzvwqtsr".to_string(),
+        working_copy_change_id: "kxryzmql".to_string().into(),
+        parent_change_id: "mzvwqtsr".to_string().into(),
     });
 
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
@@ -124,8 +124,8 @@ fn test_status_view_commit_input() {
             state: FileState::Modified,
         }],
         has_conflicts: false,
-        working_copy_change_id: "kxryzmql".to_string(),
-        parent_change_id: "mzvwqtsr".to_string(),
+        working_copy_change_id: "kxryzmql".to_string().into(),
+        parent_change_id: "mzvwqtsr".to_string().into(),
     });
     view.input_mode = StatusInputMode::CommitInput;
     view.input_buffer = "fix: resolve login bug".to_string();

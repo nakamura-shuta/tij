@@ -90,7 +90,7 @@ cargo test --tests            # Integration tests only
 cargo insta test              # Snapshot tests
 ```
 
-**Test categories**: Unit (717), Integration (86), Snapshot (20), Property-based (15)
+**Test categories**: Unit (741), Integration (86), Snapshot (20), Property-based (15)
 
 ## Acknowledgments
 

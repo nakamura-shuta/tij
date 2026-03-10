@@ -91,6 +91,7 @@ impl TagView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{ChangeId, CommitId};
     use crossterm::event::{KeyCode, KeyEvent};
 
     fn make_tag(name: &str, change_id: Option<&str>, desc: Option<&str>) -> TagInfo {
@@ -98,8 +99,8 @@ mod tests {
             name: name.to_string(),
             remote: None,
             present: true,
-            change_id: change_id.map(|s| s.to_string()),
-            commit_id: Some("abcd1234".to_string()),
+            change_id: change_id.map(|s| ChangeId::new(s.to_string())),
+            commit_id: Some(CommitId::new("abcd1234".to_string())),
             description: desc.map(|s| s.to_string()),
         }
     }

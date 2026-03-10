@@ -1,5 +1,7 @@
 //! Bookmark model for `jj bookmark list --all`
 
+use super::id::{ChangeId, CommitId};
+
 /// Bookmark information from `jj bookmark list --all`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bookmark {
@@ -36,9 +38,9 @@ pub struct BookmarkInfo {
     pub bookmark: Bookmark,
     /// Change ID (short form, e.g., "kxryzmor")
     /// None for remote-only bookmarks not in local repository
-    pub change_id: Option<String>,
+    pub change_id: Option<ChangeId>,
     /// Commit ID (short form)
-    pub commit_id: Option<String>,
+    pub commit_id: Option<CommitId>,
     /// Commit description (first line)
     pub description: Option<String>,
 }
@@ -127,8 +129,8 @@ mod tests {
                 remote: None,
                 is_tracked: true,
             },
-            change_id: Some("abc12345".into()),
-            commit_id: Some("def67890".into()),
+            change_id: Some(ChangeId::new("abc12345".to_string())),
+            commit_id: Some(CommitId::new("def67890".to_string())),
             description: Some("Test commit".into()),
         };
         assert!(jumpable.is_jumpable());
@@ -154,8 +156,8 @@ mod tests {
                 remote: None,
                 is_tracked: true,
             },
-            change_id: Some("abc12345".into()),
-            commit_id: Some("def67890".into()),
+            change_id: Some(ChangeId::new("abc12345".to_string())),
+            commit_id: Some(CommitId::new("def67890".to_string())),
             description: Some("Fix critical bug".into()),
         };
 
@@ -175,8 +177,8 @@ mod tests {
                 remote: None,
                 is_tracked: true,
             },
-            change_id: Some("abc12345".into()),
-            commit_id: Some("def67890".into()),
+            change_id: Some(ChangeId::new("abc12345".to_string())),
+            commit_id: Some(CommitId::new("def67890".to_string())),
             description: None,
         };
 

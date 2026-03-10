@@ -88,7 +88,7 @@ impl DiffView {
     pub fn new_compare(content: DiffContent, compare_info: CompareInfo) -> Self {
         let mut view = Self::empty();
         // Use the "from" commit_id as the primary ID (divergent-safe)
-        let revision = compare_info.from.commit_id.clone();
+        let revision = compare_info.from.commit_id.to_string();
         view.set_content(revision, content);
         view.compare_info = Some(compare_info);
         view
@@ -338,12 +338,12 @@ impl DiffView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{DiffContent, DiffLine};
+    use crate::model::{CommitId, DiffContent, DiffLine};
     use crossterm::event::KeyEvent;
 
     fn create_test_content() -> DiffContent {
         let mut content = DiffContent {
-            commit_id: "abc123def456".to_string(),
+            commit_id: CommitId::new("abc123def456".to_string()),
             author: "Test User <test@example.com>".to_string(),
             timestamp: "2024-01-30 12:00:00".to_string(),
             description: "Test commit".to_string(),
@@ -619,20 +619,20 @@ mod tests {
 
     #[test]
     fn test_compare_mode_blame_returns_notification() {
-        use crate::model::{CompareInfo, CompareRevisionInfo};
+        use crate::model::{ChangeId, CommitId, CompareInfo, CompareRevisionInfo};
 
         let compare_info = CompareInfo {
             from: CompareRevisionInfo {
-                change_id: "aaaa1111".to_string(),
-                commit_id: "ff001111".to_string(),
+                change_id: ChangeId::new("aaaa1111".to_string()),
+                commit_id: CommitId::new("ff001111".to_string()),
                 bookmarks: vec![],
                 author: "user@test.com".to_string(),
                 timestamp: "2024-01-01".to_string(),
                 description: "from revision".to_string(),
             },
             to: CompareRevisionInfo {
-                change_id: "bbbb2222".to_string(),
-                commit_id: "ff002222".to_string(),
+                change_id: ChangeId::new("bbbb2222".to_string()),
+                commit_id: CommitId::new("ff002222".to_string()),
                 bookmarks: vec![],
                 author: "user@test.com".to_string(),
                 timestamp: "2024-01-02".to_string(),
@@ -653,7 +653,7 @@ mod tests {
     fn test_jump_to_file_with_rename() {
         // Create content with a renamed file
         let content = DiffContent {
-            commit_id: "test123".to_string(),
+            commit_id: CommitId::new("test123".to_string()),
             author: "Test".to_string(),
             timestamp: "2024-01-30".to_string(),
             description: "Test".to_string(),

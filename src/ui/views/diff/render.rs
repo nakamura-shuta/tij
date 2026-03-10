@@ -186,7 +186,7 @@ impl DiffView {
             Line::from(vec![
                 Span::styled("From: ", Style::default().fg(Color::Red).bold()),
                 Span::styled(
-                    from.change_id.clone(),
+                    from.change_id.to_string(),
                     Style::default().fg(theme::log_view::CHANGE_ID),
                 ),
                 Span::styled(from_bookmarks, Style::default().fg(Color::Magenta)),
@@ -196,7 +196,7 @@ impl DiffView {
             Line::from(vec![
                 Span::styled("To:   ", Style::default().fg(Color::Green).bold()),
                 Span::styled(
-                    to.change_id.clone(),
+                    to.change_id.to_string(),
                     Style::default().fg(theme::log_view::CHANGE_ID),
                 ),
                 Span::styled(to_bookmarks, Style::default().fg(Color::Magenta)),
