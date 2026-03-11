@@ -11,8 +11,8 @@ use std::time::{Instant, SystemTime};
 
 use crate::jj::{JjError, RunResult};
 use crate::model::{
-    CommandRecord, CommandStatus, CompareInfo, DiffContent, DiffDisplayFormat, Notification,
-    RebaseMode,
+    CommandRecord, CommandStatus, CompareInfo, DiffContent, DiffDisplayFormat, DiffMode,
+    Notification, RebaseMode,
 };
 use crate::ui::components::{Dialog, DialogCallback, SelectItem};
 
@@ -1438,35 +1438,61 @@ impl App {
         };
         let revision = diff_view.revision.clone();
         let compare_info = diff_view.compare_info.clone();
+        let mode = diff_view.mode;
 
         let result = if full {
-            if let Some(ref ci) = compare_info {
-                // Compare mode: jj show doesn't apply, prepend from/to metadata header
-                let diff = self
-                    .jj
-                    .diff_range(ci.from.commit_id.as_str(), ci.to.commit_id.as_str());
-                diff.map(|d| {
-                    format!(
-                        "Compare: {} -> {}\nFrom: {} ({})\nTo:   {} ({})\n\n{}",
-                        ci.from.change_id,
-                        ci.to.change_id,
-                        ci.from.change_id,
-                        ci.from.description,
-                        ci.to.change_id,
-                        ci.to.description,
-                        d,
-                    )
-                })
-            } else {
-                self.jj.show_raw(&revision)
+            match mode {
+                DiffMode::Compare => {
+                    let ci = compare_info.as_ref().unwrap();
+                    let diff = self
+                        .jj
+                        .diff_range(ci.from.commit_id.as_str(), ci.to.commit_id.as_str());
+                    diff.map(|d| {
+                        format!(
+                            "Compare: {} -> {}\nFrom: {} ({})\nTo:   {} ({})\n\n{}",
+                            ci.from.change_id,
+                            ci.to.change_id,
+                            ci.from.change_id,
+                            ci.from.description,
+                            ci.to.change_id,
+                            ci.to.description,
+                            d,
+                        )
+                    })
+                }
+                DiffMode::Interdiff => {
+                    let ci = compare_info.as_ref().unwrap();
+                    let diff = self
+                        .jj
+                        .interdiff(ci.from.commit_id.as_str(), ci.to.commit_id.as_str());
+                    diff.map(|d| {
+                        format!(
+                            "Interdiff: {} -> {}\nFrom: {} ({})\nTo:   {} ({})\n\n{}",
+                            ci.from.change_id,
+                            ci.to.change_id,
+                            ci.from.change_id,
+                            ci.from.description,
+                            ci.to.change_id,
+                            ci.to.description,
+                            d,
+                        )
+                    })
+                }
+                DiffMode::Single => self.jj.show_raw(&revision),
             }
         } else {
-            // jj diff (diff only)
-            if let Some(ref ci) = compare_info {
-                self.jj
-                    .diff_range(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
-            } else {
-                self.jj.diff_raw(&revision)
+            match mode {
+                DiffMode::Compare => {
+                    let ci = compare_info.as_ref().unwrap();
+                    self.jj
+                        .diff_range(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
+                }
+                DiffMode::Interdiff => {
+                    let ci = compare_info.as_ref().unwrap();
+                    self.jj
+                        .interdiff(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
+                }
+                DiffMode::Single => self.jj.diff_raw(&revision),
             }
         };
 
@@ -1502,26 +1528,46 @@ impl App {
         change_id: &str,
         format: DiffDisplayFormat,
         compare: Option<&CompareInfo>,
+        mode: DiffMode,
     ) -> Result<DiffContent, crate::jj::JjError> {
         use crate::jj::parser::Parser;
 
-        if let Some(ci) = compare {
-            match format {
-                DiffDisplayFormat::ColorWords => self
-                    .jj
-                    .diff_range(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
-                    .map(|o| Parser::parse_diff_body(&o)),
-                DiffDisplayFormat::Stat => self
-                    .jj
-                    .diff_range_stat(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
-                    .map(|o| Parser::parse_diff_body_stat(&o)),
-                DiffDisplayFormat::Git => self
-                    .jj
-                    .diff_range_git(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
-                    .map(|o| Parser::parse_diff_body_git(&o)),
+        match mode {
+            DiffMode::Compare => {
+                let ci = compare.expect("Compare mode requires compare_info");
+                match format {
+                    DiffDisplayFormat::ColorWords => self
+                        .jj
+                        .diff_range(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
+                        .map(|o| Parser::parse_diff_body(&o)),
+                    DiffDisplayFormat::Stat => self
+                        .jj
+                        .diff_range_stat(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
+                        .map(|o| Parser::parse_diff_body_stat(&o)),
+                    DiffDisplayFormat::Git => self
+                        .jj
+                        .diff_range_git(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
+                        .map(|o| Parser::parse_diff_body_git(&o)),
+                }
             }
-        } else {
-            match format {
+            DiffMode::Interdiff => {
+                let ci = compare.expect("Interdiff mode requires compare_info");
+                match format {
+                    DiffDisplayFormat::ColorWords => self
+                        .jj
+                        .interdiff(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
+                        .map(|o| Parser::parse_diff_body(&o)),
+                    DiffDisplayFormat::Stat => self
+                        .jj
+                        .interdiff_stat(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
+                        .map(|o| Parser::parse_diff_body_stat(&o)),
+                    DiffDisplayFormat::Git => self
+                        .jj
+                        .interdiff_git(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
+                        .map(|o| Parser::parse_diff_body_git(&o)),
+                }
+            }
+            DiffMode::Single => match format {
                 DiffDisplayFormat::ColorWords => self.jj.show(change_id),
                 DiffDisplayFormat::Stat => self
                     .jj
@@ -1531,7 +1577,7 @@ impl App {
                     .jj
                     .show_git(change_id)
                     .and_then(|o| Parser::parse_show_git(&o)),
-            }
+            },
         }
     }
 
@@ -1547,8 +1593,9 @@ impl App {
         let new_format = old_format.next();
         let revision = diff_view.revision.clone();
         let compare_info = diff_view.compare_info.clone();
+        let mode = diff_view.mode;
 
-        match self.fetch_diff_content(&revision, new_format, compare_info.as_ref()) {
+        match self.fetch_diff_content(&revision, new_format, compare_info.as_ref(), mode) {
             Ok(content) => {
                 let diff_view = self.diff_view.as_mut().unwrap();
                 diff_view.set_content(revision, content);
@@ -1579,22 +1626,35 @@ impl App {
         };
         let revision = diff_view.revision.clone();
         let compare_info = diff_view.compare_info.clone();
+        let mode = diff_view.mode;
 
         // Determine filename and content based on mode
         // Uses `jj diff --git` for git-compatible unified patch format (git apply compatible)
-        let (short_id, result) = if let Some(ref ci) = compare_info {
-            // Compare mode: use diff --git --from --to
-            let from_short = short_id(ci.from.change_id.as_str());
-            let to_short = short_id(ci.to.change_id.as_str());
-            let label = format!("{}_{}", from_short, to_short);
-            let result = self
-                .jj
-                .diff_range_git(ci.from.commit_id.as_str(), ci.to.commit_id.as_str());
-            (label, result)
-        } else {
-            let short = short_id(&revision).to_string();
-            let result = self.jj.diff_git_raw(&revision);
-            (short, result)
+        let (short_id, result) = match mode {
+            DiffMode::Compare | DiffMode::Interdiff => {
+                let ci = compare_info.as_ref().unwrap();
+                let from_short = short_id(ci.from.change_id.as_str());
+                let to_short = short_id(ci.to.change_id.as_str());
+                let prefix = if mode == DiffMode::Interdiff {
+                    "interdiff_"
+                } else {
+                    ""
+                };
+                let label = format!("{}{}_{}", prefix, from_short, to_short);
+                let result = if mode == DiffMode::Interdiff {
+                    self.jj
+                        .interdiff_git(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
+                } else {
+                    self.jj
+                        .diff_range_git(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
+                };
+                (label, result)
+            }
+            DiffMode::Single => {
+                let short = short_id(&revision).to_string();
+                let result = self.jj.diff_git_raw(&revision);
+                (short, result)
+            }
         };
 
         match result {

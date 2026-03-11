@@ -139,6 +139,9 @@ pub const BOOKMARK_JUMP: KeyCode = KeyCode::Char('\'');
 /// Compare two revisions (Log View)
 pub const COMPARE: KeyCode = KeyCode::Char('=');
 
+/// Interdiff two revisions (Log View)
+pub const INTERDIFF: KeyCode = KeyCode::Char('I');
+
 /// Open Bookmark View (Log View)
 pub const BOOKMARK_VIEW: KeyCode = KeyCode::Char('M');
 
@@ -415,6 +418,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "=",
         description: "Compare revisions",
+    },
+    KeyBindEntry {
+        key: "I",
+        description: "Interdiff revisions",
     },
     KeyBindEntry {
         key: "M",
@@ -937,6 +944,7 @@ fn log_hints(input_mode: InputMode, ctx: &HintContext) -> Vec<KeyHint> {
             rebase_select_hints(ctx.skip_emptied, ctx.simplify_parents, ctx.rebase_mode)
         }
         InputMode::CompareSelect => COMPARE_SELECT_HINTS.to_vec(),
+        InputMode::InterdiffSelect => INTERDIFF_SELECT_HINTS.to_vec(),
         InputMode::ParallelizeSelect => PARALLELIZE_SELECT_HINTS.to_vec(),
         InputMode::RebaseRevsetInput => vec![HINT_SUBMIT, HINT_CANCEL_ESC],
         InputMode::SearchInput
@@ -1053,6 +1061,25 @@ pub const COMPARE_SELECT_HINTS: &[KeyHint] = &[
     KeyHint {
         key: "Enter",
         label: "Compare",
+        color: Color::Green,
+    },
+    KeyHint {
+        key: "Esc",
+        label: "Cancel",
+        color: Color::Red,
+    },
+];
+
+/// InterdiffSelect mode status bar hints
+pub const INTERDIFF_SELECT_HINTS: &[KeyHint] = &[
+    KeyHint {
+        key: "j/k",
+        label: "Navigate",
+        color: Color::Blue,
+    },
+    KeyHint {
+        key: "Enter",
+        label: "Interdiff",
         color: Color::Green,
     },
     KeyHint {

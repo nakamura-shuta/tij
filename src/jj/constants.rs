@@ -56,6 +56,7 @@ pub mod commands {
     pub const TAG_LIST: &str = "list";
     pub const TAG_SET: &str = "set";
     pub const TAG_DELETE: &str = "delete";
+    pub const INTERDIFF: &str = "interdiff";
 }
 
 /// jj resolve flags

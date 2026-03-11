@@ -5,7 +5,7 @@
 mod input;
 mod render;
 
-use crate::model::{CompareInfo, DiffContent, DiffDisplayFormat};
+use crate::model::{CompareInfo, DiffContent, DiffDisplayFormat, DiffMode};
 
 /// Action returned by DiffView key handling
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,8 +46,10 @@ pub struct DiffView {
     pub current_file_index: usize,
     /// Last known visible height (updated during render)
     visible_height: usize,
-    /// Compare info (set when in compare mode, None for normal single-revision diff)
+    /// Compare info (set when in compare/interdiff mode, None for normal single-revision diff)
     pub compare_info: Option<CompareInfo>,
+    /// Display mode (Single/Compare/Interdiff) — determines executor routing
+    pub mode: DiffMode,
     /// Current display format
     pub display_format: DiffDisplayFormat,
 }
@@ -73,6 +75,7 @@ impl DiffView {
             current_file_index: 0,
             visible_height: Self::DEFAULT_VISIBLE_HEIGHT,
             compare_info: None,
+            mode: DiffMode::Single,
             display_format: DiffDisplayFormat::default(),
         }
     }
@@ -87,10 +90,20 @@ impl DiffView {
     /// Create a new DiffView in compare mode (two-revision diff)
     pub fn new_compare(content: DiffContent, compare_info: CompareInfo) -> Self {
         let mut view = Self::empty();
-        // Use the "from" commit_id as the primary ID (divergent-safe)
         let revision = compare_info.from.commit_id.to_string();
         view.set_content(revision, content);
         view.compare_info = Some(compare_info);
+        view.mode = DiffMode::Compare;
+        view
+    }
+
+    /// Create a new DiffView in interdiff mode (patch comparison)
+    pub fn new_interdiff(content: DiffContent, compare_info: CompareInfo) -> Self {
+        let mut view = Self::empty();
+        let revision = compare_info.from.commit_id.to_string();
+        view.set_content(revision, content);
+        view.compare_info = Some(compare_info);
+        view.mode = DiffMode::Interdiff;
         view
     }
 
@@ -125,6 +138,7 @@ impl DiffView {
         self.file_names.clear();
         self.current_file_index = 0;
         self.visible_height = Self::DEFAULT_VISIBLE_HEIGHT;
+        self.mode = DiffMode::Single;
         self.display_format = DiffDisplayFormat::default();
     }
 
@@ -645,7 +659,9 @@ mod tests {
         let action = view.handle_key(KeyEvent::from(crossterm::event::KeyCode::Char('a')));
         assert_eq!(
             action,
-            DiffAction::ShowNotification("Blame is not available in compare mode".to_string())
+            DiffAction::ShowNotification(
+                "Blame is not available in compare/interdiff mode".to_string()
+            )
         );
     }
 

@@ -32,6 +32,8 @@ pub enum InputMode {
     SquashSelect,
     /// Compare revision selection mode (select second revision)
     CompareSelect,
+    /// Interdiff revision selection mode (select second revision)
+    InterdiffSelect,
     /// Parallelize selection mode (select end of range)
     ParallelizeSelect,
     /// Rebase revset text input mode
@@ -46,12 +48,13 @@ impl InputMode {
             InputMode::DescribeInput => Some(("Describe: ", " d Describe ")),
             InputMode::BookmarkInput => Some(("Bookmark: ", " b Bookmark ")),
             InputMode::RebaseRevsetInput => Some(("Revset: ", " Rebase Revset ")),
-            // RebaseModeSelect/RebaseSelect/SquashSelect/CompareSelect/ParallelizeSelect use status bar hints, not input bar
+            // RebaseModeSelect/RebaseSelect/SquashSelect/CompareSelect/InterdiffSelect/ParallelizeSelect use status bar hints, not input bar
             InputMode::Normal
             | InputMode::RebaseModeSelect
             | InputMode::RebaseSelect
             | InputMode::SquashSelect
             | InputMode::CompareSelect
+            | InputMode::InterdiffSelect
             | InputMode::ParallelizeSelect => None,
         }
     }
@@ -137,6 +140,12 @@ pub enum LogAction {
     StartCompare(String),
     /// Compare blocked: same revision selected
     CompareSameRevision,
+    /// Interdiff two revisions (open interdiff --from --to)
+    Interdiff { from: String, to: String },
+    /// Entered interdiff mode (notification with from_id)
+    StartInterdiff(String),
+    /// Interdiff blocked: same revision selected
+    InterdiffSameRevision,
     /// Open Bookmark View
     OpenBookmarkView,
     /// Open Tag View
@@ -202,6 +211,8 @@ pub struct LogView {
     pub(crate) squash_source: Option<(String, String)>,
     /// "From" change for compare (change_id, commit_id)
     pub(crate) compare_from: Option<(String, String)>,
+    /// "From" change for interdiff (change_id, commit_id)
+    pub(crate) interdiff_from: Option<(String, String)>,
     /// "From" change for parallelize (change_id, commit_id)
     pub(crate) parallelize_from: Option<(String, String)>,
     /// Whether to display log in reversed order (oldest first)
@@ -424,6 +435,31 @@ impl LogView {
     /// Cancel compare selection mode
     pub fn cancel_compare_select(&mut self) {
         self.compare_from = None;
+        self.input_mode = InputMode::Normal;
+    }
+
+    /// Start interdiff revision selection mode
+    ///
+    /// The currently selected change becomes the "from" revision.
+    /// The user then selects the "to" revision.
+    /// Returns true if mode was entered, false if no change is selected.
+    pub fn start_interdiff_select(&mut self) -> bool {
+        let source = self
+            .selected_change()
+            .map(|c| (c.change_id.to_string(), c.commit_id.to_string()));
+
+        if let Some(pair) = source {
+            self.interdiff_from = Some(pair);
+            self.input_mode = InputMode::InterdiffSelect;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Cancel interdiff selection mode
+    pub fn cancel_interdiff_select(&mut self) {
+        self.interdiff_from = None;
         self.input_mode = InputMode::Normal;
     }
 

@@ -32,6 +32,7 @@ impl LogView {
             InputMode::RebaseSelect => self.handle_rebase_select_key(key),
             InputMode::SquashSelect => self.handle_squash_select_key(key),
             InputMode::CompareSelect => self.handle_compare_select_key(key),
+            InputMode::InterdiffSelect => self.handle_interdiff_select_key(key),
             InputMode::ParallelizeSelect => self.handle_parallelize_select_key(key),
             InputMode::RebaseRevsetInput => self.handle_rebase_revset_input_key(key),
         }
@@ -175,6 +176,14 @@ impl LogView {
                 if self.start_compare_select() {
                     let from_id = self.compare_from.as_ref().unwrap().0.to_string();
                     LogAction::StartCompare(from_id)
+                } else {
+                    LogAction::None
+                }
+            }
+            k if k == keys::INTERDIFF => {
+                if self.start_interdiff_select() {
+                    let from_id = self.interdiff_from.as_ref().unwrap().0.to_string();
+                    LogAction::StartInterdiff(from_id)
                 } else {
                     LogAction::None
                 }
@@ -544,6 +553,60 @@ impl LogView {
                 LogAction::None
             }
             // Ignore other keys in compare select mode
+            _ => LogAction::None,
+        }
+    }
+
+    /// Handle key events in interdiff revision selection mode
+    ///
+    /// In this mode, j/k navigates to select the "to" revision, Enter confirms,
+    /// and Esc cancels. Selecting the same revision as "from" is guarded.
+    fn handle_interdiff_select_key(&mut self, key: KeyEvent) -> LogAction {
+        match key.code {
+            // Navigation
+            k if keys::is_move_down(k) => {
+                self.move_down();
+                LogAction::None
+            }
+            k if keys::is_move_up(k) => {
+                self.move_up();
+                LogAction::None
+            }
+            k if k == keys::GO_TOP => {
+                self.move_to_top();
+                LogAction::None
+            }
+            k if k == keys::GO_BOTTOM => {
+                self.move_to_bottom();
+                LogAction::None
+            }
+            // Confirm interdiff
+            KeyCode::Enter => {
+                if let (Some(from_pair), Some(to_change)) =
+                    (self.interdiff_from.take(), self.selected_change())
+                {
+                    let to = to_change.commit_id.to_string();
+
+                    // Prevent interdiff of a revision with itself
+                    if from_pair.1 == to {
+                        self.interdiff_from = Some(from_pair);
+                        return LogAction::InterdiffSameRevision;
+                    }
+                    self.input_mode = InputMode::Normal;
+                    LogAction::Interdiff {
+                        from: from_pair.1,
+                        to,
+                    }
+                } else {
+                    LogAction::None
+                }
+            }
+            // Cancel
+            k if k == keys::ESC => {
+                self.cancel_interdiff_select();
+                LogAction::None
+            }
+            // Ignore other keys in interdiff select mode
             _ => LogAction::None,
         }
     }

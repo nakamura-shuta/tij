@@ -24,6 +24,7 @@ impl LogView {
             | InputMode::RebaseSelect
             | InputMode::SquashSelect
             | InputMode::CompareSelect
+            | InputMode::InterdiffSelect
             | InputMode::ParallelizeSelect => (area, None),
             InputMode::SearchInput
             | InputMode::RevsetInput
@@ -179,6 +180,22 @@ impl LogView {
             .centered();
         }
 
+        // Special title for InterdiffSelect mode
+        if self.input_mode == InputMode::InterdiffSelect {
+            let from_id = self
+                .interdiff_from
+                .as_ref()
+                .map(|(cid, _)| cid.as_str())
+                .unwrap_or("?");
+            return Line::from(format!(
+                " Tij - Log View [Interdiff: From={}, Select To] ",
+                from_id
+            ))
+            .bold()
+            .yellow()
+            .centered();
+        }
+
         // Special title for ParallelizeSelect mode
         if self.input_mode == InputMode::ParallelizeSelect {
             let from_id = self
@@ -321,6 +338,13 @@ impl LogView {
                 .as_ref()
                 .is_some_and(|(cid, _)| *cid == change.change_id);
 
+        // Check if this is the interdiff "from" (in InterdiffSelect mode)
+        let is_interdiff_from = self.input_mode == InputMode::InterdiffSelect
+            && self
+                .interdiff_from
+                .as_ref()
+                .is_some_and(|(cid, _)| *cid == change.change_id);
+
         // Check if this is the parallelize "from" (in ParallelizeSelect mode)
         let is_parallelize_from = self.input_mode == InputMode::ParallelizeSelect
             && self
@@ -329,7 +353,12 @@ impl LogView {
                 .is_some_and(|(cid, _)| *cid == change.change_id);
 
         // Apply styling
-        if is_rebase_source || is_squash_source || is_compare_from || is_parallelize_from {
+        if is_rebase_source
+            || is_squash_source
+            || is_compare_from
+            || is_interdiff_from
+            || is_parallelize_from
+        {
             // Highlight rebase/squash source with distinct background
             line = line.style(
                 Style::default()

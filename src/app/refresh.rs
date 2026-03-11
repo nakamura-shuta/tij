@@ -175,15 +175,24 @@ impl App {
             View::Diff => {
                 // Only refresh if diff_view is loaded
                 if let Some(ref diff_view) = self.diff_view {
-                    if let Some(ref compare_info) = diff_view.compare_info {
-                        // Compare mode: re-run diff --from --to
-                        let from = compare_info.from.commit_id.to_string();
-                        let to = compare_info.to.commit_id.to_string();
-                        self.open_compare_diff(&from, &to);
-                    } else {
-                        // Normal mode: re-run jj show
-                        let revision = diff_view.revision.clone();
-                        self.open_diff(&revision);
+                    use crate::model::DiffMode;
+                    match diff_view.mode {
+                        DiffMode::Compare => {
+                            let ci = diff_view.compare_info.as_ref().unwrap();
+                            let from = ci.from.commit_id.to_string();
+                            let to = ci.to.commit_id.to_string();
+                            self.open_compare_diff(&from, &to);
+                        }
+                        DiffMode::Interdiff => {
+                            let ci = diff_view.compare_info.as_ref().unwrap();
+                            let from = ci.from.commit_id.to_string();
+                            let to = ci.to.commit_id.to_string();
+                            self.open_interdiff(&from, &to);
+                        }
+                        DiffMode::Single => {
+                            let revision = diff_view.revision.clone();
+                            self.open_diff(&revision);
+                        }
                     }
                     self.notify_info("Refreshed");
                 }

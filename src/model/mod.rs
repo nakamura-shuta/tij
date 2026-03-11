@@ -24,7 +24,7 @@ pub use command_record::{CommandHistory, CommandRecord, CommandStatus};
 pub use conflict::ConflictFile;
 pub use diff::{
     CompareInfo, CompareRevisionInfo, DiffContent, DiffDisplayFormat, DiffLine, DiffLineKind,
-    FileOperation,
+    DiffMode, FileOperation,
 };
 pub use evolog::EvologEntry;
 pub use file_status::{FileState, FileStatus, Status};

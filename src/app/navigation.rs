@@ -118,6 +118,68 @@ impl App {
         self.error_message = None;
     }
 
+    /// Open interdiff view between two revisions
+    pub(crate) fn open_interdiff(&mut self, from: &str, to: &str) {
+        // Get interdiff output
+        let diff_output = match self.jj.interdiff(from, to) {
+            Ok(output) => output,
+            Err(e) => {
+                self.set_error(format!("Failed to load interdiff: {}", e));
+                return;
+            }
+        };
+
+        // Fetch metadata for both revisions in parallel (independent reads)
+        let (from_result, to_result) = std::thread::scope(|s| {
+            let from_handle = s.spawn(|| self.jj.get_change_info(from));
+            let to_handle = s.spawn(|| self.jj.get_change_info(to));
+            (from_handle.join().unwrap(), to_handle.join().unwrap())
+        });
+
+        let from_info = match from_result {
+            Ok((change_id, bookmarks, author, timestamp, description)) => CompareRevisionInfo {
+                change_id: ChangeId::new(change_id),
+                commit_id: CommitId::new(from.to_string()),
+                bookmarks,
+                author,
+                timestamp,
+                description,
+            },
+            Err(e) => {
+                self.set_error(format!("Failed to load from revision: {}", e));
+                return;
+            }
+        };
+
+        let to_info = match to_result {
+            Ok((change_id, bookmarks, author, timestamp, description)) => CompareRevisionInfo {
+                change_id: ChangeId::new(change_id),
+                commit_id: CommitId::new(to.to_string()),
+                bookmarks,
+                author,
+                timestamp,
+                description,
+            },
+            Err(e) => {
+                self.set_error(format!("Failed to load to revision: {}", e));
+                return;
+            }
+        };
+
+        // Parse diff body (interdiff output has same format as diff)
+        let content = Parser::parse_diff_body(&diff_output);
+
+        let compare_info = CompareInfo {
+            from: from_info,
+            to: to_info,
+        };
+
+        let diff_view = DiffView::new_interdiff(content, compare_info);
+        self.diff_view = Some(diff_view);
+        self.go_to_view(View::Diff);
+        self.error_message = None;
+    }
+
     /// Open operation history view
     pub(crate) fn open_operation_history(&mut self) {
         self.go_to_view(View::Operation);

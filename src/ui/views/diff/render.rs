@@ -7,7 +7,9 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::model::{CompareInfo, DiffDisplayFormat, DiffLine, DiffLineKind, Notification};
+use crate::model::{
+    CompareInfo, DiffDisplayFormat, DiffLine, DiffLineKind, DiffMode, Notification,
+};
 use crate::ui::{components, theme};
 
 use super::DiffView;
@@ -145,7 +147,11 @@ impl DiffView {
             DiffDisplayFormat::ColorWords => String::new(),
             fmt => format!(" [{}]", fmt.label()),
         };
-        let title_text = format!(" Tij - Compare Diff{} ", format_suffix);
+        let mode_label = match self.mode {
+            DiffMode::Interdiff => "Interdiff",
+            _ => "Compare Diff",
+        };
+        let title_text = format!(" Tij - {}{} ", mode_label, format_suffix);
         let title = Line::from(title_text).bold().cyan().centered();
 
         // Build notification for title bar
@@ -182,9 +188,14 @@ impl DiffView {
             to.description.clone()
         };
 
+        let (from_label, to_label) = match self.mode {
+            DiffMode::Interdiff => ("Interdiff From: ", "Interdiff To:   "),
+            _ => ("From: ", "To:   "),
+        };
+
         let header_text = vec![
             Line::from(vec![
-                Span::styled("From: ", Style::default().fg(Color::Red).bold()),
+                Span::styled(from_label, Style::default().fg(Color::Red).bold()),
                 Span::styled(
                     from.change_id.to_string(),
                     Style::default().fg(theme::log_view::CHANGE_ID),
@@ -194,7 +205,7 @@ impl DiffView {
                 Span::raw(from_desc),
             ]),
             Line::from(vec![
-                Span::styled("To:   ", Style::default().fg(Color::Green).bold()),
+                Span::styled(to_label, Style::default().fg(Color::Green).bold()),
                 Span::styled(
                     to.change_id.to_string(),
                     Style::default().fg(theme::log_view::CHANGE_ID),

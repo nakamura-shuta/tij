@@ -1497,6 +1497,35 @@ impl JjExecutor {
         ])
     }
 
+    /// Run `jj interdiff --from <from> --to <to>` for patch comparison
+    pub fn interdiff(&self, from: &str, to: &str) -> Result<String, JjError> {
+        self.run_str(&[commands::INTERDIFF, flags::FROM, from, flags::TO, to])
+    }
+
+    /// Run `jj interdiff --git --from <from> --to <to>` for git-compatible patch comparison
+    pub fn interdiff_git(&self, from: &str, to: &str) -> Result<String, JjError> {
+        self.run_str(&[
+            commands::INTERDIFF,
+            flags::GIT_FORMAT,
+            flags::FROM,
+            from,
+            flags::TO,
+            to,
+        ])
+    }
+
+    /// Run `jj interdiff --stat --from <from> --to <to>` for histogram overview
+    pub fn interdiff_stat(&self, from: &str, to: &str) -> Result<String, JjError> {
+        self.run_str(&[
+            commands::INTERDIFF,
+            flags::STAT,
+            flags::FROM,
+            from,
+            flags::TO,
+            to,
+        ])
+    }
+
     /// Get metadata for a specific change (for compare info)
     ///
     /// Returns (change_id, bookmarks, author, timestamp, description).

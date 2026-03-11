@@ -68,6 +68,7 @@
 - [x] Phase 35: Rebase --simplify-parents — `P` キーで RebaseSelect 中にトグル、冗長親エッジを自動除去（v0.4.14）
 - [x] Phase 36: Divergent change_id 対応 — change_id（UI識別）と commit_id（コマンド実行）の分離 + パラメータ命名統一（v0.4.15）
 - [x] Phase 37-39: リファクタリング — helper共通化（short_id, is_root_by_commit_id, SelectedRevision）、push short_id統一、ChangeId/CommitId newtype導入（v0.4.16）
+- [x] Phase 40: Interdiff — `I` キーで2リビジョンのパッチ差分比較（`jj interdiff --from --to`）、DiffMode enum による3分岐ルーティング（v0.4.17）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）

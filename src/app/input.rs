@@ -353,10 +353,13 @@ impl App {
                 self.handle_log_rebase(action);
             }
 
-            // Compare
+            // Compare / Interdiff
             LogAction::StartCompare(_)
             | LogAction::Compare { .. }
-            | LogAction::CompareSameRevision => {
+            | LogAction::CompareSameRevision
+            | LogAction::StartInterdiff(_)
+            | LogAction::Interdiff { .. }
+            | LogAction::InterdiffSameRevision => {
                 self.handle_log_compare(action);
             }
 
@@ -528,6 +531,22 @@ impl App {
             }
             LogAction::CompareSameRevision => {
                 self.notify_info("Cannot compare revision with itself");
+            }
+            LogAction::StartInterdiff(from_id) => {
+                self.notify_info(format!(
+                    "Interdiff From: {}. Select 'To' and press Enter",
+                    from_id
+                ));
+            }
+            LogAction::Interdiff { ref from, ref to } => {
+                let msg = format!("Interdiff {} -> {}", from, to);
+                self.open_interdiff(from, to);
+                if self.error_message.is_none() {
+                    self.notify_info(&msg);
+                }
+            }
+            LogAction::InterdiffSameRevision => {
+                self.notify_info("Cannot interdiff revision with itself");
             }
             _ => {}
         }

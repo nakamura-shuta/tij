@@ -3,6 +3,7 @@
 use crossterm::event::KeyEvent;
 
 use crate::keys;
+use crate::model::DiffMode;
 
 use super::{DiffAction, DiffView};
 
@@ -52,10 +53,10 @@ impl DiffView {
                 DiffAction::None
             }
             keys::ANNOTATE => {
-                // Blame is not available in compare mode (no single revision context)
-                if self.compare_info.is_some() {
+                // Blame is not available in compare/interdiff mode (no single revision context)
+                if self.mode != DiffMode::Single {
                     DiffAction::ShowNotification(
-                        "Blame is not available in compare mode".to_string(),
+                        "Blame is not available in compare/interdiff mode".to_string(),
                     )
                 } else if let Some(file_name) = self.current_file_name() {
                     DiffAction::OpenBlame {

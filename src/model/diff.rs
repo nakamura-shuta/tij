@@ -186,6 +186,18 @@ impl DiffDisplayFormat {
     pub const COUNT: usize = 3;
 }
 
+/// Display mode for DiffView (determines executor routing for derived operations)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DiffMode {
+    /// Single revision diff (jj show)
+    #[default]
+    Single,
+    /// Two-revision file content comparison (jj diff --from --to)
+    Compare,
+    /// Two-revision patch comparison (jj interdiff --from --to)
+    Interdiff,
+}
+
 /// Info for a revision in a compare diff
 #[derive(Debug, Clone)]
 pub struct CompareRevisionInfo {
