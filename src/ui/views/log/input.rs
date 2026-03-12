@@ -163,7 +163,13 @@ impl LogView {
             }
             k if k == keys::OPEN_DIFF => {
                 if let Some(change) = self.selected_change() {
-                    LogAction::OpenDiff(change.commit_id.to_string())
+                    // Use change_id for working copy (commit_id changes on auto-snapshot)
+                    let revision = if change.is_working_copy {
+                        change.change_id.to_string()
+                    } else {
+                        change.commit_id.to_string()
+                    };
+                    LogAction::OpenDiff(revision)
                 } else {
                     LogAction::None
                 }

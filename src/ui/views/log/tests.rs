@@ -169,8 +169,9 @@ fn test_handle_key_open_diff() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
+    // Working copy uses change_id (commit_id changes on auto-snapshot)
     let action = press_key(&mut view, keys::OPEN_DIFF);
-    assert_eq!(action, LogAction::OpenDiff("def67890".to_string()));
+    assert_eq!(action, LogAction::OpenDiff("abc12345".to_string()));
 }
 
 #[test]

@@ -1361,14 +1361,16 @@ impl App {
             None => return, // No selection — keep cache intact
         };
 
-        // Cache hit — same change_id with matching commit_id
-        if let Some(cached) = self.preview_cache.peek(sel.change_id.as_str())
+        // Working copy: always re-fetch (commit_id changes on every auto-snapshot,
+        // so cached content is likely stale after any file change)
+        // Non-working copy: cache hit if change_id + commit_id match
+        if !sel.is_working_copy
+            && let Some(cached) = self.preview_cache.peek(sel.change_id.as_str())
             && cached.commit_id == sel.commit_id.as_str()
         {
             self.preview_cache.touch(sel.change_id.as_str());
             return;
         }
-        // commit_id mismatch — stale, need re-fetch
 
         // Always defer to idle tick — never block key handling with jj show.
         // resolve_pending_preview() will fetch on the next poll timeout.
@@ -1379,16 +1381,23 @@ impl App {
     fn fetch_preview(&mut self, change_id: &str) {
         self.preview_pending_id = None;
 
-        // Capture bookmarks and commit_id from the Change model
-        let (commit_id, bookmarks) = self
+        // Capture bookmarks, commit_id, and working copy status from the Change model
+        let (commit_id, bookmarks, is_working_copy) = self
             .log_view
             .selected_change()
             .filter(|c| c.change_id == change_id)
-            .map(|c| (c.commit_id.to_string(), c.bookmarks.clone()))
+            .map(|c| {
+                (
+                    c.commit_id.to_string(),
+                    c.bookmarks.clone(),
+                    c.is_working_copy,
+                )
+            })
             .unwrap_or_default();
 
-        // Use commit_id for jj show to avoid ambiguity with divergent changes
-        let revision = if commit_id.is_empty() {
+        // Use change_id for working copy (commit_id changes on every auto-snapshot),
+        // commit_id for others (avoids ambiguity with divergent changes)
+        let revision = if is_working_copy || commit_id.is_empty() {
             change_id
         } else {
             &commit_id

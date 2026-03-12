@@ -15,6 +15,7 @@ use crate::ui::views::LogView;
 pub struct SelectedRevision {
     pub change_id: ChangeId,
     pub commit_id: CommitId,
+    pub is_working_copy: bool,
 }
 
 impl SelectedRevision {
@@ -23,6 +24,7 @@ impl SelectedRevision {
         log_view.selected_change().map(|c| Self {
             change_id: c.change_id.clone(),
             commit_id: c.commit_id.clone(),
+            is_working_copy: c.is_working_copy,
         })
     }
 }
