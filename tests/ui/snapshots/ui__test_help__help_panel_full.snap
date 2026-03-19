@@ -57,6 +57,7 @@ expression: terminal.backend()
 "│  |         Parallelize commits (convert linear chain to siblings)            │"
 "│  f         Fix (apply configured code formatters to revision and descendants)│"
 "│  H         Command history                                                   │"
+"│  W         Bisect (find bad revision)                                        │"
 "│                                                                              │"
 "│Input Mode:                                                                   │"
 "│  Enter     Submit input                                                      │"
@@ -90,5 +91,4 @@ expression: terminal.backend()
 "│                                                                              │"
 "│Bookmark View:                                                                │"
 "│  j/k       Move down/up                                                      │"
-"│  g/G       Go to top/bottom                                                  │"
 "└──────────────────────────────────────────────────────────────────────────────┘"

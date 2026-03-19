@@ -25,6 +25,7 @@ impl LogView {
             | InputMode::SquashSelect
             | InputMode::CompareSelect
             | InputMode::InterdiffSelect
+            | InputMode::BisectSelect
             | InputMode::ParallelizeSelect => (area, None),
             InputMode::SearchInput
             | InputMode::RevsetInput
@@ -196,6 +197,22 @@ impl LogView {
             .centered();
         }
 
+        // Special title for BisectSelect mode
+        if self.input_mode == InputMode::BisectSelect {
+            let bad_id = self
+                .bisect_bad
+                .as_ref()
+                .map(|(_, short)| short.as_str())
+                .unwrap_or("?");
+            return Line::from(format!(
+                " Tij - Log View [Bisect: Bad={}, Select Good] ",
+                bad_id
+            ))
+            .bold()
+            .yellow()
+            .centered();
+        }
+
         // Special title for ParallelizeSelect mode
         if self.input_mode == InputMode::ParallelizeSelect {
             let from_id = self
@@ -345,6 +362,13 @@ impl LogView {
                 .as_ref()
                 .is_some_and(|(cid, _)| *cid == change.change_id);
 
+        // Check if this is the bisect "bad" (in BisectSelect mode)
+        let is_bisect_bad = self.input_mode == InputMode::BisectSelect
+            && self
+                .bisect_bad
+                .as_ref()
+                .is_some_and(|(cid, _)| *cid == change.change_id);
+
         // Check if this is the parallelize "from" (in ParallelizeSelect mode)
         let is_parallelize_from = self.input_mode == InputMode::ParallelizeSelect
             && self
@@ -357,6 +381,7 @@ impl LogView {
             || is_squash_source
             || is_compare_from
             || is_interdiff_from
+            || is_bisect_bad
             || is_parallelize_from
         {
             // Highlight rebase/squash source with distinct background

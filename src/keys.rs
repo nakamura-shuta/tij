@@ -142,6 +142,9 @@ pub const COMPARE: KeyCode = KeyCode::Char('=');
 /// Interdiff two revisions (Log View)
 pub const INTERDIFF: KeyCode = KeyCode::Char('I');
 
+/// Bisect — find bad revision (Log View)
+pub const BISECT: KeyCode = KeyCode::Char('W');
+
 /// Open Bookmark View (Log View)
 pub const BOOKMARK_VIEW: KeyCode = KeyCode::Char('M');
 
@@ -474,6 +477,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "H",
         description: "Command history",
+    },
+    KeyBindEntry {
+        key: "W",
+        description: "Bisect (find bad revision)",
     },
 ];
 
@@ -945,6 +952,7 @@ fn log_hints(input_mode: InputMode, ctx: &HintContext) -> Vec<KeyHint> {
         }
         InputMode::CompareSelect => COMPARE_SELECT_HINTS.to_vec(),
         InputMode::InterdiffSelect => INTERDIFF_SELECT_HINTS.to_vec(),
+        InputMode::BisectSelect => BISECT_SELECT_HINTS.to_vec(),
         InputMode::ParallelizeSelect => PARALLELIZE_SELECT_HINTS.to_vec(),
         InputMode::RebaseRevsetInput => vec![HINT_SUBMIT, HINT_CANCEL_ESC],
         InputMode::SearchInput
@@ -1080,6 +1088,25 @@ pub const INTERDIFF_SELECT_HINTS: &[KeyHint] = &[
     KeyHint {
         key: "Enter",
         label: "Interdiff",
+        color: Color::Green,
+    },
+    KeyHint {
+        key: "Esc",
+        label: "Cancel",
+        color: Color::Red,
+    },
+];
+
+/// BisectSelect mode status bar hints
+pub const BISECT_SELECT_HINTS: &[KeyHint] = &[
+    KeyHint {
+        key: "j/k",
+        label: "Navigate",
+        color: Color::Blue,
+    },
+    KeyHint {
+        key: "Enter",
+        label: "Select Good",
         color: Color::Green,
     },
     KeyHint {

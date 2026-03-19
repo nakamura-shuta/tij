@@ -96,6 +96,8 @@ pub enum DialogCallback {
     TagCreate,
     /// Tag deletion (Confirm dialog)
     TagDelete { name: String },
+    /// Bisect run (Input dialog for command entry)
+    BisectRun { good: String, bad: String },
 }
 
 /// Selection item for Select dialog

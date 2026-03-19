@@ -564,6 +564,55 @@ impl App {
         self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
     }
 
+    /// Execute bisect run interactively
+    ///
+    /// Suspends TUI, runs `jj bisect run --range good..bad -- bash -c <command>`,
+    /// then resumes TUI and refreshes the log.
+    pub(crate) fn execute_bisect(&mut self, good: &str, bad: &str, command: &str) {
+        let cmd = if command.trim().is_empty() {
+            "bash"
+        } else {
+            command.trim()
+        };
+
+        let _guard = suspend_tui();
+
+        println!(
+            "--- jj bisect run --range {}..{} -- bash -c '{}' ---",
+            good, bad, cmd
+        );
+        println!("(Press Ctrl+D or type 'exit' to finish if using interactive shell)\n");
+
+        let start = Instant::now();
+        let result = self.jj.bisect_run_interactive(good, bad, cmd);
+        let range = format!("{}..{}", good, bad);
+        self.record_interactive_command(
+            "Bisect",
+            &["bisect", "run", "--range", &range, "--", "bash", "-c", cmd],
+            start,
+            &result,
+        );
+
+        // _guard drop → TUI resume
+
+        match result {
+            Ok(status) if status.success() => {
+                self.notify_success("Bisect completed (undo: u)");
+            }
+            Ok(status) => {
+                self.notify_info(format!(
+                    "Bisect exited with status: {}",
+                    status.code().unwrap_or(-1)
+                ));
+            }
+            Err(e) => {
+                self.set_error(format!("Bisect failed: {}", e));
+            }
+        }
+
+        self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
+    }
+
     /// Execute restore for a single file
     pub(crate) fn execute_restore_file(&mut self, file_path: &str) {
         let msg = format!("Restored: {}", file_path);

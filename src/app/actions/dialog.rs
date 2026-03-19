@@ -58,7 +58,8 @@ impl App {
                 | DialogCallback::Revert { .. }
                 | DialogCallback::SimplifyParents { .. }
                 | DialogCallback::Parallelize { .. }
-                | DialogCallback::Fix { .. } => {
+                | DialogCallback::Fix { .. }
+                | DialogCallback::BisectRun { .. } => {
                     self.handle_misc_dialog(callback, values);
                 }
             },
@@ -100,7 +101,8 @@ impl App {
             | DialogCallback::Parallelize { .. }
             | DialogCallback::Fix { .. }
             | DialogCallback::TagCreate
-            | DialogCallback::TagDelete { .. } => {}
+            | DialogCallback::TagDelete { .. }
+            | DialogCallback::BisectRun { .. } => {}
         }
     }
 
@@ -231,6 +233,10 @@ impl App {
                 change_id,
             } => {
                 self.execute_fix(&revision, &change_id);
+            }
+            DialogCallback::BisectRun { good, bad } => {
+                let command = values.first().map(|s| s.as_str()).unwrap_or("bash");
+                self.execute_bisect(&good, &bad, command);
             }
             _ => {}
         }

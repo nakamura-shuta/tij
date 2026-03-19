@@ -363,6 +363,13 @@ impl App {
                 self.handle_log_compare(action);
             }
 
+            // Bisect
+            LogAction::StartBisect(_)
+            | LogAction::Bisect { .. }
+            | LogAction::BisectSameRevision => {
+                self.handle_log_bisect(action);
+            }
+
             // Misc
             LogAction::NextChange | LogAction::PrevChange | LogAction::ToggleReversed => {
                 self.handle_log_misc(action);
@@ -547,6 +554,30 @@ impl App {
             }
             LogAction::InterdiffSameRevision => {
                 self.notify_info("Cannot interdiff revision with itself");
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_log_bisect(&mut self, action: LogAction) {
+        use crate::ui::components::{Dialog, DialogCallback};
+
+        match action {
+            LogAction::StartBisect(bad_id) => {
+                self.notify_info(format!(
+                    "Bisect: Bad={}. Select Good and press Enter",
+                    bad_id
+                ));
+            }
+            LogAction::Bisect { good, bad } => {
+                self.active_dialog = Some(Dialog::input(
+                    "Bisect Command (empty = bash for manual test)",
+                    "bash",
+                    DialogCallback::BisectRun { good, bad },
+                ));
+            }
+            LogAction::BisectSameRevision => {
+                self.notify_info("Cannot bisect: same revision selected for good and bad");
             }
             _ => {}
         }

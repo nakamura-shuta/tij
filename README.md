@@ -54,7 +54,7 @@ Press `?` for help, `q` to quit.
 | Tags | Create on @ / Delete / Jump (with revset expansion) / Tag View (`t`) |
 | Git Integration | Fetch (multi-remote selection, branch-specific fetch, tracked-only fetch) / Push (with dry-run preview, force push warnings, protected bookmark detection, multi-remote selection, push-by-change, push-by-revision, bulk options: --all/--tracked/--deleted, auto-retry for private commits and empty descriptions) |
 | Navigation | Next/Prev (`]`/`[` to move @ through history) / Reversed log order (`V`) |
-| Diff | Compare two revisions (`=`, `jj diff --from --to`) / Interdiff (`I`, `jj interdiff --from --to`: compare patches between revisions) / Display mode cycle (`m`: color-words → stat → git) / Copy to clipboard (`y` full / `Y` diff-only) / Export to `.patch` file (`w`, git unified format) |
+| Diff | Compare two revisions (`=`, `jj diff --from --to`) / Interdiff (`I`, `jj interdiff --from --to`: compare patches between revisions) / Bisect (`W`, `jj bisect run`: binary search for bad revision with command or interactive shell) / Display mode cycle (`m`: color-words → stat → git) / Copy to clipboard (`y` full / `Y` diff-only) / Export to `.patch` file (`w`, git unified format) |
 | Usability | Revset filtering / Text search / Adaptive status bar / Dynamic context-aware hints / `--limit 200` default (unlimited with revset) |
 
 ## Revset Examples

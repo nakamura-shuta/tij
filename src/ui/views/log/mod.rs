@@ -34,6 +34,8 @@ pub enum InputMode {
     CompareSelect,
     /// Interdiff revision selection mode (select second revision)
     InterdiffSelect,
+    /// Bisect revision selection mode (select good revision)
+    BisectSelect,
     /// Parallelize selection mode (select end of range)
     ParallelizeSelect,
     /// Rebase revset text input mode
@@ -55,6 +57,7 @@ impl InputMode {
             | InputMode::SquashSelect
             | InputMode::CompareSelect
             | InputMode::InterdiffSelect
+            | InputMode::BisectSelect
             | InputMode::ParallelizeSelect => None,
         }
     }
@@ -176,6 +179,12 @@ pub enum LogAction {
     StartParallelize(String),
     /// Parallelize blocked: same revision selected
     ParallelizeSameRevision,
+    /// Entered bisect mode (notification with bad_id)
+    StartBisect(String),
+    /// Bisect: good and bad revisions selected
+    Bisect { good: String, bad: String },
+    /// Bisect blocked: same revision selected
+    BisectSameRevision,
 }
 
 /// Log View state
@@ -215,6 +224,8 @@ pub struct LogView {
     pub(crate) interdiff_from: Option<(String, String)>,
     /// "From" change for parallelize (change_id, commit_id)
     pub(crate) parallelize_from: Option<(String, String)>,
+    /// "Bad" revision for bisect (change_id, short_change_id)
+    pub(crate) bisect_bad: Option<(String, String)>,
     /// Whether to display log in reversed order (oldest first)
     pub(crate) reversed: bool,
     /// Whether to pass --skip-emptied on rebase (toggled with S in RebaseSelect)
@@ -460,6 +471,31 @@ impl LogView {
     /// Cancel interdiff selection mode
     pub fn cancel_interdiff_select(&mut self) {
         self.interdiff_from = None;
+        self.input_mode = InputMode::Normal;
+    }
+
+    /// Start bisect revision selection mode
+    ///
+    /// The currently selected change becomes the "bad" revision.
+    /// The user then selects the "good" revision.
+    /// Returns true if mode was entered, false if no change is selected.
+    pub fn start_bisect_select(&mut self) -> bool {
+        let source = self
+            .selected_change()
+            .map(|c| (c.change_id.to_string(), c.change_id.short().to_string()));
+
+        if let Some(pair) = source {
+            self.bisect_bad = Some(pair);
+            self.input_mode = InputMode::BisectSelect;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Cancel bisect selection mode
+    pub fn cancel_bisect_select(&mut self) {
+        self.bisect_bad = None;
         self.input_mode = InputMode::Normal;
     }
 

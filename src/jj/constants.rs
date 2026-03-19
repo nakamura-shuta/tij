@@ -57,6 +57,8 @@ pub mod commands {
     pub const TAG_SET: &str = "set";
     pub const TAG_DELETE: &str = "delete";
     pub const INTERDIFF: &str = "interdiff";
+    pub const BISECT: &str = "bisect";
+    pub const BISECT_RUN: &str = "run";
 }
 
 /// jj resolve flags

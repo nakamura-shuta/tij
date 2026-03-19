@@ -33,6 +33,7 @@ impl LogView {
             InputMode::SquashSelect => self.handle_squash_select_key(key),
             InputMode::CompareSelect => self.handle_compare_select_key(key),
             InputMode::InterdiffSelect => self.handle_interdiff_select_key(key),
+            InputMode::BisectSelect => self.handle_bisect_select_key(key),
             InputMode::ParallelizeSelect => self.handle_parallelize_select_key(key),
             InputMode::RebaseRevsetInput => self.handle_rebase_revset_input_key(key),
         }
@@ -190,6 +191,14 @@ impl LogView {
                 if self.start_interdiff_select() {
                     let from_id = self.interdiff_from.as_ref().unwrap().0.to_string();
                     LogAction::StartInterdiff(from_id)
+                } else {
+                    LogAction::None
+                }
+            }
+            k if k == keys::BISECT => {
+                if self.start_bisect_select() {
+                    let bad_id = self.bisect_bad.as_ref().unwrap().1.to_string();
+                    LogAction::StartBisect(bad_id)
                 } else {
                     LogAction::None
                 }
@@ -613,6 +622,58 @@ impl LogView {
                 LogAction::None
             }
             // Ignore other keys in interdiff select mode
+            _ => LogAction::None,
+        }
+    }
+
+    /// Handle key events in bisect selection mode
+    ///
+    /// In this mode, j/k navigates to select the "good" revision, Enter confirms,
+    /// and Esc cancels. Selecting the same revision as "bad" is guarded.
+    fn handle_bisect_select_key(&mut self, key: KeyEvent) -> LogAction {
+        match key.code {
+            // Navigation
+            k if keys::is_move_down(k) => {
+                self.move_down();
+                LogAction::None
+            }
+            k if keys::is_move_up(k) => {
+                self.move_up();
+                LogAction::None
+            }
+            k if k == keys::GO_TOP => {
+                self.move_to_top();
+                LogAction::None
+            }
+            k if k == keys::GO_BOTTOM => {
+                self.move_to_bottom();
+                LogAction::None
+            }
+            // Confirm good revision
+            KeyCode::Enter => {
+                if let (Some(bad_pair), Some(good_change)) =
+                    (self.bisect_bad.take(), self.selected_change())
+                {
+                    let good = good_change.change_id.to_string();
+
+                    // Prevent bisect with same revision
+                    if bad_pair.0 == good {
+                        self.bisect_bad = Some(bad_pair);
+                        return LogAction::BisectSameRevision;
+                    }
+                    let bad_id = bad_pair.0;
+                    self.input_mode = InputMode::Normal;
+                    LogAction::Bisect { good, bad: bad_id }
+                } else {
+                    LogAction::None
+                }
+            }
+            // Cancel
+            k if k == keys::ESC => {
+                self.cancel_bisect_select();
+                LogAction::None
+            }
+            // Ignore other keys in bisect select mode
             _ => LogAction::None,
         }
     }

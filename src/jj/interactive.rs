@@ -148,4 +148,37 @@ impl JjExecutor {
             .stderr(Stdio::inherit())
             .status()
     }
+
+    /// Run `jj bisect run --range <good>..<bad> -- bash -c <command>` interactively
+    ///
+    /// Spawns jj bisect as a child process with inherited stdio.
+    /// The caller must call suspend_tui() before invoking this method.
+    pub fn bisect_run_interactive(
+        &self,
+        good: &str,
+        bad: &str,
+        command: &str,
+    ) -> io::Result<ExitStatus> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+
+        if let Some(repo_path) = self.repo_path() {
+            cmd.arg(flags::REPO_PATH).arg(repo_path);
+        }
+
+        let range = format!("{}..{}", good, bad);
+        cmd.args([
+            commands::BISECT,
+            commands::BISECT_RUN,
+            "--range",
+            &range,
+            "--",
+            "bash",
+            "-c",
+            command,
+        ])
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+    }
 }

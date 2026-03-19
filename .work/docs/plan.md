@@ -70,6 +70,7 @@
 - [x] Phase 37-39: リファクタリング — helper共通化（short_id, is_root_by_commit_id, SelectedRevision）、push short_id統一、ChangeId/CommitId newtype導入（v0.4.16）
 - [x] Phase 40: Interdiff — `I` キーで2リビジョンのパッチ差分比較（`jj interdiff --from --to`）、DiffMode enum による3分岐ルーティング（v0.4.17）
 - [x] Bugfix: Working copy preview/diff が外部変更を反映しない問題修正 — commit_id→change_id 切替 + キャッシュ判定除外（v0.4.18）
+- [x] Phase 41: Bisect — `W` キーで二分探索（`jj bisect run`）、2-step 選択 UI + コマンド入力ダイアログ + suspend 実行（v0.4.19）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
