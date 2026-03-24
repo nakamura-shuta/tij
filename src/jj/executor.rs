@@ -198,12 +198,11 @@ impl JjExecutor {
         if let Some(rev) = revset {
             args.push(flags::REVISION);
             args.push(rev);
-            // No --limit for revset queries (preserve exploration)
-        } else {
-            // Default view: limit to avoid slowness on large repos
-            args.push(flags::LIMIT);
-            args.push(constants::DEFAULT_LOG_LIMIT);
         }
+
+        // Always apply --limit to avoid slowness on large repos
+        args.push(flags::LIMIT);
+        args.push(constants::DEFAULT_LOG_LIMIT);
 
         if reversed {
             args.push(flags::REVERSED);
