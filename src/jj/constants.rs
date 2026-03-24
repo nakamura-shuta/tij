@@ -59,6 +59,7 @@ pub mod commands {
     pub const INTERDIFF: &str = "interdiff";
     pub const BISECT: &str = "bisect";
     pub const BISECT_RUN: &str = "run";
+    pub const METAEDIT: &str = "metaedit";
 }
 
 /// jj resolve flags

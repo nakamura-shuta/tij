@@ -185,6 +185,13 @@ pub enum LogAction {
     Bisect { good: String, bad: String },
     /// Bisect blocked: same revision selected
     BisectSameRevision,
+    /// Metaedit: edit metadata (author, change-id, timestamp)
+    Metaedit {
+        /// For UI display (notification)
+        change_id: String,
+        /// For jj command execution (safe against divergent changes)
+        commit_id: String,
+    },
 }
 
 /// Log View state

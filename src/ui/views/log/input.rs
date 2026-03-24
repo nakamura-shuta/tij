@@ -259,6 +259,16 @@ impl LogView {
                     LogAction::None
                 }
             }
+            k if k == keys::METAEDIT => {
+                if let Some(change) = self.selected_change() {
+                    LogAction::Metaedit {
+                        change_id: change.change_id.to_string(),
+                        commit_id: change.commit_id.to_string(),
+                    }
+                } else {
+                    LogAction::None
+                }
+            }
             k if k == keys::PARALLELIZE => {
                 if self.start_parallelize_select() {
                     let from_id = self.parallelize_from.as_ref().unwrap().0.clone();

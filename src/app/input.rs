@@ -328,7 +328,8 @@ impl App {
             | LogAction::DiffEdit(_)
             | LogAction::Revert(_)
             | LogAction::SimplifyParents(_)
-            | LogAction::Fix { .. } => {
+            | LogAction::Fix { .. }
+            | LogAction::Metaedit { .. } => {
                 self.handle_log_editing(action);
             }
 
@@ -395,7 +396,7 @@ impl App {
     }
 
     fn handle_log_editing(&mut self, action: LogAction) {
-        use crate::ui::components::{Dialog, DialogCallback};
+        use crate::ui::components::{Dialog, DialogCallback, SelectItem};
 
         match action {
             LogAction::StartDescribe(revision) => self.start_describe_input(&revision),
@@ -456,6 +457,53 @@ impl App {
                     None,
                     DialogCallback::Fix {
                         revision,
+                        change_id,
+                    },
+                ));
+            }
+            LogAction::Metaedit {
+                change_id,
+                commit_id,
+            } => {
+                if self.jj.is_immutable(&commit_id) {
+                    self.set_error("Cannot metaedit: commit is immutable");
+                    return;
+                }
+                let short = short_id(&change_id);
+                let items = vec![
+                    SelectItem {
+                        label: "Update author".to_string(),
+                        value: "update-author".to_string(),
+                        selected: false,
+                    },
+                    SelectItem {
+                        label: "Set author...".to_string(),
+                        value: "set-author".to_string(),
+                        selected: false,
+                    },
+                    SelectItem {
+                        label: "Update author timestamp".to_string(),
+                        value: "update-timestamp".to_string(),
+                        selected: false,
+                    },
+                    SelectItem {
+                        label: "Generate new change-id".to_string(),
+                        value: "new-change-id".to_string(),
+                        selected: false,
+                    },
+                    SelectItem {
+                        label: "Force rewrite".to_string(),
+                        value: "force-rewrite".to_string(),
+                        selected: false,
+                    },
+                ];
+                self.active_dialog = Some(Dialog::select_single(
+                    "Metaedit",
+                    format!("Edit metadata for {}", short),
+                    items,
+                    None,
+                    DialogCallback::MetaeditSelect {
+                        commit_id,
                         change_id,
                     },
                 ));

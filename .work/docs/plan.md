@@ -71,6 +71,7 @@
 - [x] Phase 40: Interdiff — `I` キーで2リビジョンのパッチ差分比較（`jj interdiff --from --to`）、DiffMode enum による3分岐ルーティング（v0.4.17）
 - [x] Bugfix: Working copy preview/diff が外部変更を反映しない問題修正 — commit_id→change_id 切替 + キャッシュ判定除外（v0.4.18）
 - [x] Phase 41: Bisect — `W` キーで二分探索（`jj bisect run`）、2-step 選択 UI + コマンド入力ダイアログ + suspend 実行（v0.4.19）
+- [x] Phase 42: Metaedit — `v` キーでメタデータ編集（author, change-id, timestamp）、Select→Input/Confirm 2段階ダイアログ、commit_id 実行（v0.4.20）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）

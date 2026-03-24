@@ -1,7 +1,8 @@
 //! Dialog result handling (dispatch confirmed/cancelled dialog results)
 
+use crate::app::helpers::revision::short_id;
 use crate::jj::PushBulkMode;
-use crate::ui::components::{DialogCallback, DialogResult};
+use crate::ui::components::{Dialog, DialogCallback, DialogResult};
 
 use crate::app::state::App;
 
@@ -59,7 +60,10 @@ impl App {
                 | DialogCallback::SimplifyParents { .. }
                 | DialogCallback::Parallelize { .. }
                 | DialogCallback::Fix { .. }
-                | DialogCallback::BisectRun { .. } => {
+                | DialogCallback::BisectRun { .. }
+                | DialogCallback::MetaeditSelect { .. }
+                | DialogCallback::MetaeditSetAuthor { .. }
+                | DialogCallback::MetaeditNewChangeId { .. } => {
                     self.handle_misc_dialog(callback, values);
                 }
             },
@@ -102,7 +106,10 @@ impl App {
             | DialogCallback::Fix { .. }
             | DialogCallback::TagCreate
             | DialogCallback::TagDelete { .. }
-            | DialogCallback::BisectRun { .. } => {}
+            | DialogCallback::BisectRun { .. }
+            | DialogCallback::MetaeditSelect { .. }
+            | DialogCallback::MetaeditSetAuthor { .. }
+            | DialogCallback::MetaeditNewChangeId { .. } => {}
         }
     }
 
@@ -237,6 +244,71 @@ impl App {
             DialogCallback::BisectRun { good, bad } => {
                 let command = values.first().map(|s| s.as_str()).unwrap_or("bash");
                 self.execute_bisect(&good, &bad, command);
+            }
+            DialogCallback::MetaeditSelect {
+                commit_id,
+                change_id,
+            } => {
+                if let Some(action) = values.first() {
+                    match action.as_str() {
+                        "update-author" => {
+                            self.execute_metaedit(&commit_id, &change_id, &["--update-author"]);
+                        }
+                        "set-author" => {
+                            self.active_dialog = Some(Dialog::input(
+                                "Set author",
+                                "Enter author (Name <email>):",
+                                DialogCallback::MetaeditSetAuthor {
+                                    commit_id,
+                                    change_id,
+                                },
+                            ));
+                        }
+                        "update-timestamp" => {
+                            self.execute_metaedit(
+                                &commit_id,
+                                &change_id,
+                                &["--update-author-timestamp"],
+                            );
+                        }
+                        "new-change-id" => {
+                            let short = short_id(&change_id);
+                            self.active_dialog = Some(Dialog::confirm(
+                                "Generate new change-id",
+                                format!("Generate new change-id for {}?", short),
+                                Some(
+                                    "The old change-id will be lost. Undo with 'u' if needed."
+                                        .to_string(),
+                                ),
+                                DialogCallback::MetaeditNewChangeId {
+                                    commit_id,
+                                    change_id,
+                                },
+                            ));
+                        }
+                        "force-rewrite" => {
+                            self.execute_metaedit(&commit_id, &change_id, &["--force-rewrite"]);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            DialogCallback::MetaeditSetAuthor {
+                commit_id,
+                change_id,
+            } => {
+                if let Some(author) = values.first() {
+                    let trimmed = author.trim();
+                    if !trimmed.is_empty() {
+                        self.execute_metaedit(&commit_id, &change_id, &["--author", trimmed]);
+                    }
+                }
+            }
+            DialogCallback::MetaeditNewChangeId {
+                commit_id,
+                change_id,
+            } => {
+                self.execute_metaedit(&commit_id, &change_id, &["--update-change-id"]);
             }
             _ => {}
         }
@@ -394,5 +466,251 @@ mod tests {
         app.handle_dialog_result(DialogResult::Cancelled);
         assert!(app.error_message.is_none());
         assert!(app.notification.is_none());
+    }
+
+    // =========================================================================
+    // Metaedit dialog callback tests
+    // =========================================================================
+
+    use crate::ui::components::SelectItem;
+
+    fn metaedit_select_dialog(value: &str) -> (Dialog, Vec<String>) {
+        let items = vec![SelectItem {
+            label: value.to_string(),
+            value: value.to_string(),
+            selected: false,
+        }];
+        let dialog = Dialog::select_single(
+            "Metaedit",
+            "Edit metadata for abc1234",
+            items,
+            None,
+            DialogCallback::MetaeditSelect {
+                commit_id: "def67890".to_string(),
+                change_id: "abc12345".to_string(),
+            },
+        );
+        (dialog, vec![value.to_string()])
+    }
+
+    /// Helper: verify command_history recorded the expected metaedit args.
+    /// Returns the args of the last command record.
+    fn last_command_args(app: &App) -> Vec<String> {
+        app.command_history
+            .records()
+            .back()
+            .expect("command_history should have a record")
+            .args
+            .clone()
+    }
+
+    #[test]
+    fn test_metaedit_select_update_author_passes_correct_args() {
+        let mut app = App::new_for_test();
+        let (dialog, values) = metaedit_select_dialog("update-author");
+        app.active_dialog = Some(dialog);
+        app.handle_dialog_result(DialogResult::Confirmed(values));
+        // Verify the exact args recorded in command_history
+        let args = last_command_args(&app);
+        assert_eq!(args, vec!["metaedit", "-r", "def67890", "--update-author"]);
+    }
+
+    #[test]
+    fn test_metaedit_select_force_rewrite_passes_correct_args() {
+        let mut app = App::new_for_test();
+        let (dialog, values) = metaedit_select_dialog("force-rewrite");
+        app.active_dialog = Some(dialog);
+        app.handle_dialog_result(DialogResult::Confirmed(values));
+        let args = last_command_args(&app);
+        assert_eq!(args, vec!["metaedit", "-r", "def67890", "--force-rewrite"]);
+    }
+
+    #[test]
+    fn test_metaedit_select_update_timestamp_passes_correct_args() {
+        let mut app = App::new_for_test();
+        let (dialog, values) = metaedit_select_dialog("update-timestamp");
+        app.active_dialog = Some(dialog);
+        app.handle_dialog_result(DialogResult::Confirmed(values));
+        let args = last_command_args(&app);
+        assert_eq!(
+            args,
+            vec!["metaedit", "-r", "def67890", "--update-author-timestamp"]
+        );
+    }
+
+    #[test]
+    fn test_metaedit_select_set_author_opens_input_dialog() {
+        let mut app = App::new_for_test();
+        let (dialog, values) = metaedit_select_dialog("set-author");
+        app.active_dialog = Some(dialog);
+        app.handle_dialog_result(DialogResult::Confirmed(values));
+        // Should open Input dialog (not execute directly)
+        let d = app.active_dialog.as_ref().expect("dialog should be open");
+        assert!(
+            matches!(d.kind, crate::ui::components::DialogKind::Input { .. }),
+            "Expected Input dialog, got: {:?}",
+            d.kind
+        );
+        assert_eq!(
+            d.callback_id,
+            DialogCallback::MetaeditSetAuthor {
+                commit_id: "def67890".to_string(),
+                change_id: "abc12345".to_string(),
+            }
+        );
+        // No command should have been recorded yet
+        assert!(app.command_history.is_empty());
+    }
+
+    #[test]
+    fn test_metaedit_select_new_change_id_opens_confirm_dialog() {
+        let mut app = App::new_for_test();
+        let (dialog, values) = metaedit_select_dialog("new-change-id");
+        app.active_dialog = Some(dialog);
+        app.handle_dialog_result(DialogResult::Confirmed(values));
+        // Should open Confirm dialog (not execute directly)
+        let d = app.active_dialog.as_ref().expect("dialog should be open");
+        assert!(
+            matches!(d.kind, crate::ui::components::DialogKind::Confirm { .. }),
+            "Expected Confirm dialog, got: {:?}",
+            d.kind
+        );
+        assert_eq!(
+            d.callback_id,
+            DialogCallback::MetaeditNewChangeId {
+                commit_id: "def67890".to_string(),
+                change_id: "abc12345".to_string(),
+            }
+        );
+        assert!(app.command_history.is_empty());
+    }
+
+    #[test]
+    fn test_metaedit_select_cancelled_does_nothing() {
+        let mut app = App::new_for_test();
+        let (dialog, _) = metaedit_select_dialog("update-author");
+        app.active_dialog = Some(dialog);
+        app.handle_dialog_result(DialogResult::Cancelled);
+        assert!(app.error_message.is_none());
+        assert!(app.notification.is_none());
+        assert!(app.command_history.is_empty());
+    }
+
+    #[test]
+    fn test_metaedit_set_author_confirmed_passes_correct_args() {
+        let mut app = App::new_for_test();
+        app.active_dialog = Some(Dialog::input(
+            "Set author",
+            "Enter author (Name <email>):",
+            DialogCallback::MetaeditSetAuthor {
+                commit_id: "def67890".to_string(),
+                change_id: "abc12345".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Confirmed(vec![
+            "Test User <test@example.com>".to_string(),
+        ]));
+        let args = last_command_args(&app);
+        assert_eq!(
+            args,
+            vec![
+                "metaedit",
+                "-r",
+                "def67890",
+                "--author",
+                "Test User <test@example.com>"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_metaedit_set_author_empty_is_noop() {
+        let mut app = App::new_for_test();
+        app.active_dialog = Some(Dialog::input(
+            "Set author",
+            "Enter author (Name <email>):",
+            DialogCallback::MetaeditSetAuthor {
+                commit_id: "def67890".to_string(),
+                change_id: "abc12345".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Confirmed(vec!["".to_string()]));
+        // Empty author → silent no-op, no command recorded
+        assert!(app.error_message.is_none());
+        assert!(app.notification.is_none());
+        assert!(app.command_history.is_empty());
+    }
+
+    #[test]
+    fn test_metaedit_set_author_whitespace_only_is_noop() {
+        let mut app = App::new_for_test();
+        app.active_dialog = Some(Dialog::input(
+            "Set author",
+            "Enter author (Name <email>):",
+            DialogCallback::MetaeditSetAuthor {
+                commit_id: "def67890".to_string(),
+                change_id: "abc12345".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Confirmed(vec!["   ".to_string()]));
+        // Whitespace-only author → silent no-op, no command recorded
+        assert!(app.error_message.is_none());
+        assert!(app.notification.is_none());
+        assert!(app.command_history.is_empty());
+    }
+
+    #[test]
+    fn test_metaedit_set_author_cancelled_does_nothing() {
+        let mut app = App::new_for_test();
+        app.active_dialog = Some(Dialog::input(
+            "Set author",
+            "Enter author (Name <email>):",
+            DialogCallback::MetaeditSetAuthor {
+                commit_id: "def67890".to_string(),
+                change_id: "abc12345".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Cancelled);
+        assert!(app.error_message.is_none());
+        assert!(app.notification.is_none());
+        assert!(app.command_history.is_empty());
+    }
+
+    #[test]
+    fn test_metaedit_new_change_id_confirmed_passes_correct_args() {
+        let mut app = App::new_for_test();
+        app.active_dialog = Some(Dialog::confirm(
+            "Generate new change-id",
+            "Generate new change-id for abc1234?",
+            Some("The old change-id will be lost.".to_string()),
+            DialogCallback::MetaeditNewChangeId {
+                commit_id: "def67890".to_string(),
+                change_id: "abc12345".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Confirmed(vec![]));
+        let args = last_command_args(&app);
+        assert_eq!(
+            args,
+            vec!["metaedit", "-r", "def67890", "--update-change-id"]
+        );
+    }
+
+    #[test]
+    fn test_metaedit_new_change_id_cancelled_does_nothing() {
+        let mut app = App::new_for_test();
+        app.active_dialog = Some(Dialog::confirm(
+            "Generate new change-id",
+            "Generate new change-id for abc1234?",
+            None,
+            DialogCallback::MetaeditNewChangeId {
+                commit_id: "def67890".to_string(),
+                change_id: "abc12345".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Cancelled);
+        assert!(app.error_message.is_none());
+        assert!(app.notification.is_none());
+        assert!(app.command_history.is_empty());
     }
 }

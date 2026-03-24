@@ -145,6 +145,9 @@ pub const INTERDIFF: KeyCode = KeyCode::Char('I');
 /// Bisect — find bad revision (Log View)
 pub const BISECT: KeyCode = KeyCode::Char('W');
 
+/// Metaedit — edit metadata (author, change-id, timestamp) (Log View)
+pub const METAEDIT: KeyCode = KeyCode::Char('v');
+
 /// Open Bookmark View (Log View)
 pub const BOOKMARK_VIEW: KeyCode = KeyCode::Char('M');
 
@@ -481,6 +484,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "W",
         description: "Bisect (find bad revision)",
+    },
+    KeyBindEntry {
+        key: "v",
+        description: "Metaedit (edit author, change-id, timestamp)",
     },
 ];
 

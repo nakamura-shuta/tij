@@ -58,6 +58,7 @@ expression: terminal.backend()
 "│  f         Fix (apply configured code formatters to revision and descendants)│"
 "│  H         Command history                                                   │"
 "│  W         Bisect (find bad revision)                                        │"
+"│  v         Metaedit (edit author, change-id, timestamp)                      │"
 "│                                                                              │"
 "│Input Mode:                                                                   │"
 "│  Enter     Submit input                                                      │"
@@ -91,4 +92,5 @@ expression: terminal.backend()
 "│                                                                              │"
 "│Bookmark View:                                                                │"
 "│  j/k       Move down/up                                                      │"
+"│  g/G       Go to top/bottom                                                  │"
 "└──────────────────────────────────────────────────────────────────────────────┘"

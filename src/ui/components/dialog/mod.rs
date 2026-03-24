@@ -98,6 +98,21 @@ pub enum DialogCallback {
     TagDelete { name: String },
     /// Bisect run (Input dialog for command entry)
     BisectRun { good: String, bad: String },
+    /// Metaedit operation selection (Select dialog, single_select)
+    MetaeditSelect {
+        commit_id: String,
+        change_id: String,
+    },
+    /// Metaedit set author (Input dialog)
+    MetaeditSetAuthor {
+        commit_id: String,
+        change_id: String,
+    },
+    /// Metaedit generate new change-id (Confirm dialog)
+    MetaeditNewChangeId {
+        commit_id: String,
+        change_id: String,
+    },
 }
 
 /// Selection item for Select dialog

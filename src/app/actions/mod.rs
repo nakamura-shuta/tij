@@ -433,6 +433,27 @@ impl App {
         self.run_jj_action(result, "Revert failed", &msg, DirtyFlags::log());
     }
 
+    /// Execute metaedit operation.
+    ///
+    /// Uses commit_id for jj execution (Phase 36: safe against divergent changes),
+    /// change_id for user-facing notification messages.
+    pub(crate) fn execute_metaedit(&mut self, commit_id: &str, change_id: &str, options: &[&str]) {
+        let mut args = vec!["metaedit", "-r", commit_id];
+        args.extend_from_slice(options);
+        let action_desc = match options.first() {
+            Some(&"--update-author") => "author updated",
+            Some(&"--author") => "author set",
+            Some(&"--update-author-timestamp") => "author timestamp updated",
+            Some(&"--update-change-id") => "change-id regenerated",
+            Some(&"--force-rewrite") => "force rewritten",
+            _ => "completed",
+        };
+        let short = short_id(change_id);
+        let success_msg = format!("Metaedit {}: {} (undo: u)", short, action_desc);
+        let result = self.run_and_record("Metaedit", &args);
+        self.run_jj_action(result, "Metaedit failed", &success_msg, DirtyFlags::log());
+    }
+
     /// Execute redo operation
     ///
     /// Only works if the last operation was an undo.
