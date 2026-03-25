@@ -229,17 +229,41 @@ impl LogView {
             .centered();
         }
 
+        // Build count suffix for revset queries and truncated default view
+        let count_suffix = if self.current_revset.is_some() {
+            let count = self.changes.iter().filter(|c| !c.is_graph_only).count();
+            if self.truncated {
+                format!(" ({}+)", count)
+            } else {
+                format!(" ({})", count)
+            }
+        } else if self.truncated {
+            let count = self.changes.iter().filter(|c| !c.is_graph_only).count();
+            format!(" ({}+)", count)
+        } else {
+            String::new()
+        };
+
         let title_text = match (&self.current_revset, &self.last_search_query) {
             (Some(revset), Some(query)) => {
-                format!(" Tij - Log View [{}] [Search: {}] ", revset, query)
+                format!(
+                    " Tij - Log View [{}{}] [Search: {}] ",
+                    revset, count_suffix, query
+                )
             }
             (Some(revset), None) => {
-                format!(" Tij - Log View [{}] ", revset)
+                format!(" Tij - Log View [{}{}] ", revset, count_suffix)
             }
             (None, Some(query)) => {
-                format!(" Tij - Log View [Search: {}] ", query)
+                format!(" Tij - Log View{} [Search: {}] ", count_suffix, query)
             }
-            (None, None) => " Tij - Log View ".to_string(),
+            (None, None) => {
+                if count_suffix.is_empty() {
+                    " Tij - Log View ".to_string()
+                } else {
+                    format!(" Tij - Log View{} ", count_suffix)
+                }
+            }
         };
         Line::from(title_text).bold().cyan().centered()
     }
@@ -435,5 +459,75 @@ impl LogView {
         // Show cursor (clamped to available width, character-based)
         let cursor_pos = char_count.min(available_width);
         frame.set_cursor_position((area.x + cursor_pos as u16 + 1, area.y + 1));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LogView;
+    use crate::jj::constants;
+    use crate::model::{Change, ChangeId, CommitId};
+
+    fn create_selectable_changes(count: usize) -> Vec<Change> {
+        (0..count)
+            .map(|i| Change {
+                change_id: ChangeId::new(format!("chg{i:05}")),
+                commit_id: CommitId::new(format!("commit{i:05}")),
+                author: "user@example.com".to_string(),
+                timestamp: "2024-01-29".to_string(),
+                description: format!("Commit {i}"),
+                is_working_copy: i == 0,
+                is_empty: false,
+                bookmarks: vec![],
+                graph_prefix: if i == 0 {
+                    "@  ".to_string()
+                } else {
+                    "○  ".to_string()
+                },
+                is_graph_only: false,
+                has_conflict: false,
+            })
+            .collect()
+    }
+
+    fn title_text(view: &LogView) -> String {
+        let mut text = String::new();
+        for span in view.build_title().spans {
+            text.push_str(span.content.as_ref());
+        }
+        text
+    }
+
+    #[test]
+    fn test_build_title_includes_revset_count() {
+        let mut view = LogView::new();
+        view.current_revset = Some("ancestors(@, 5)".to_string());
+        view.set_changes(create_selectable_changes(5));
+
+        assert_eq!(title_text(&view), " Tij - Log View [ancestors(@, 5) (5)] ");
+    }
+
+    #[test]
+    fn test_build_title_includes_truncated_indicator_for_revset() {
+        let mut view = LogView::new();
+        view.current_revset = Some("all()".to_string());
+        let limit = constants::DEFAULT_LOG_LIMIT.parse::<usize>().unwrap();
+        view.set_changes(create_selectable_changes(limit));
+        view.truncated = true;
+
+        assert_eq!(
+            title_text(&view),
+            format!(" Tij - Log View [all() ({}+)] ", limit)
+        );
+    }
+
+    #[test]
+    fn test_build_title_includes_truncated_indicator_without_revset() {
+        let mut view = LogView::new();
+        let limit = constants::DEFAULT_LOG_LIMIT.parse::<usize>().unwrap();
+        view.set_changes(create_selectable_changes(limit));
+        view.truncated = true;
+
+        assert_eq!(title_text(&view), format!(" Tij - Log View ({}+) ", limit));
     }
 }

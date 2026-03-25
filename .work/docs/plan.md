@@ -165,8 +165,9 @@
 - [ ] `metaedit`, `workspace`, `sparse`, `bisect`, `sign/unsign`
 
 ## 6. jj log 方針
-- [x] `--limit`（デフォルト表示のみ 200）
-- [x] revset 指定時は無制限
+- [x] `--limit`（デフォルト 200、revset 含む全クエリに適用）
+- [x] revset 指定時も `--limit` 適用（v0.4.21 で変更、`all()` の重さ対策）
+- [x] タイトルバーに件数表示 + truncated インジケータ（`200+` 表記）（v0.4.22）
 - [x] `--reversed`（`V` キーで表示順トグル、v0.3.28）
 - [ ] `--count`（必要性再評価）
 

@@ -68,7 +68,16 @@ impl App {
         let reversed = self.log_view.reversed;
         match self.jj.log_changes(revset, reversed) {
             Ok(changes) => {
+                // Detect truncation: if selectable (non-graph-only) count equals
+                // the limit, results were likely truncated by --limit
+                let limit: usize = crate::jj::constants::DEFAULT_LOG_LIMIT
+                    .parse()
+                    .unwrap_or(200);
+                let selectable_count = changes.iter().filter(|c| !c.is_graph_only).count();
+                let truncated = selectable_count >= limit;
+
                 self.log_view.set_changes(changes);
+                self.log_view.truncated = truncated;
                 // Validate cache against new change list: evict stale entries,
                 // update bookmarks for entries whose commit_id still matches
                 self.preview_cache.validate(&self.log_view.changes);

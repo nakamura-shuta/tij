@@ -239,6 +239,8 @@ pub struct LogView {
     pub(crate) skip_emptied: bool,
     /// Whether to pass --simplify-parents on rebase (toggled with P in RebaseSelect)
     pub(crate) simplify_parents: bool,
+    /// Whether the log results were truncated by --limit
+    pub truncated: bool,
 }
 
 pub mod empty_text {
