@@ -185,6 +185,8 @@ pub enum LogAction {
     Bisect { good: String, bad: String },
     /// Bisect blocked: same revision selected
     BisectSameRevision,
+    /// Arrange: interactively arrange the commit graph (jj arrange)
+    Arrange,
     /// Metaedit: edit metadata (author, change-id, timestamp)
     Metaedit {
         /// For UI display (notification)

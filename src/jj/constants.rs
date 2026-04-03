@@ -60,6 +60,7 @@ pub mod commands {
     pub const BISECT: &str = "bisect";
     pub const BISECT_RUN: &str = "run";
     pub const METAEDIT: &str = "metaedit";
+    pub const ARRANGE: &str = "arrange";
 }
 
 /// jj resolve flags

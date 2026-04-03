@@ -208,6 +208,9 @@ pub const FIX: KeyCode = KeyCode::Char('f');
 /// Parallelize commits (convert linear chain to siblings)
 pub const PARALLELIZE: KeyCode = KeyCode::Char('|');
 
+/// Arrange — interactively arrange the commit graph (Log View, jj 0.40+)
+pub const ARRANGE: KeyCode = KeyCode::Char('O');
+
 /// Jump to change in Log View (Blame View)
 pub const JUMP_TO_LOG: KeyCode = KeyCode::Char('J');
 
@@ -476,6 +479,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "f",
         description: "Fix (apply configured code formatters to revision and descendants)",
+    },
+    KeyBindEntry {
+        key: "O",
+        description: "Arrange (interactively arrange the commit graph, jj 0.40+)",
     },
     KeyBindEntry {
         key: "H",

@@ -371,6 +371,11 @@ impl App {
                 self.handle_log_bisect(action);
             }
 
+            // Arrange (interactive TUI)
+            LogAction::Arrange => {
+                self.execute_arrange();
+            }
+
             // Misc
             LogAction::NextChange | LogAction::PrevChange | LogAction::ToggleReversed => {
                 self.handle_log_misc(action);

@@ -149,6 +149,31 @@ impl JjExecutor {
             .status()
     }
 
+    /// Run `jj arrange` interactively
+    ///
+    /// Opens the built-in TUI for interactively rearranging the commit graph.
+    /// The caller must call suspend_tui() before invoking this method.
+    /// Available since jj 0.40.0.
+    pub fn arrange_interactive(&self, revset: Option<&str>) -> io::Result<ExitStatus> {
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+
+        if let Some(repo_path) = self.repo_path() {
+            cmd.arg(flags::REPO_PATH).arg(repo_path);
+        }
+
+        let mut args = vec![commands::ARRANGE];
+        if let Some(rev) = revset {
+            args.push(flags::REVISION);
+            args.push(rev);
+        }
+
+        cmd.args(args)
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+    }
+
     /// Run `jj bisect run --range <good>..<bad> -- bash -c <command>` interactively
     ///
     /// Spawns jj bisect as a child process with inherited stdio.

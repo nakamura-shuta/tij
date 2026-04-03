@@ -634,6 +634,57 @@ impl App {
         self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
     }
 
+    /// Execute `jj arrange` interactively
+    ///
+    /// Suspends TUI, opens jj's built-in arrange TUI for rearranging the commit graph,
+    /// then resumes TUI and refreshes the log. Available since jj 0.40.0.
+    pub(crate) fn execute_arrange(&mut self) {
+        // Pre-check: verify `jj arrange` is available (jj 0.40+)
+        // Run `jj arrange --help` to detect if the subcommand exists
+        if let Err(e) = self.jj.run(&["arrange", "--help"]) {
+            let msg = format!("{}", e);
+            if msg.contains("unrecognized")
+                || msg.contains("unknown")
+                || msg.contains("no such command")
+                || msg.contains("no such subcommand")
+            {
+                self.notify_warning(
+                    "Arrange requires jj 0.40+. Please upgrade jj to use this feature.",
+                );
+            } else {
+                self.set_error(format!("Arrange failed: {}", e));
+            }
+            return;
+        }
+
+        // Pass current revset to arrange so it operates on the same scope
+        let revset = self.log_view.current_revset.clone();
+        let _guard = suspend_tui();
+
+        let start = Instant::now();
+        let result = self.jj.arrange_interactive(revset.as_deref());
+        let mut args: Vec<&str> = vec!["arrange"];
+        if let Some(ref rev) = revset {
+            args.push("-r");
+            args.push(rev);
+        }
+        self.record_interactive_command("Arrange", &args, start, &result);
+
+        match result {
+            Ok(status) if status.success() => {
+                self.notify_success("Arrange complete (undo: u)");
+            }
+            Ok(_) => {
+                self.notify_info("Arrange cancelled or failed");
+            }
+            Err(e) => {
+                self.set_error(format!("Arrange failed: {}", e));
+            }
+        }
+
+        self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
+    }
+
     /// Execute restore for a single file
     pub(crate) fn execute_restore_file(&mut self, file_path: &str) {
         let msg = format!("Restored: {}", file_path);

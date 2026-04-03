@@ -277,6 +277,7 @@ impl LogView {
                     LogAction::None
                 }
             }
+            k if k == keys::ARRANGE => LogAction::Arrange,
             _ => LogAction::None,
         }
     }

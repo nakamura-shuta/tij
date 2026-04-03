@@ -72,6 +72,9 @@
 - [x] Bugfix: Working copy preview/diff が外部変更を反映しない問題修正 — commit_id→change_id 切替 + キャッシュ判定除外（v0.4.18）
 - [x] Phase 41: Bisect — `W` キーで二分探索（`jj bisect run`）、2-step 選択 UI + コマンド入力ダイアログ + suspend 実行（v0.4.19）
 - [x] Phase 42: Metaedit — `v` キーでメタデータ編集（author, change-id, timestamp）、Select→Input/Confirm 2段階ダイアログ、commit_id 実行（v0.4.20）
+- [x] Bugfix: revset クエリにも `--limit` 適用（`all()` の重さ対策）（v0.4.21）
+- [x] feat: revset クエリ limit インジケータ — タイトルバーに件数 + truncation 表示（v0.4.22）
+- [x] Phase 43: Arrange — `O` キーで `jj arrange` 起動（コミットグラフの対話的並べ替え、jj 0.40+）（v0.4.23）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）
