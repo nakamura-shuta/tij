@@ -1331,7 +1331,7 @@ pub const STATUS_VIEW_HINTS: &[KeyHint] = &[
     },
     KeyHint {
         key: "q",
-        label: "Quit",
+        label: "Back",
         color: Color::Red,
     },
 ];
@@ -1380,7 +1380,7 @@ pub const STATUS_KEYS: &[KeyBindEntry] = &[
     },
     KeyBindEntry {
         key: "q",
-        description: "Quit",
+        description: "Back to log",
     },
 ];
 

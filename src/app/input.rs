@@ -122,7 +122,7 @@ impl App {
                 self.go_to_view(View::Status);
                 true
             }
-            keys::UNDO if matches!(self.current_view, View::Log | View::Bookmark) => {
+            keys::UNDO if matches!(self.current_view, View::Log | View::Bookmark | View::Tag) => {
                 self.notification = None; // Clear any existing notification
                 self.execute_undo();
                 true

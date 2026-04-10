@@ -89,7 +89,7 @@ expression: terminal.backend()
 "│  R         Restore all files                                                 │"
 "│  E         Diffedit (external diff editor)                                   │"
 "│  Tab       Switch to log                                                     │"
-"│  q         Quit                                                              │"
+"│  q         Back to log                                                       │"
 "│                                                                              │"
 "│Bookmark View:                                                                │"
 "│  j/k       Move down/up                                                      │"
