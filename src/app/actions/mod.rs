@@ -4,6 +4,7 @@ mod bookmark;
 mod dialog;
 mod push;
 mod tag;
+mod workspace;
 
 use std::io;
 use std::process::ExitStatus;

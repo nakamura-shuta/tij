@@ -205,6 +205,7 @@ impl LogView {
             }
             k if k == keys::BOOKMARK_VIEW => LogAction::OpenBookmarkView,
             k if k == keys::TAG_VIEW => LogAction::OpenTagView,
+            k if k == keys::WORKSPACE_VIEW => LogAction::OpenWorkspaceView,
             k if k == keys::COMMAND_HISTORY => LogAction::OpenCommandHistory,
             k if k == keys::NEXT_CHANGE => LogAction::NextChange,
             k if k == keys::PREV_CHANGE => LogAction::PrevChange,

@@ -61,6 +61,11 @@ pub mod commands {
     pub const BISECT_RUN: &str = "run";
     pub const METAEDIT: &str = "metaedit";
     pub const ARRANGE: &str = "arrange";
+    pub const WORKSPACE: &str = "workspace";
+    pub const WORKSPACE_LIST: &str = "list";
+    pub const WORKSPACE_ADD: &str = "add";
+    pub const WORKSPACE_FORGET: &str = "forget";
+    pub const WORKSPACE_RENAME: &str = "rename";
 }
 
 /// jj resolve flags

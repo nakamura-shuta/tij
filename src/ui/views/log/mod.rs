@@ -153,6 +153,8 @@ pub enum LogAction {
     OpenBookmarkView,
     /// Open Tag View
     OpenTagView,
+    /// Open Workspace View
+    OpenWorkspaceView,
     /// Open Command History View
     OpenCommandHistory,
     /// Move @ to next child (jj next --edit)

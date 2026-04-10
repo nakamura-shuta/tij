@@ -8,7 +8,7 @@ use crate::model::{Change, CommandHistory, DiffContent, Notification};
 use crate::ui::components::Dialog;
 use crate::ui::views::{
     BlameView, BookmarkView, CommandHistoryView, DiffView, EvologView, LogView, OperationView,
-    ResolveView, StatusView, TagView,
+    ResolveView, StatusView, TagView, WorkspaceView,
 };
 
 /// Tracks which data needs refreshing after a jj operation.
@@ -170,6 +170,7 @@ pub enum View {
     Resolve,
     Bookmark,
     Tag,
+    Workspace,
     Evolog,
     CommandHistory,
     Help,
@@ -198,6 +199,8 @@ pub struct App {
     pub bookmark_view: BookmarkView,
     /// Tag view state
     pub tag_view: TagView,
+    /// Workspace view state
+    pub workspace_view: WorkspaceView,
     /// Command history view state
     pub command_history_view: CommandHistoryView,
     /// Status view state
@@ -269,6 +272,7 @@ impl App {
             evolog_view: None,
             bookmark_view: BookmarkView::new(),
             tag_view: TagView::new(),
+            workspace_view: WorkspaceView::new(),
             command_history_view: CommandHistoryView::new(),
             status_view: StatusView::new(),
             operation_view: OperationView::new(),
@@ -333,6 +337,7 @@ impl App {
             View::Bookmark => View::Log,
             View::Evolog => View::Log,
             View::Tag => View::Log,
+            View::Workspace => View::Log,
             View::CommandHistory => View::Log,
             View::Help => View::Log,
         };

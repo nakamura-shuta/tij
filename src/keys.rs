@@ -154,6 +154,9 @@ pub const BOOKMARK_VIEW: KeyCode = KeyCode::Char('M');
 /// Open Tag View (Log View)
 pub const TAG_VIEW: KeyCode = KeyCode::Char('t');
 
+/// Open Workspace View (Log View)
+pub const WORKSPACE_VIEW: KeyCode = KeyCode::Char('w');
+
 /// Open Command History View (Log View)
 pub const COMMAND_HISTORY: KeyCode = KeyCode::Char('H');
 
@@ -439,6 +442,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "t",
         description: "Tag view",
+    },
+    KeyBindEntry {
+        key: "w",
+        description: "Workspace view",
     },
     KeyBindEntry {
         key: "p",
@@ -939,6 +946,7 @@ pub fn current_hints(view: View, input_mode: InputMode, ctx: &HintContext) -> Ve
         View::Resolve => resolve_hints(ctx),
         View::Bookmark => bookmark_view_hints(ctx),
         View::Tag => tag_view_hints(),
+        View::Workspace => workspace_view_hints(),
         View::CommandHistory => command_history_hints(),
         View::Status => STATUS_VIEW_HINTS.to_vec(),
         View::Operation => OPERATION_VIEW_HINTS.to_vec(),
@@ -1045,6 +1053,25 @@ fn tag_view_hints() -> Vec<KeyHint> {
         HINT_TAG_CREATE,
         HINT_TAG_DELETE,
         HINT_UNDO,
+        HINT_REFRESH,
+        HINT_BACK,
+    ]
+}
+
+fn workspace_view_hints() -> Vec<KeyHint> {
+    vec![
+        HINT_NAV,
+        KeyHint {
+            key: "a",
+            label: "Add",
+            color: Color::Green,
+        },
+        KeyHint {
+            key: "D",
+            label: "Forget",
+            color: Color::Red,
+        },
+        HINT_RENAME,
         HINT_REFRESH,
         HINT_BACK,
     ]
@@ -1477,6 +1504,34 @@ pub const TAG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "u",
         description: "Undo",
+    },
+    KeyBindEntry {
+        key: "q",
+        description: "Back to log",
+    },
+];
+
+/// Workspace view key bindings for help display
+pub const WORKSPACE_KEYS: &[KeyBindEntry] = &[
+    KeyBindEntry {
+        key: "j/k",
+        description: "Move down/up",
+    },
+    KeyBindEntry {
+        key: "g/G",
+        description: "Go to top/bottom",
+    },
+    KeyBindEntry {
+        key: "a",
+        description: "Add workspace",
+    },
+    KeyBindEntry {
+        key: "D",
+        description: "Forget workspace",
+    },
+    KeyBindEntry {
+        key: "r",
+        description: "Rename workspace (current only)",
     },
     KeyBindEntry {
         key: "q",

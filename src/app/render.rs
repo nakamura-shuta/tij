@@ -36,6 +36,7 @@ impl App {
             View::Resolve => self.render_resolve_view(frame, notification.as_ref()),
             View::Bookmark => self.render_bookmark_view(frame, notification.as_ref()),
             View::Tag => self.render_tag_view(frame, notification.as_ref()),
+            View::Workspace => self.render_workspace_view(frame, notification.as_ref()),
             View::Evolog => self.render_evolog_view(frame, notification.as_ref()),
             View::CommandHistory => self.render_command_history_view(frame, notification.as_ref()),
             View::Help => self.render_help_view(frame),
@@ -66,9 +67,9 @@ impl App {
                 let hints = keys::current_hints(View::Bookmark, self.log_view.input_mode, &ctx);
                 status_hints_height(&hints, width)
             }
-            View::Tag => {
+            View::Tag | View::Workspace => {
                 let ctx = keys::HintContext::default();
-                let hints = keys::current_hints(View::Tag, self.log_view.input_mode, &ctx);
+                let hints = keys::current_hints(self.current_view, self.log_view.input_mode, &ctx);
                 status_hints_height(&hints, width)
             }
             View::Resolve => {
@@ -347,6 +348,27 @@ impl App {
         };
 
         self.tag_view.render(frame, main_area, notification);
+        render_status_hints(frame, &hints);
+    }
+
+    fn render_workspace_view(
+        &self,
+        frame: &mut Frame,
+        notification: Option<&crate::model::Notification>,
+    ) {
+        let area = frame.area();
+        let ctx = keys::HintContext::default();
+        let hints = keys::current_hints(View::Workspace, self.log_view.input_mode, &ctx);
+        let sb_height = status_hints_height(&hints, area.width);
+
+        let main_area = Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: area.height.saturating_sub(sb_height),
+        };
+
+        self.workspace_view.render(frame, main_area, notification);
         render_status_hints(frame, &hints);
     }
 

@@ -16,6 +16,7 @@ mod notification;
 mod operation;
 mod rebase;
 mod tag;
+mod workspace;
 
 pub use annotation::{AnnotationContent, AnnotationLine};
 pub use bookmark::{Bookmark, BookmarkInfo};
@@ -33,3 +34,4 @@ pub use notification::{Notification, NotificationKind};
 pub use operation::Operation;
 pub use rebase::RebaseMode;
 pub use tag::TagInfo;
+pub use workspace::WorkspaceInfo;

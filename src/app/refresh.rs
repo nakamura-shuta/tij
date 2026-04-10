@@ -245,6 +245,10 @@ impl App {
                 self.refresh_tag_view();
                 self.notify_info("Refreshed");
             }
+            View::Workspace => {
+                self.refresh_workspace_view();
+                self.notify_info("Refreshed");
+            }
             View::CommandHistory => {
                 // Command history is in-memory data, no external refresh needed
             }

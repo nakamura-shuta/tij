@@ -207,6 +207,10 @@ impl App {
                 let action = self.tag_view.handle_key(key);
                 self.handle_tag_action(action);
             }
+            View::Workspace => {
+                let action = self.workspace_view.handle_key(key);
+                self.handle_workspace_action(action);
+            }
             View::Resolve => {
                 if let Some(ref mut resolve_view) = self.resolve_view {
                     let action = resolve_view.handle_key(key);
@@ -307,6 +311,7 @@ impl App {
             | LogAction::ClearRevset
             | LogAction::OpenBookmarkView
             | LogAction::OpenTagView
+            | LogAction::OpenWorkspaceView
             | LogAction::OpenCommandHistory
             | LogAction::OpenEvolog(_)
             | LogAction::OpenResolveList { .. } => {
@@ -390,6 +395,7 @@ impl App {
             LogAction::ClearRevset => self.refresh_log(None),
             LogAction::OpenBookmarkView => self.open_bookmark_view(),
             LogAction::OpenTagView => self.open_tag_view(),
+            LogAction::OpenWorkspaceView => self.open_workspace_view(),
             LogAction::OpenCommandHistory => self.go_to_view(View::CommandHistory),
             LogAction::OpenEvolog(change_id) => self.open_evolog(&change_id),
             LogAction::OpenResolveList {

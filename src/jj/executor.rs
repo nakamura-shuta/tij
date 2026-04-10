@@ -15,7 +15,7 @@ use std::process::Command;
 
 use crate::model::{
     AnnotationContent, Bookmark, BookmarkInfo, Change, ChangeId, CommitId, ConflictFile,
-    DiffContent, Operation, RebaseMode, Status, TagInfo,
+    DiffContent, Operation, RebaseMode, Status, TagInfo, WorkspaceInfo,
 };
 
 use super::JjError;
@@ -1631,6 +1631,26 @@ impl JjExecutor {
     /// Runs `jj tag delete <name>`.
     pub fn tag_delete(&self, name: &str) -> Result<String, JjError> {
         self.run_str(&[commands::TAG, commands::TAG_DELETE, name])
+    }
+
+    // ── Workspace operations ──────────────────────────────────────
+
+    /// Get the workspace root path
+    pub fn workspace_root(&self) -> Result<String, JjError> {
+        let output = self.run_str(&[commands::WORKSPACE, "root"])?;
+        Ok(output.trim().to_string())
+    }
+
+    /// List all workspaces
+    pub fn workspace_list(&self) -> Result<Vec<WorkspaceInfo>, JjError> {
+        let template = Templates::workspace_list();
+        let output = self.run_str(&[
+            commands::WORKSPACE,
+            commands::WORKSPACE_LIST,
+            flags::TEMPLATE,
+            template,
+        ])?;
+        Ok(super::parser::parse_workspace_list(&output))
     }
 }
 

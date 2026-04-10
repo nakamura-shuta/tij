@@ -12,6 +12,7 @@ mod operation;
 mod resolve;
 mod status;
 mod tag;
+mod workspace;
 
 pub use blame::{BlameAction, BlameView};
 pub use bookmark::{BookmarkAction, BookmarkView, RenameState};
@@ -23,3 +24,4 @@ pub use operation::{OperationAction, OperationView};
 pub use resolve::{ResolveAction, ResolveView};
 pub use status::{StatusAction, StatusInputMode, StatusView};
 pub use tag::{TagAction, TagView};
+pub use workspace::{WorkspaceAction, WorkspaceView};

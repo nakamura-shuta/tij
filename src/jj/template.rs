@@ -106,6 +106,26 @@ impl Templates {
     /// Note: Uses AnnotationLine template methods available in jj 0.38+.
     /// The tab separator between change_id and commit_id distinguishes them
     /// from the space-separated remaining fields.
+    /// Template for `jj workspace list` output
+    ///
+    /// Fields (separated by tab):
+    /// 1. name (workspace name)
+    /// 2. root path (self.root(), may be error string if not recorded)
+    /// 3. change_id (working copy, short 8 chars)
+    /// 4. description (working copy, first line)
+    pub fn workspace_list() -> &'static str {
+        concat!(
+            "name",
+            " ++ \"\\t\" ++ ",
+            "self.root()",
+            " ++ \"\\t\" ++ ",
+            "self.target().change_id().short(8)",
+            " ++ \"\\t\" ++ ",
+            "self.target().description().first_line()",
+            " ++ \"\\n\""
+        )
+    }
+
     pub fn file_annotate() -> &'static str {
         concat!(
             "commit.change_id().short(8)",

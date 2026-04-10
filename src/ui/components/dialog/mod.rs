@@ -96,6 +96,12 @@ pub enum DialogCallback {
     TagCreate,
     /// Tag deletion (Confirm dialog)
     TagDelete { name: String },
+    /// Workspace add (Input dialog for path)
+    WorkspaceAdd,
+    /// Workspace forget (Confirm dialog)
+    WorkspaceForget { name: String },
+    /// Workspace rename (Input dialog for new name)
+    WorkspaceRename { old_name: String },
     /// Bisect run (Input dialog for command entry)
     BisectRun { good: String, bad: String },
     /// Metaedit operation selection (Select dialog, single_select)

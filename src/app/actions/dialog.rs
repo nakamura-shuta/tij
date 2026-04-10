@@ -51,6 +51,12 @@ impl App {
                 DialogCallback::TagCreate | DialogCallback::TagDelete { .. } => {
                     self.handle_tag_dialog(callback, values);
                 }
+                // Workspace
+                DialogCallback::WorkspaceAdd
+                | DialogCallback::WorkspaceForget { .. }
+                | DialogCallback::WorkspaceRename { .. } => {
+                    self.handle_workspace_dialog(callback, values);
+                }
                 // Misc
                 DialogCallback::OpRestore
                 | DialogCallback::Track
@@ -109,7 +115,10 @@ impl App {
             | DialogCallback::BisectRun { .. }
             | DialogCallback::MetaeditSelect { .. }
             | DialogCallback::MetaeditSetAuthor { .. }
-            | DialogCallback::MetaeditNewChangeId { .. } => {}
+            | DialogCallback::MetaeditNewChangeId { .. }
+            | DialogCallback::WorkspaceAdd
+            | DialogCallback::WorkspaceForget { .. }
+            | DialogCallback::WorkspaceRename { .. } => {}
         }
     }
 

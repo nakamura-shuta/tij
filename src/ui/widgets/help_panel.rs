@@ -143,6 +143,13 @@ pub fn build_help_lines(search_query: Option<&str>) -> Vec<HelpLine> {
     );
     push_section(
         &mut lines,
+        "Workspace View",
+        keys::WORKSPACE_KEYS,
+        query_lower.as_deref(),
+        &synonyms,
+    );
+    push_section(
+        &mut lines,
         "Command History View",
         keys::COMMAND_HISTORY_KEYS,
         query_lower.as_deref(),
