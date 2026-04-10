@@ -108,6 +108,11 @@ impl Parser {
             graph_prefix: String::new(), // Set by caller
             is_graph_only: false,
             has_conflict: fields.get(7).map(|v| *v == "true").unwrap_or(false),
+            working_copy_names: if fields.len() > 8 && !fields[8].is_empty() {
+                fields[8].split(',').map(|s| s.to_string()).collect()
+            } else {
+                Vec::new()
+            },
         })
     }
 
@@ -140,6 +145,11 @@ impl Parser {
             graph_prefix: String::new(),
             is_graph_only: false,
             has_conflict: fields.get(8).map(|v| *v == "true").unwrap_or(false),
+            working_copy_names: if fields.len() > 9 && !fields[9].is_empty() {
+                fields[9].split(',').map(|s| s.to_string()).collect()
+            } else {
+                Vec::new()
+            },
         })
     }
 }

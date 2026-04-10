@@ -25,6 +25,13 @@ impl WorkspaceView {
                 self.select_last();
                 WorkspaceAction::None
             }
+            KeyCode::Enter => {
+                if let Some(ws) = self.selected_workspace() {
+                    WorkspaceAction::Jump(ws.change_id.to_string())
+                } else {
+                    WorkspaceAction::None
+                }
+            }
             KeyCode::Char('a') => WorkspaceAction::StartAdd,
             k if k == keys::BOOKMARK_DELETE => {
                 // D key: forget workspace (blocked for current)

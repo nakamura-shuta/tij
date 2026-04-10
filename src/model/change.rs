@@ -43,6 +43,10 @@ pub struct Change {
 
     /// True if this change has unresolved conflicts
     pub has_conflict: bool,
+
+    /// Workspace names that have this commit as working copy
+    /// Empty if not a working copy for any workspace.
+    pub working_copy_names: Vec<String>,
 }
 
 impl Change {
@@ -85,6 +89,7 @@ mod tests {
             graph_prefix: String::new(),
             is_graph_only: false,
             has_conflict: false,
+            working_copy_names: Vec::new(),
         }
     }
 

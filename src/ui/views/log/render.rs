@@ -336,6 +336,23 @@ impl LogView {
             ));
         }
 
+        // Workspace markers (other workspaces' working copies)
+        // Skip if this is the current WC and only 1 workspace name (already shown as @ in graph)
+        let show_ws_markers = !(change.working_copy_names.is_empty()
+            || change.is_working_copy && change.working_copy_names.len() == 1);
+        if show_ws_markers {
+            let marker = change
+                .working_copy_names
+                .iter()
+                .map(|name| format!("{}@", name))
+                .collect::<Vec<_>>()
+                .join(" ");
+            spans.push(Span::styled(
+                format!("{} ", marker),
+                Style::default().fg(Color::Magenta),
+            ));
+        }
+
         // Conflict indicator
         if change.has_conflict {
             spans.push(Span::styled(
@@ -486,6 +503,7 @@ mod tests {
                 },
                 is_graph_only: false,
                 has_conflict: false,
+                working_copy_names: Vec::new(),
             })
             .collect()
     }

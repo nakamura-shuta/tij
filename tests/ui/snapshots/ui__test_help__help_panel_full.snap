@@ -117,6 +117,7 @@ expression: terminal.backend()
 "│Workspace View:                                                               │"
 "│  j/k       Move down/up                                                      │"
 "│  g/G       Go to top/bottom                                                  │"
+"│  Enter     Jump to working copy in log                                       │"
 "│  a         Add workspace                                                     │"
 "│  D         Forget workspace                                                  │"
 "│  r         Rename workspace (current only)                                   │"
@@ -130,5 +131,4 @@ expression: terminal.backend()
 "│                                                                              │"
 "│Operation View:                                                               │"
 "│  j/k       Move down/up                                                      │"
-"│  g/G       Go to top/bottom                                                  │"
 "└──────────────────────────────────────────────────────────────────────────────┘"

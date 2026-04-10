@@ -47,6 +47,9 @@ impl App {
                     DialogCallback::WorkspaceAdd,
                 ));
             }
+            WorkspaceAction::Jump(change_id) => {
+                self.jump_to_log(&change_id);
+            }
             WorkspaceAction::ForgetCurrentBlocked => {
                 self.notify_info("Cannot forget the current workspace");
             }

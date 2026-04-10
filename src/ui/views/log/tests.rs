@@ -21,6 +21,7 @@ fn create_test_changes() -> Vec<Change> {
             graph_prefix: "@  ".to_string(),
             is_graph_only: false,
             has_conflict: false,
+            working_copy_names: Vec::new(),
         },
         Change {
             change_id: ChangeId::new("xyz98765".to_string()),
@@ -34,6 +35,7 @@ fn create_test_changes() -> Vec<Change> {
             graph_prefix: "○  ".to_string(),
             is_graph_only: false,
             has_conflict: false,
+            working_copy_names: Vec::new(),
         },
         Change {
             change_id: ChangeId::new(constants::ROOT_CHANGE_ID.to_string()),
@@ -47,6 +49,7 @@ fn create_test_changes() -> Vec<Change> {
             graph_prefix: "◆  ".to_string(),
             is_graph_only: false,
             has_conflict: false,
+            working_copy_names: Vec::new(),
         },
     ]
 }
@@ -1572,6 +1575,7 @@ fn test_select_working_copy_not_found() {
             graph_prefix: "○  ".to_string(),
             is_graph_only: false,
             has_conflict: false,
+            working_copy_names: Vec::new(),
         },
         Change {
             change_id: ChangeId::new("xyz98765".to_string()),
@@ -1585,6 +1589,7 @@ fn test_select_working_copy_not_found() {
             graph_prefix: "○  ".to_string(),
             is_graph_only: false,
             has_conflict: false,
+            working_copy_names: Vec::new(),
         },
     ];
     view.set_changes(changes);
@@ -1689,6 +1694,7 @@ fn test_reverse_falls_back_to_working_copy() {
             graph_prefix: "@  ".to_string(),
             is_graph_only: false,
             has_conflict: false,
+            working_copy_names: Vec::new(),
         },
         Change {
             change_id: ChangeId::new("abc12345".to_string()),
@@ -1702,6 +1708,7 @@ fn test_reverse_falls_back_to_working_copy() {
             graph_prefix: "○  ".to_string(),
             is_graph_only: false,
             has_conflict: false,
+            working_copy_names: Vec::new(),
         },
     ];
     view.set_changes(changes);

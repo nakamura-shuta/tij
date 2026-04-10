@@ -75,6 +75,9 @@
 - [x] Bugfix: revset クエリにも `--limit` 適用（`all()` の重さ対策）（v0.4.21）
 - [x] feat: revset クエリ limit インジケータ — タイトルバーに件数 + truncation 表示（v0.4.22）
 - [x] Phase 43: Arrange — `O` キーで `jj arrange` 起動（コミットグラフの対話的並べ替え、jj 0.40+）（v0.4.23）
+- [x] 起動時 jj バージョンチェック (>= 0.40) + バージョンフォールバック全削除（v0.4.23）
+- [x] fix: Tag View undo 有効化 + Status View quit ラベル修正（v0.4.23）
+- [x] Phase 44: Workspace View — `w` キーで list/add/forget/rename + `<name>@` マーカー表示 + Enter ジャンプ（v0.4.24）
 
 ### 現在アクティブ
 - [ ] Phase 17: パフォーマンスチューニング（17.4 残り）

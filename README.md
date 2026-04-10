@@ -2,7 +2,7 @@
 
 **T**ext-mode **I**nterface for **J**ujutsu - A TUI for the [Jujutsu](https://github.com/jj-vcs/jj) version control system, inspired by [tig](https://github.com/jonas/tig).
 
-![Rust](https://img.shields.io/badge/rust-1.85+-orange.svg)
+![Rust](https://img.shields.io/badge/rust-1.88+-orange.svg)
 [![Crates.io](https://img.shields.io/crates/v/tij.svg)](https://crates.io/crates/tij)
 
 ## Why Tij?
@@ -31,7 +31,7 @@ git clone https://github.com/nakamura-shuta/tij.git
 cd tij && cargo install --path .
 ```
 
-**Requirements**: [Jujutsu](https://github.com/jj-vcs/jj) in PATH (Homebrew installs it automatically)
+**Requirements**: [Jujutsu](https://github.com/jj-vcs/jj) >= 0.40.0 in PATH (Homebrew installs it automatically)
 
 ## Quick Start
 
@@ -46,8 +46,8 @@ Press `?` for help, `q` to quit.
 
 | Area | Features |
 |------|----------|
-| Views | Log (with split-pane preview) / Diff / Status / Help (with `/` search + synonym expansion) / Operation History / Blame (with Log jump) / Bookmark / Tag / Evolog (evolution history) / Command History (`H`, shows executed jj commands with OK/NG status) |
-| History Editing | Describe (`d` quick edit / `Ctrl+E` external editor) / Edit / New / New from selected / Commit / Squash / Abandon / Split / Diffedit / Rebase (revision/source/branch/insert-after/insert-before, with `--skip-emptied` toggle and revset input for multi-revision rebase) / Absorb / Duplicate / Revert / Simplify Parents / Parallelize / Fix |
+| Views | Log (with split-pane preview) / Diff / Status / Help (with `/` search + synonym expansion) / Operation History / Blame (with Log jump) / Bookmark / Tag / Workspace (`w`, list/add/forget/rename with `<name>@` markers in Log) / Evolog (evolution history) / Command History (`H`, shows executed jj commands with OK/NG status) |
+| History Editing | Describe (`d` quick edit / `Ctrl+E` external editor) / Edit / New / New from selected / Commit / Squash / Abandon / Split / Diffedit / Rebase (revision/source/branch/insert-after/insert-before, with `--skip-emptied` toggle and revset input for multi-revision rebase) / Absorb / Duplicate / Revert / Simplify Parents / Parallelize / Fix / Arrange (`O`, interactive commit graph rearrangement) / Metaedit (`v`, edit author/change-id/timestamp) |
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
 | Recovery | Undo (shows undone operation detail) / Redo / Operation Restore / Restore file / Restore all |
 | Bookmarks | Create / Move to @ (with backward detection) / Delete (multi-select) / Rename / Forget / Track / Untrack / Jump / Bookmark View (`M`) |
@@ -55,7 +55,7 @@ Press `?` for help, `q` to quit.
 | Git Integration | Fetch (multi-remote selection, branch-specific fetch, tracked-only fetch) / Push (with dry-run preview, force push warnings, protected bookmark detection, multi-remote selection, push-by-change, push-by-revision, bulk options: --all/--tracked/--deleted, auto-retry for private commits and empty descriptions) |
 | Navigation | Next/Prev (`]`/`[` to move @ through history) / Reversed log order (`V`) |
 | Diff | Compare two revisions (`=`, `jj diff --from --to`) / Interdiff (`I`, `jj interdiff --from --to`: compare patches between revisions) / Bisect (`W`, `jj bisect run`: binary search for bad revision with command or interactive shell) / Display mode cycle (`m`: color-words → stat → git) / Copy to clipboard (`y` full / `Y` diff-only) / Export to `.patch` file (`w`, git unified format) |
-| Usability | Revset filtering / Text search / Adaptive status bar / Dynamic context-aware hints / `--limit 200` default (unlimited with revset) |
+| Usability | Revset filtering (with count + truncation indicator) / Text search / Adaptive status bar / Dynamic context-aware hints / `--limit 200` for all queries / Startup jj version check (>= 0.40) |
 
 ## Revset Examples
 

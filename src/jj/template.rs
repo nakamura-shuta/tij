@@ -22,6 +22,7 @@ impl Templates {
     /// 7. is_empty ("true" or "false")
     /// 8. bookmarks (comma-separated)
     /// 9. has_conflict ("true" or "false")
+    /// 10. working_copies (comma-separated workspace names)
     ///
     /// Notes:
     /// - jj doesn't interpret `\x1f` escape sequences in templates,
@@ -48,6 +49,8 @@ impl Templates {
             "bookmarks.map(|b| b.name()).join(',')",
             " ++ \"\\t\" ++ ",
             "if(conflict, 'true', 'false')",
+            " ++ \"\\t\" ++ ",
+            "self.working_copies().map(|w| w.name()).join(',')",
             " ++ \"\\n\""
         )
     }

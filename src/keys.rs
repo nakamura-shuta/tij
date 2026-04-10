@@ -1061,6 +1061,7 @@ fn tag_view_hints() -> Vec<KeyHint> {
 fn workspace_view_hints() -> Vec<KeyHint> {
     vec![
         HINT_NAV,
+        HINT_JUMP_ENTER,
         KeyHint {
             key: "a",
             label: "Add",
@@ -1520,6 +1521,10 @@ pub const WORKSPACE_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "g/G",
         description: "Go to top/bottom",
+    },
+    KeyBindEntry {
+        key: "Enter",
+        description: "Jump to working copy in log",
     },
     KeyBindEntry {
         key: "a",

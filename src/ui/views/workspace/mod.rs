@@ -21,6 +21,8 @@ pub enum WorkspaceAction {
     StartRename(String),
     /// Cannot rename: selected workspace is not the current one
     RenameNonCurrentBlocked,
+    /// Jump to workspace's working copy in Log View
+    Jump(String),
 }
 
 /// Workspace View state

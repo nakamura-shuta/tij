@@ -31,6 +31,7 @@ fn make_change(
         graph_prefix: graph_prefix.to_string(),
         is_graph_only: false,
         has_conflict,
+        working_copy_names: Vec::new(),
     }
 }
 
