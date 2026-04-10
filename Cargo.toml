@@ -32,7 +32,7 @@ regex = "1"
 
 [dev-dependencies]
 insta = { version = "1.46.3", features = ["redactions"] }
-proptest = "1.10.0"
+proptest = "1.11.0"
 tempfile = "3"
 
 # Read the optimization guideline for more details: https://ratatui.rs/recipes/apps/release-your-app/#optimizations
