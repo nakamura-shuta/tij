@@ -560,7 +560,7 @@ impl JjExecutor {
     /// Returns both local and remote bookmarks with their tracking status.
     /// Uses a template to output: name, remote, tracked (tab-separated).
     ///
-    /// Note: Requires jj 0.37+ which supports the `tracked` template field.
+    /// Note: Uses the `tracked` template field (jj 0.37+, guaranteed by startup check).
     pub fn bookmark_list_all(&self) -> Result<Vec<Bookmark>, JjError> {
         const BOOKMARK_LIST_TEMPLATE: &str = r#"separate("\t", name, remote, tracked) ++ "\n""#;
 

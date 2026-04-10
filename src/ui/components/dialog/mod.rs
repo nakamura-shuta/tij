@@ -83,7 +83,7 @@ pub enum DialogCallback {
     /// Git push by revision (all bookmarks on a change via --revisions)
     GitPushRevisions {
         change_id: String,
-        /// Bookmarks for fallback if --revisions is unsupported
+        /// Bookmarks associated with the change
         bookmarks: Vec<String>,
     },
     /// Mode selection for multi-bookmark push (Single Select)

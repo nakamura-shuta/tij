@@ -739,13 +739,7 @@ impl App {
             }
             Err(e) => {
                 let err_msg = format!("{}", e);
-                if is_revisions_unsupported_error(&err_msg) {
-                    // --revisions not supported: fallback to per-bookmark push
-                    self.notify_info(
-                        "--revisions not supported, pushing bookmarks individually".to_string(),
-                    );
-                    self.execute_push(bookmarks);
-                } else if !detect_push_retry_flags(&err_msg).is_empty() {
+                if !detect_push_retry_flags(&err_msg).is_empty() {
                     // Dry-run failed due to private/empty-description: show confirm
                     // dialog anyway. The actual push will retry with flags.
                     let short_id = short_id(change_id);
@@ -770,10 +764,8 @@ impl App {
     }
 
     /// Execute push by revisions (called after confirmation)
-    ///
-    /// Falls back to per-bookmark push if --revisions is not supported.
     /// On private/empty-description errors, retries with appropriate flags.
-    pub(super) fn execute_push_revisions(&mut self, change_id: &str, bookmarks: &[String]) {
+    pub(super) fn execute_push_revisions(&mut self, change_id: &str, _bookmarks: &[String]) {
         let remote = self.push_target_remote.take();
         let start = Instant::now();
         let result = if let Some(ref r) = remote {
@@ -801,59 +793,46 @@ impl App {
             }
             Err(e) => {
                 let err_msg = format!("{}", e);
-                if is_revisions_unsupported_error(&err_msg) {
-                    // Restore remote for fallback
-                    self.push_target_remote = remote;
-                    self.notify_info(
-                        "--revisions not supported, pushing bookmarks individually".to_string(),
-                    );
-                    self.execute_push(bookmarks);
-                } else {
-                    // Try private/empty-description retry
-                    let extra_flags = detect_push_retry_flags(&err_msg);
-                    if !extra_flags.is_empty() {
-                        let retry_start = Instant::now();
-                        let retry = if let Some(ref r) = remote {
-                            self.jj.git_push_revisions_to_remote_with_flags(
-                                change_id,
-                                r,
-                                &extra_flags,
-                            )
-                        } else {
-                            self.jj
-                                .git_push_revisions_with_flags(change_id, &extra_flags)
-                        };
-                        let mut retry_args = push_args.clone();
-                        for flag in &extra_flags {
-                            retry_args.push(flag);
-                        }
-                        self.record_str_command(
-                            "Push revisions (retry)",
-                            &retry_args,
-                            retry_start,
-                            &retry,
-                        );
-
-                        match retry {
-                            Ok(_) => {
-                                let sid = short_id(change_id);
-                                let notes = retry_notes_from_flags(&extra_flags);
-                                let suffix = build_push_suffix(false, &notes);
-                                let msg = if let Some(r) = remote.as_deref() {
-                                    format!("Pushed all bookmarks on {} to {}{}", sid, r, suffix)
-                                } else {
-                                    format!("Pushed all bookmarks on {}{}", sid, suffix)
-                                };
-                                self.notify_success(msg);
-                                self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
-                            }
-                            Err(e2) => {
-                                self.set_error(format!("Push failed: {}", e2));
-                            }
-                        }
+                let extra_flags = detect_push_retry_flags(&err_msg);
+                if !extra_flags.is_empty() {
+                    let retry_start = Instant::now();
+                    let retry = if let Some(ref r) = remote {
+                        self.jj
+                            .git_push_revisions_to_remote_with_flags(change_id, r, &extra_flags)
                     } else {
-                        self.set_error(format!("Push failed: {}", e));
+                        self.jj
+                            .git_push_revisions_with_flags(change_id, &extra_flags)
+                    };
+                    let mut retry_args = push_args.clone();
+                    for flag in &extra_flags {
+                        retry_args.push(flag);
                     }
+                    self.record_str_command(
+                        "Push revisions (retry)",
+                        &retry_args,
+                        retry_start,
+                        &retry,
+                    );
+
+                    match retry {
+                        Ok(_) => {
+                            let sid = short_id(change_id);
+                            let notes = retry_notes_from_flags(&extra_flags);
+                            let suffix = build_push_suffix(false, &notes);
+                            let msg = if let Some(r) = remote.as_deref() {
+                                format!("Pushed all bookmarks on {} to {}{}", sid, r, suffix)
+                            } else {
+                                format!("Pushed all bookmarks on {}{}", sid, suffix)
+                            };
+                            self.notify_success(msg);
+                            self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
+                        }
+                        Err(e2) => {
+                            self.set_error(format!("Push failed: {}", e2));
+                        }
+                    }
+                } else {
+                    self.set_error(format!("Push failed: {}", e));
                 }
             }
         }
@@ -989,23 +968,6 @@ fn is_untracked_bookmark_error(err_msg: &str) -> bool {
     lower.contains("refusing to create new remote bookmark")
         || lower.contains("not tracked")
         || lower.contains("untracked")
-}
-
-/// Check if a push error indicates that `--revisions` is not supported
-///
-/// Older jj versions don't have the `--revisions` flag. When detected,
-/// the caller falls back to per-bookmark push.
-/// Requires the error message to reference "--revisions" to avoid false positives
-/// from unrelated errors that contain generic "unexpected argument" text.
-fn is_revisions_unsupported_error(err_msg: &str) -> bool {
-    let lower = err_msg.to_lowercase();
-    // Must mention --revisions in context to avoid false positives
-    let mentions_revisions = lower.contains("--revisions") || lower.contains("revisions");
-    let is_unknown_flag = lower.contains("unexpected argument")
-        || lower.contains("unrecognized")
-        || lower.contains("unknown flag")
-        || lower.contains("unknown option");
-    mentions_revisions && is_unknown_flag
 }
 
 /// Check if a push error indicates a private commit
@@ -1288,47 +1250,6 @@ mod tests {
         ));
         app.handle_dialog_result(DialogResult::Cancelled);
         assert!(app.push_target_remote.is_none());
-    }
-
-    // =========================================================================
-    // is_revisions_unsupported_error tests
-    // =========================================================================
-
-    #[test]
-    fn test_revisions_unsupported_unexpected_argument() {
-        assert!(is_revisions_unsupported_error(
-            "error: unexpected argument '--revisions' found"
-        ));
-    }
-
-    #[test]
-    fn test_revisions_unsupported_unrecognized() {
-        assert!(is_revisions_unsupported_error(
-            "error: unrecognized option '--revisions'"
-        ));
-    }
-
-    #[test]
-    fn test_revisions_unsupported_unknown_flag() {
-        assert!(is_revisions_unsupported_error(
-            "error: unknown flag --revisions"
-        ));
-    }
-
-    #[test]
-    fn test_revisions_unsupported_unrelated_error() {
-        // Error that doesn't mention --revisions should NOT match
-        assert!(!is_revisions_unsupported_error(
-            "error: unexpected argument '--foobar' found"
-        ));
-    }
-
-    #[test]
-    fn test_revisions_unsupported_generic_push_error() {
-        // Push error without flag-related keywords should NOT match
-        assert!(!is_revisions_unsupported_error(
-            "error: Refusing to create new remote bookmark for --revisions"
-        ));
     }
 
     // =========================================================================

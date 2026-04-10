@@ -21,7 +21,7 @@ impl Templates {
     /// 6. is_working_copy ("true" or "false")
     /// 7. is_empty ("true" or "false")
     /// 8. bookmarks (comma-separated)
-    /// 9. has_conflict ("true" or "false") - requires jj 0.12.0+
+    /// 9. has_conflict ("true" or "false")
     ///
     /// Notes:
     /// - jj doesn't interpret `\x1f` escape sequences in templates,
