@@ -10,6 +10,26 @@ use ratatui::DefaultTerminal;
 use tij::app::App;
 
 fn main() -> color_eyre::Result<()> {
+    // Handle --version / --help before any TUI/terminal init so they behave
+    // like normal CLI commands (and don't drop the user into the alt screen).
+    if let Some(arg) = std::env::args().nth(1) {
+        match arg.as_str() {
+            "-V" | "--version" => {
+                println!("tij {}", env!("CARGO_PKG_VERSION"));
+                return Ok(());
+            }
+            "-h" | "--help" => {
+                print_help();
+                return Ok(());
+            }
+            _ => {
+                eprintln!("tij: unknown argument: {arg}");
+                eprintln!("Try `tij --help` for a list of options.");
+                std::process::exit(2);
+            }
+        }
+    }
+
     color_eyre::install()?;
 
     // jj version check (before TUI init so errors print to normal terminal)
@@ -19,6 +39,23 @@ fn main() -> color_eyre::Result<()> {
     let result = run(terminal);
     ratatui::restore();
     result
+}
+
+/// Print the CLI help message.
+fn print_help() {
+    println!(
+        "tij {} — Text-mode interface for Jujutsu (jj) version control\n\
+         \n\
+         USAGE:\n    \
+             tij             Launch the TUI in the current jj repository\n\
+         \n\
+         OPTIONS:\n    \
+             -V, --version   Print version and exit\n    \
+             -h, --help      Print this help and exit\n\
+         \n\
+         Once running, press `?` for keybindings.",
+        env!("CARGO_PKG_VERSION")
+    );
 }
 
 /// Minimum required jj version (major, minor)
