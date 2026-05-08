@@ -137,6 +137,38 @@
 - [ ] ビルトインプリセット
 - [ ] ユーザー定義ワークフロー
 
+### Phase 36（jj 0.41 対応）
+> 前提: MSRV を jj 0.41 にアップ（`require_jj_version` と CLAUDE.md / README の同期）
+
+#### 36.1 `--no-integrate-operation` 付与（読み取り系）✅（v0.4.25）
+- [x] `JjExecutor` に read-only ヘルパ（`run_readonly_str`）を追加
+- [x] log / status / show / diff / interdiff / op log / evolog / bookmark list / tag list / file annotate / workspace list など 21 メソッドに `--no-integrate-operation` を付与
+- [x] Operation View に大量混入していた `snapshot working copy` op を削減（UX 改善のメイン狙い）
+- [x] write 系・dry-run 系には適用しない（op log への記録が必要 / 既に snapshot を作らないため）
+- [x] flags::NO_INTEGRATE_OPERATION 定数追加
+
+#### 36.2 `jj git push --all/--tracked/-r` の skip 表示対応 ★★
+- [ ] 0.41 から private/conflict bookmark は失敗ではなく skip 扱い → 成功 stderr に "skipped …" が混じる
+- [ ] stderr パーサに skip 検出を追加し、Notification で "Pushed N, skipped M (…)" を提示
+- [ ] 既存の "untracked / Refusing to create new remote bookmark" 検出は残す（旧 jj 互換）
+- [ ] Push 結果の単体テストに skip ケースを追加
+
+#### 36.3 `jj fix` 行範囲指定対応 ★★
+- [ ] 既存 fix UI（Phase 31, v0.4.7）に `--all-lines` トグルを追加
+- [ ] `fix.tools.<name>.line-range-arg` 設定済みプロジェクトで「変更行のみ整形」をデフォルトに
+- [ ] Confirm ダイアログで挙動（all-lines / changed-lines）を明示
+- [ ] Help / spec-detail の Phase 31 ドキュメント追記
+
+#### 36.4 `JJ_PAGER` 環境変数で pager 抑制 ★
+- [ ] `JjExecutor` の env に `JJ_PAGER=cat`（あるいは無効値）を渡してページャ介入を確実にブロック
+- [ ] 既存の `--config-toml` 等での pager 抑制があれば整理
+- [ ] Windows / macOS / Linux の動作確認
+
+#### 36.5 MSRV / 起動時バージョンチェック更新 ✅（v0.4.25）
+- [x] 起動時 version check の最低要件を `>= 0.41` に変更（main.rs の MIN_JJ_VERSION）
+- [ ] README / spec の互換記述を同期（必要に応じ後追い）
+- [ ] CHANGELOG に「require jj >= 0.41」の旨を明記（GitHub Release notes で代替）
+
 ## 5. コマンド/オプション拡張バックログ
 
 ### High

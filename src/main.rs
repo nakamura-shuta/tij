@@ -22,7 +22,10 @@ fn main() -> color_eyre::Result<()> {
 }
 
 /// Minimum required jj version (major, minor)
-const MIN_JJ_VERSION: (u32, u32) = (0, 40);
+///
+/// Bumped to 0.41 because read-only invocations rely on `--no-integrate-operation`
+/// (introduced in jj 0.41) to avoid polluting the operation log with snapshot ops.
+const MIN_JJ_VERSION: (u32, u32) = (0, 41);
 
 /// Check that jj is installed and meets the minimum version requirement.
 fn check_jj_version() -> color_eyre::Result<()> {

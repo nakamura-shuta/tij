@@ -187,6 +187,19 @@ impl JjExecutor {
         self.run(args).map(|r| r.output)
     }
 
+    /// Run a read-only jj command, returning only the output string.
+    ///
+    /// Prepends `--no-integrate-operation` (jj 0.41+) so the invocation does
+    /// not write a "snapshot working copy" entry to the operation log. Use
+    /// only for invocations that observe state (log/status/diff/op log/...);
+    /// never for commands that mutate the repo.
+    fn run_readonly_str(&self, args: &[&str]) -> Result<String, JjError> {
+        let mut all_args: Vec<&str> = Vec::with_capacity(args.len() + 1);
+        all_args.push(flags::NO_INTEGRATE_OPERATION);
+        all_args.extend_from_slice(args);
+        self.run_str(&all_args)
+    }
+
     /// Run `jj log` with optional revset filter (raw output)
     ///
     /// Note: Graph output is enabled to show DAG structure.
@@ -208,7 +221,7 @@ impl JjExecutor {
             args.push(flags::REVERSED);
         }
 
-        self.run_str(&args)
+        self.run_readonly_str(&args)
     }
 
     /// Run `jj log` and parse the output into Changes
@@ -229,7 +242,7 @@ impl JjExecutor {
 
     /// Run `jj status`
     pub fn status_raw(&self) -> Result<String, JjError> {
-        self.run_str(&[commands::STATUS])
+        self.run_readonly_str(&[commands::STATUS])
     }
 
     /// Run `jj status` and parse the output into Status
@@ -240,7 +253,7 @@ impl JjExecutor {
 
     /// Run `jj show` for a specific change
     pub fn show_raw(&self, revision: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::SHOW, flags::REVISION, revision])
+        self.run_readonly_str(&[commands::SHOW, flags::REVISION, revision])
     }
 
     /// Run `jj show` and parse the output into DiffContent
@@ -253,12 +266,12 @@ impl JjExecutor {
 
     /// Run `jj show --stat` for a specific change (histogram overview)
     pub fn show_stat(&self, revision: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::SHOW, flags::STAT, flags::REVISION, revision])
+        self.run_readonly_str(&[commands::SHOW, flags::STAT, flags::REVISION, revision])
     }
 
     /// Run `jj show --git` for a specific change (git unified diff)
     pub fn show_git(&self, revision: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::SHOW, flags::GIT_FORMAT, flags::REVISION, revision])
+        self.run_readonly_str(&[commands::SHOW, flags::GIT_FORMAT, flags::REVISION, revision])
     }
 
     /// Run `jj describe` to update change description
@@ -275,7 +288,7 @@ impl JjExecutor {
     /// Unlike the normal log output which uses `description.first_line()`, this returns
     /// the entire description including all lines.
     pub fn get_description(&self, revision: &str) -> Result<String, JjError> {
-        let output = self.run_str(&[
+        let output = self.run_readonly_str(&[
             commands::LOG,
             flags::NO_GRAPH,
             flags::REVISION,
@@ -288,7 +301,7 @@ impl JjExecutor {
 
     /// Check if a revision is immutable
     pub fn is_immutable(&self, revision: &str) -> bool {
-        self.run_str(&[
+        self.run_readonly_str(&[
             commands::LOG,
             flags::NO_GRAPH,
             flags::REVISION,
@@ -381,7 +394,7 @@ impl JjExecutor {
             "  if(commit.description(), commit.description().first_line(), \"(no description set)\")",
             ") ++ \"\\n\""
         );
-        self.run_str(&[
+        self.run_readonly_str(&[
             commands::EVOLOG,
             flags::REVISION,
             revision,
@@ -434,7 +447,7 @@ impl JjExecutor {
     /// should be updated to use it instead.
     pub fn get_redo_target(&self) -> Result<Option<String>, JjError> {
         // Template: id<TAB>description.first_line()
-        let output = self.run_str(&[
+        let output = self.run_readonly_str(&[
             commands::OP,
             commands::OP_LOG,
             flags::NO_GRAPH,
@@ -505,7 +518,7 @@ impl JjExecutor {
             args.push(&limit_str);
         }
 
-        let output = self.run_str(&args)?;
+        let output = self.run_readonly_str(&args)?;
         Parser::parse_op_log(&output)
     }
 
@@ -564,7 +577,7 @@ impl JjExecutor {
     pub fn bookmark_list_all(&self) -> Result<Vec<Bookmark>, JjError> {
         const BOOKMARK_LIST_TEMPLATE: &str = r#"separate("\t", name, remote, tracked) ++ "\n""#;
 
-        let output = self.run_str(&[
+        let output = self.run_readonly_str(&[
             commands::BOOKMARK,
             commands::BOOKMARK_LIST,
             flags::ALL_REMOTES,
@@ -595,7 +608,7 @@ impl JjExecutor {
         // Use short(8) to match LogView's change_id length for exact matching
         const BOOKMARK_INFO_TEMPLATE: &str = r#"bookmarks.map(|x| x.name()).join(" ") ++ "\t" ++ change_id.short(8) ++ "\t" ++ commit_id.short(8) ++ "\t" ++ description.first_line() ++ "\n""#;
 
-        let log_output = self.run_str(&[
+        let log_output = self.run_readonly_str(&[
             commands::LOG,
             flags::NO_GRAPH,
             flags::REVISION,
@@ -718,7 +731,7 @@ impl JjExecutor {
     /// Uses `jj log -r <change_id> -T 'conflict'` to query the conflict status.
     /// Returns true if the change has unresolved conflicts.
     pub fn has_conflict(&self, revision: &str) -> Result<bool, JjError> {
-        let output = self.run_str(&[
+        let output = self.run_readonly_str(&[
             commands::LOG,
             flags::NO_GRAPH,
             flags::REVISION,
@@ -779,7 +792,7 @@ impl JjExecutor {
             args.push(rev);
         }
 
-        let output = self.run_str(&args)?;
+        let output = self.run_readonly_str(&args)?;
         Ok(Parser::parse_resolve_list(&output))
     }
 
@@ -905,7 +918,7 @@ impl JjExecutor {
 
     /// Run `jj git remote list` to get all remote names
     pub fn git_remote_list(&self) -> Result<Vec<String>, JjError> {
-        let output = self.run_str(&[
+        let output = self.run_readonly_str(&[
             commands::GIT,
             commands::GIT_REMOTE,
             commands::GIT_REMOTE_LIST,
@@ -1455,26 +1468,26 @@ impl JjExecutor {
     ///
     /// Returns diff-only output without the commit header (unlike `jj show`).
     pub fn diff_raw(&self, revision: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::DIFF, flags::REVISION, revision])
+        self.run_readonly_str(&[commands::DIFF, flags::REVISION, revision])
     }
 
     /// Run `jj diff --git -r <change_id>` for git-compatible unified patch output
     ///
     /// Produces output suitable for `git apply`.
     pub fn diff_git_raw(&self, revision: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::DIFF, flags::GIT_FORMAT, flags::REVISION, revision])
+        self.run_readonly_str(&[commands::DIFF, flags::GIT_FORMAT, flags::REVISION, revision])
     }
 
     /// Run `jj diff --from <from> --to <to>` to compare two revisions
     ///
     /// Returns the raw diff output between the two revisions.
     pub fn diff_range(&self, from: &str, to: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::DIFF, flags::FROM, from, flags::TO, to])
+        self.run_readonly_str(&[commands::DIFF, flags::FROM, from, flags::TO, to])
     }
 
     /// Run `jj diff --git --from <from> --to <to>` for git-compatible unified patch
     pub fn diff_range_git(&self, from: &str, to: &str) -> Result<String, JjError> {
-        self.run_str(&[
+        self.run_readonly_str(&[
             commands::DIFF,
             flags::GIT_FORMAT,
             flags::FROM,
@@ -1486,7 +1499,7 @@ impl JjExecutor {
 
     /// Run `jj diff --stat --from <from> --to <to>` for histogram overview
     pub fn diff_range_stat(&self, from: &str, to: &str) -> Result<String, JjError> {
-        self.run_str(&[
+        self.run_readonly_str(&[
             commands::DIFF,
             flags::STAT,
             flags::FROM,
@@ -1498,12 +1511,12 @@ impl JjExecutor {
 
     /// Run `jj interdiff --from <from> --to <to>` for patch comparison
     pub fn interdiff(&self, from: &str, to: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::INTERDIFF, flags::FROM, from, flags::TO, to])
+        self.run_readonly_str(&[commands::INTERDIFF, flags::FROM, from, flags::TO, to])
     }
 
     /// Run `jj interdiff --git --from <from> --to <to>` for git-compatible patch comparison
     pub fn interdiff_git(&self, from: &str, to: &str) -> Result<String, JjError> {
-        self.run_str(&[
+        self.run_readonly_str(&[
             commands::INTERDIFF,
             flags::GIT_FORMAT,
             flags::FROM,
@@ -1515,7 +1528,7 @@ impl JjExecutor {
 
     /// Run `jj interdiff --stat --from <from> --to <to>` for histogram overview
     pub fn interdiff_stat(&self, from: &str, to: &str) -> Result<String, JjError> {
-        self.run_str(&[
+        self.run_readonly_str(&[
             commands::INTERDIFF,
             flags::STAT,
             flags::FROM,
@@ -1533,7 +1546,7 @@ impl JjExecutor {
         change_id: &str,
     ) -> Result<(String, Vec<String>, String, String, String), JjError> {
         let template = Templates::change_info();
-        let output = self.run_str(&[
+        let output = self.run_readonly_str(&[
             commands::LOG,
             flags::NO_GRAPH,
             flags::REVISION,
@@ -1591,7 +1604,7 @@ impl JjExecutor {
         args.push(template);
         args.push(file_path);
 
-        let output = self.run_str(&args)?;
+        let output = self.run_readonly_str(&args)?;
         Parser::parse_file_annotate(&output, file_path)
     }
 
@@ -1604,7 +1617,7 @@ impl JjExecutor {
     pub fn tag_list(&self) -> Result<Vec<TagInfo>, JjError> {
         const TAG_LIST_TEMPLATE: &str = r#"separate("\t", name, if(remote, remote, ""), if(present, "true", "false"), if(tracked, "true", "false"), normal_target.change_id().short(8), normal_target.commit_id().short(8), normal_target.description().first_line()) ++ "\n""#;
 
-        let output = self.run_str(&[
+        let output = self.run_readonly_str(&[
             commands::TAG,
             commands::TAG_LIST,
             flags::TEMPLATE,
@@ -1637,14 +1650,14 @@ impl JjExecutor {
 
     /// Get the workspace root path
     pub fn workspace_root(&self) -> Result<String, JjError> {
-        let output = self.run_str(&[commands::WORKSPACE, "root"])?;
+        let output = self.run_readonly_str(&[commands::WORKSPACE, "root"])?;
         Ok(output.trim().to_string())
     }
 
     /// List all workspaces
     pub fn workspace_list(&self) -> Result<Vec<WorkspaceInfo>, JjError> {
         let template = Templates::workspace_list();
-        let output = self.run_str(&[
+        let output = self.run_readonly_str(&[
             commands::WORKSPACE,
             commands::WORKSPACE_LIST,
             flags::TEMPLATE,

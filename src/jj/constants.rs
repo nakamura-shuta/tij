@@ -78,6 +78,8 @@ pub mod resolve_flags {
 pub mod flags {
     /// Disable color output for parsing (global flag, safe for all commands)
     pub const NO_COLOR: &str = "--color=never";
+    /// Run without writing to the operation log (jj 0.41+, read-only callers)
+    pub const NO_INTEGRATE_OPERATION: &str = "--no-integrate-operation";
     /// Disable graph output for parsing (jj log only, NOT a global flag)
     pub const NO_GRAPH: &str = "--no-graph";
     /// Specify template
