@@ -135,6 +135,11 @@ impl JjExecutor {
         // which may not signal EOF properly under raw-mode terminals.
         cmd.stdin(Stdio::null());
 
+        // Defensively suppress any pager. jj usually skips the pager when stdout
+        // is not a tty, but JJ_PAGER (jj 0.41+, mirrors JJ_EDITOR) lets us pin
+        // it explicitly so terminal misdetection cannot blow up the TUI.
+        cmd.env("JJ_PAGER", "cat");
+
         let output = cmd.output().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 JjError::JjNotFound
@@ -762,12 +767,20 @@ impl JjExecutor {
         self.run_str(&[commands::SIMPLIFY_PARENTS, flags::REVISION, revision])
     }
 
-    /// Run `jj fix -s <change_id>`
+    /// Run `jj fix -s <change_id>` (optionally with `--all-lines`)
     ///
     /// Applies configured code formatters to the specified revision
     /// and its descendants. Requires `[fix.tools.*]` in jj config.
-    pub fn fix(&self, revision: &str) -> Result<String, JjError> {
-        self.run_str(&[commands::FIX, flags::SOURCE, revision])
+    ///
+    /// `all_lines = true` adds the `--all-lines` flag introduced in jj 0.41,
+    /// which forces tools with `line-range-arg` configured to format the
+    /// entire file instead of only modified lines.
+    pub fn fix(&self, revision: &str, all_lines: bool) -> Result<String, JjError> {
+        let mut args = vec![commands::FIX, flags::SOURCE, revision];
+        if all_lines {
+            args.push(flags::ALL_LINES);
+        }
+        self.run_str(&args)
     }
 
     /// Run `jj parallelize` to convert a linear chain into parallel (sibling) commits
@@ -1178,16 +1191,19 @@ impl JjExecutor {
     }
 
     /// Push with a bulk flag (--all, --tracked, --deleted)
+    ///
+    /// Returns the full `RunResult` so callers can inspect stderr for
+    /// jj 0.41+ skip warnings ("Won't push bookmark X: commit … is private").
     pub fn git_push_bulk(
         &self,
         mode: PushBulkMode,
         remote: Option<&str>,
-    ) -> Result<String, JjError> {
+    ) -> Result<RunResult, JjError> {
         let mut args = vec![commands::GIT, commands::GIT_PUSH, mode.flag()];
         if let Some(r) = remote {
             args.extend([flags::REMOTE, r]);
         }
-        self.run_str(&args)
+        self.run(&args)
     }
 
     /// Dry-run push with a bulk flag

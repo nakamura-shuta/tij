@@ -462,9 +462,22 @@ impl App {
                     return;
                 }
                 let short_id = short_id(&revision);
-                self.active_dialog = Some(Dialog::confirm(
+                let items = vec![
+                    SelectItem {
+                        label: "Default (respect fix.tools line-range-arg)".to_string(),
+                        value: "default".to_string(),
+                        selected: false,
+                    },
+                    SelectItem {
+                        label: "All lines (--all-lines, format entire files)".to_string(),
+                        value: "all-lines".to_string(),
+                        selected: false,
+                    },
+                ];
+                self.active_dialog = Some(Dialog::select_single(
                     "Fix",
-                    format!("Apply code formatters to {} and descendants?", short_id),
+                    format!("Apply code formatters to {} and descendants", short_id),
+                    items,
                     None,
                     DialogCallback::Fix {
                         revision,

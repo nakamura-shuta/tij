@@ -10,7 +10,9 @@ pub mod parser;
 mod template;
 
 pub use executor::{JjExecutor, PushBulkMode, RunResult};
-pub use parser::{PushPreviewAction, PushPreviewResult, parse_push_dry_run};
+pub use parser::{
+    PushPreviewAction, PushPreviewResult, SkippedRef, parse_push_dry_run, parse_push_skipped,
+};
 
 use std::io;
 use thiserror::Error;

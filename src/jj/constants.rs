@@ -80,6 +80,8 @@ pub mod flags {
     pub const NO_COLOR: &str = "--color=never";
     /// Run without writing to the operation log (jj 0.41+, read-only callers)
     pub const NO_INTEGRATE_OPERATION: &str = "--no-integrate-operation";
+    /// Force `jj fix` to format entire files even when `line-range-arg` is set (jj 0.41+)
+    pub const ALL_LINES: &str = "--all-lines";
     /// Disable graph output for parsing (jj log only, NOT a global flag)
     pub const NO_GRAPH: &str = "--no-graph";
     /// Specify template

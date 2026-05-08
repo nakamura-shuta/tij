@@ -1,7 +1,7 @@
 //! Git push operations
 
 use crate::app::helpers::revision::short_id;
-use crate::jj::{PushBulkMode, PushPreviewResult, parse_push_dry_run};
+use crate::jj::{PushBulkMode, PushPreviewResult, parse_push_dry_run, parse_push_skipped};
 use crate::ui::components::{Dialog, DialogCallback, SelectItem};
 
 use std::time::Instant;
@@ -592,11 +592,23 @@ impl App {
             (Some(r), _) => vec!["git", "push", mode.flag(), "--remote", r],
             (None, _) => vec!["git", "push", mode.flag()],
         };
-        self.record_str_command("Push bulk", &push_args, start, &result);
+        self.record_command("Push bulk", &push_args, start, &result);
 
         match result {
-            Ok(_) => {
-                self.notify_success(format!("Pushed {}", mode.label()));
+            Ok(run) => {
+                let skipped = parse_push_skipped(&run.stderr);
+                let msg = if skipped.is_empty() {
+                    format!("Pushed {}", mode.label())
+                } else {
+                    let names: Vec<&str> = skipped.iter().map(|s| s.name.as_str()).collect();
+                    format!(
+                        "Pushed {} (skipped {}: {})",
+                        mode.label(),
+                        skipped.len(),
+                        names.join(", ")
+                    )
+                };
+                self.notify_success(msg);
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
             }
             Err(e) => {

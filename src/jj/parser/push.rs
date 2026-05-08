@@ -120,6 +120,37 @@ pub fn parse_push_dry_run(output: &str) -> PushPreviewResult {
     }
 }
 
+/// Parsed entry for a bookmark/tag that jj 0.41+ skipped during a bulk push.
+///
+/// Format from jj source (`cli/src/commands/git/push.rs`):
+/// `Won't push <kind> <name>: commit <id> <message>`
+/// where `<message>` is e.g. "is private" or "has conflicts".
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkippedRef {
+    pub name: String,
+    pub reason: String,
+}
+
+/// Scan jj push stderr for "Won't push" warning lines.
+///
+/// Returns one entry per skipped bookmark/tag in the order encountered.
+/// jj 0.41 made `jj git push --all/--tracked/-r` skip rather than fail when
+/// some refs are private or have conflicts; the parsed list lets the caller
+/// surface "Pushed N, skipped M" notifications.
+pub fn parse_push_skipped(stderr: &str) -> Vec<SkippedRef> {
+    stderr
+        .lines()
+        .filter_map(|line| {
+            let rest = line.strip_prefix("Won't push ")?;
+            let (_kind, after_kind) = rest.split_once(' ')?;
+            let (name_part, reason_part) = after_kind.split_once(": ")?;
+            let name = name_part.trim().trim_matches('"').to_string();
+            let reason = reason_part.trim().to_string();
+            Some(SkippedRef { name, reason })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,5 +309,42 @@ mod tests {
             }
             _ => panic!("Expected Changes"),
         }
+    }
+
+    #[test]
+    fn test_parse_push_skipped_empty() {
+        assert!(parse_push_skipped("").is_empty());
+        assert!(parse_push_skipped("Changes to push to origin:\n").is_empty());
+    }
+
+    #[test]
+    fn test_parse_push_skipped_private_bookmark() {
+        let stderr = "Won't push bookmark feature: commit abc123 is private\n";
+        let skipped = parse_push_skipped(stderr);
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].name, "feature");
+        assert_eq!(skipped[0].reason, "commit abc123 is private");
+    }
+
+    #[test]
+    fn test_parse_push_skipped_multiple() {
+        let stderr = "Won't push bookmark foo: commit aaa is private\n\
+                      Changes to push to origin:\n  \
+                      Move forward bookmark main from 111 to 222\n\
+                      Won't push bookmark bar: commit bbb has conflicts\n\
+                      Won't push tag v1: commit ccc has conflicts\n";
+        let skipped = parse_push_skipped(stderr);
+        assert_eq!(skipped.len(), 3);
+        assert_eq!(skipped[0].name, "foo");
+        assert_eq!(skipped[1].name, "bar");
+        assert_eq!(skipped[2].name, "v1");
+    }
+
+    #[test]
+    fn test_parse_push_skipped_quoted_name() {
+        let stderr = "Won't push bookmark \"feat/x\": commit abc has conflicts\n";
+        let skipped = parse_push_skipped(stderr);
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].name, "feat/x");
     }
 }

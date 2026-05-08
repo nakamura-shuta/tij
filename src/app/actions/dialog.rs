@@ -248,7 +248,8 @@ impl App {
                 revision,
                 change_id,
             } => {
-                self.execute_fix(&revision, &change_id);
+                let all_lines = values.first().map(|s| s.as_str()) == Some("all-lines");
+                self.execute_fix(&revision, &change_id, all_lines);
             }
             DialogCallback::BisectRun { good, bad } => {
                 let command = values.first().map(|s| s.as_str()).unwrap_or("bash");

@@ -147,22 +147,23 @@
 - [x] write 系・dry-run 系には適用しない（op log への記録が必要 / 既に snapshot を作らないため）
 - [x] flags::NO_INTEGRATE_OPERATION 定数追加
 
-#### 36.2 `jj git push --all/--tracked/-r` の skip 表示対応 ★★
-- [ ] 0.41 から private/conflict bookmark は失敗ではなく skip 扱い → 成功 stderr に "skipped …" が混じる
-- [ ] stderr パーサに skip 検出を追加し、Notification で "Pushed N, skipped M (…)" を提示
-- [ ] 既存の "untracked / Refusing to create new remote bookmark" 検出は残す（旧 jj 互換）
-- [ ] Push 結果の単体テストに skip ケースを追加
+#### 36.2 `jj git push --all/--tracked/-r` の skip 表示対応 ✅（v0.4.26）
+- [x] `parser::push::parse_push_skipped()` を追加（"Won't push <kind> <name>: ..." を検出）
+- [x] `git_push_bulk` を `RunResult` 返却に変更し、stderr を action 側で参照
+- [x] Notification で "Pushed N, skipped M (names)" を提示
+- [x] 旧 jj の "untracked / Refusing to create new remote bookmark" 検出は残置（互換）
+- [x] 単体テスト 4 件追加（empty / private / multiple / quoted name）
 
-#### 36.3 `jj fix` 行範囲指定対応 ★★
-- [ ] 既存 fix UI（Phase 31, v0.4.7）に `--all-lines` トグルを追加
-- [ ] `fix.tools.<name>.line-range-arg` 設定済みプロジェクトで「変更行のみ整形」をデフォルトに
-- [ ] Confirm ダイアログで挙動（all-lines / changed-lines）を明示
-- [ ] Help / spec-detail の Phase 31 ドキュメント追記
+#### 36.3 `jj fix` 行範囲指定対応 ✅（v0.4.26）
+- [x] fix UI を Confirm → Select dialog に変更（"Default" / "All lines (--all-lines)"）
+- [x] `executor::fix(revision, all_lines)` で `--all-lines` を制御
+- [x] `flags::ALL_LINES` 定数追加
+- [x] line-range-arg 未設定なら "Default" でも全行整形（jj 標準挙動）
 
-#### 36.4 `JJ_PAGER` 環境変数で pager 抑制 ★
-- [ ] `JjExecutor` の env に `JJ_PAGER=cat`（あるいは無効値）を渡してページャ介入を確実にブロック
-- [ ] 既存の `--config-toml` 等での pager 抑制があれば整理
-- [ ] Windows / macOS / Linux の動作確認
+#### 36.4 `JJ_PAGER` 環境変数で pager 抑制 ✅（v0.4.26）
+- [x] `JjExecutor::run` の env に `JJ_PAGER=cat` を付与
+- [x] interactive コマンド（squash/describe/split/diffedit）はエディタの色出力を保つため非対応
+- [x] 動作確認: cargo build / clippy / lib + integration test 全 pass
 
 #### 36.5 MSRV / 起動時バージョンチェック更新 ✅（v0.4.25）
 - [x] 起動時 version check の最低要件を `>= 0.41` に変更（main.rs の MIN_JJ_VERSION）

@@ -866,7 +866,11 @@ impl App {
     }
 
     /// Execute fix: apply configured code formatters to revision and descendants
-    pub(crate) fn execute_fix(&mut self, revision: &str, change_id: &str) {
+    ///
+    /// `all_lines = true` passes `--all-lines` (jj 0.41+) so that tools with
+    /// `line-range-arg` configured format the entire file instead of only the
+    /// modified lines.
+    pub(crate) fn execute_fix(&mut self, revision: &str, change_id: &str, all_lines: bool) {
         // Capture commit_id before fix to detect if changes were made
         let commit_id_before = self
             .log_view
@@ -875,7 +879,11 @@ impl App {
             .find(|c| c.change_id == change_id)
             .map(|c| c.commit_id.to_string());
 
-        match self.run_and_record("Fix", &["fix", "-s", revision]) {
+        let mut args: Vec<&str> = vec!["fix", "-s", revision];
+        if all_lines {
+            args.push("--all-lines");
+        }
+        match self.run_and_record("Fix", &args) {
             Ok(_) => {
                 self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
 
