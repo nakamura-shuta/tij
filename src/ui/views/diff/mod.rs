@@ -52,6 +52,9 @@ pub struct DiffView {
     pub mode: DiffMode,
     /// Current display format
     pub display_format: DiffDisplayFormat,
+    /// When true, header expands to show the full description even if it
+    /// shrinks the diff area. Default false keeps diff visibility prioritized.
+    pub description_expanded: bool,
 }
 
 impl Default for DiffView {
@@ -77,6 +80,61 @@ impl DiffView {
             compare_info: None,
             mode: DiffMode::Single,
             display_format: DiffDisplayFormat::default(),
+            description_expanded: false,
+        }
+    }
+
+    /// Toggle whether the header expands to show the full description.
+    pub fn toggle_description_expanded(&mut self) {
+        self.description_expanded = !self.description_expanded;
+    }
+
+    /// Effective header height for the current mode and viewport.
+    ///
+    /// Mirrors the layout logic in `render::render_normal` /
+    /// `render::render_compare` so that callers (notably `App` storing
+    /// `visible_height` for scroll bounds) and the renderer always agree on
+    /// how many rows the diff content actually gets.
+    pub fn header_height(&self, area_height: u16) -> u16 {
+        if self.compare_info.is_some() {
+            // Compare/Interdiff: fixed 5 rows (border + from + to + summary + border)
+            return 5_u16.min(area_height.saturating_sub(2));
+        }
+
+        const MIN_DIFF_HEIGHT: u16 = 8;
+        const MIN_DIFF_HEIGHT_EXPANDED: u16 = 3;
+        let desired = 1 + 2 + self.description_line_count() as u16;
+        let max_header = if self.description_expanded {
+            area_height.saturating_sub(1 + MIN_DIFF_HEIGHT_EXPANDED)
+        } else {
+            let reserved = 1 + MIN_DIFF_HEIGHT;
+            let half = (area_height / 2).max(4);
+            area_height.saturating_sub(reserved).min(half)
+        };
+        desired
+            .min(max_header)
+            .max(4)
+            .min(area_height.saturating_sub(2))
+    }
+
+    /// Effective diff content height inside `render_diff_content`.
+    ///
+    /// `area_height` is the height of the rect passed to `render()`.
+    pub fn diff_content_height(&self, area_height: u16) -> u16 {
+        area_height
+            .saturating_sub(self.header_height(area_height))
+            .saturating_sub(1) // context bar
+    }
+
+    /// Update `visible_height` and re-clamp `scroll_offset` so it never
+    /// exceeds the new `max_scroll_offset()`. Call this right before render
+    /// (with the freshly-computed content height) and after any state change
+    /// that can shrink the diff area — e.g. toggling description expansion.
+    pub fn set_visible_height_and_clamp(&mut self, visible_height: usize) {
+        self.visible_height = visible_height;
+        let max = self.max_scroll_offset();
+        if self.scroll_offset > max {
+            self.scroll_offset = max;
         }
     }
 
@@ -140,6 +198,7 @@ impl DiffView {
         self.visible_height = Self::DEFAULT_VISIBLE_HEIGHT;
         self.mode = DiffMode::Single;
         self.display_format = DiffDisplayFormat::default();
+        self.description_expanded = false;
     }
 
     /// Cycle to the next display format

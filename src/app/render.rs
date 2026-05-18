@@ -206,11 +206,11 @@ impl App {
     }
 
     fn render_diff_view(
-        &self,
+        &mut self,
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
-        if let Some(ref diff_view) = self.diff_view {
+        if let Some(ref mut diff_view) = self.diff_view {
             let area = frame.area();
 
             // Reserve space for status bar at bottom
@@ -221,9 +221,13 @@ impl App {
                 height: area.height.saturating_sub(1),
             };
 
-            // Store visible height for diff content (header=4, context=1)
-            // This is used by key handling for accurate scroll bounds
-            let diff_content_height = main_area.height.saturating_sub(5);
+            // Mirror DiffView's layout so scroll bounds stay accurate as the
+            // header grows/shrinks with description length or the expand
+            // toggle. Re-clamp scroll_offset *before* render so a previously
+            // valid offset (e.g. end-of-file while expanded) doesn't leave
+            // blank rows at the bottom after collapsing.
+            let diff_content_height = diff_view.diff_content_height(main_area.height);
+            diff_view.set_visible_height_and_clamp(diff_content_height as usize);
             self.last_frame_height.set(diff_content_height);
 
             diff_view.render(frame, main_area, notification);

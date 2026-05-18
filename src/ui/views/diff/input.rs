@@ -67,6 +67,10 @@ impl DiffView {
                 }
             }
             keys::DIFF_FORMAT_CYCLE => DiffAction::CycleFormat,
+            keys::DIFF_DESC_TOGGLE => {
+                self.toggle_description_expanded();
+                DiffAction::None
+            }
             keys::YANK => DiffAction::CopyToClipboard { full: true },
             keys::YANK_DIFF => DiffAction::CopyToClipboard { full: false },
             keys::WRITE_FILE => DiffAction::ExportToFile,

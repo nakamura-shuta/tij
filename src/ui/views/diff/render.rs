@@ -24,18 +24,22 @@ impl DiffView {
         }
     }
 
-    /// Render normal single-revision diff
+    /// Render normal single-revision diff.
+    ///
+    /// Layout: header (dynamic via `header_height`) + context bar (1) + diff (rest).
+    /// Two modes for the header:
+    ///   - collapsed (default): cap so diff keeps at least 8 rows and header
+    ///     never exceeds half the viewport. Overflowing description rows are
+    ///     shown as a "(+N more)" hint by `render_header`.
+    ///   - expanded (toggled with `t`): grow header to fit full description,
+    ///     reserving only context bar + a small diff floor so users can read
+    ///     the entire message in-place.
     fn render_normal(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
-        // Layout: header (dynamic) + context bar (1) + diff (rest)
-        // Header height = 1 (top border) + 2 (commit, author) + description lines
-        // Cap so context bar (1) + diff (1) always have space
-        let desc_lines = self.description_line_count();
-        let max_header = area.height.saturating_sub(2); // reserve context bar + min diff
-        let header_height = ((1 + 2 + desc_lines) as u16).min(max_header).max(1);
+        let header_height = self.header_height(area.height);
         let chunks = Layout::vertical([
-            Constraint::Length(header_height), // Header (commit, author, description)
-            Constraint::Length(1),             // Context bar
-            Constraint::Min(1),                // Diff content
+            Constraint::Length(header_height),
+            Constraint::Length(1),
+            Constraint::Min(1),
         ])
         .split(area);
 
@@ -48,8 +52,7 @@ impl DiffView {
     fn render_compare(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
         let compare_info = self.compare_info.as_ref().unwrap();
 
-        // Layout: compare header (5 lines: border + from + to + summary + border) + context bar (1) + diff (rest)
-        let header_height = 5_u16.min(area.height.saturating_sub(2));
+        let header_height = self.header_height(area.height);
         let chunks = Layout::vertical([
             Constraint::Length(header_height),
             Constraint::Length(1),
@@ -68,7 +71,7 @@ impl DiffView {
             DiffDisplayFormat::ColorWords => String::new(),
             fmt => format!(" [{}]", fmt.label()),
         };
-        let title = Line::from(vec![
+        let mut title_spans = vec![
             Span::raw(" Tij - Diff View ").bold(),
             Span::raw("["),
             Span::styled(
@@ -77,9 +80,15 @@ impl DiffView {
             ),
             Span::raw("]"),
             Span::styled(format_suffix, Style::default().fg(Color::Yellow).bold()),
-            Span::raw(" "),
-        ])
-        .centered();
+        ];
+        if self.description_expanded {
+            title_spans.push(Span::styled(
+                " [full desc]",
+                Style::default().fg(Color::Cyan).bold(),
+            ));
+        }
+        title_spans.push(Span::raw(" "));
+        let title = Line::from(title_spans).centered();
 
         // Build notification line for title bar (right-aligned)
         let title_width = title.width();
@@ -108,17 +117,49 @@ impl DiffView {
             ]),
         ];
 
-        // Show full description (all lines)
+        // Show description, truncating with a hint if it would not fit in the
+        // header height we were given (Paragraph silently clips overflowing
+        // lines, which would otherwise hide the fact that the message was cut).
+        // area.height = top border (1) + commit (1) + author (1) + description rows.
+        let desc_rows_available = (area.height as usize).saturating_sub(3);
         if self.content.description.is_empty() {
             header_text.push(Line::from(vec![Span::styled(
                 "(no description)",
                 Style::default().fg(Color::DarkGray).italic(),
             )]));
         } else {
-            for line in self.content.description.lines() {
+            let lines: Vec<&str> = self.content.description.lines().collect();
+            let total = lines.len();
+            let truncated = total > desc_rows_available;
+            let take_n = if truncated {
+                desc_rows_available.saturating_sub(1) // leave a row for the hint
+            } else {
+                total
+            };
+            for line in lines.iter().take(take_n) {
                 header_text.push(Line::from(vec![Span::styled(
                     line.to_string(),
                     Style::default().fg(Color::White).bold(),
+                )]));
+            }
+            if truncated {
+                let hidden = total - take_n;
+                let suffix = if self.description_expanded {
+                    // Already expanded but the terminal is too short to fit
+                    // everything; pressing 't' would only collapse, so steer
+                    // the user toward a different remedy.
+                    " — terminal too small; resize or yank with 'y'"
+                } else {
+                    " — press 't' to expand"
+                };
+                header_text.push(Line::from(vec![Span::styled(
+                    format!(
+                        "(+{} more line{} hidden{})",
+                        hidden,
+                        if hidden == 1 { "" } else { "s" },
+                        suffix,
+                    ),
+                    Style::default().fg(Color::DarkGray).italic(),
                 )]));
             }
         }

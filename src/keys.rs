@@ -260,6 +260,9 @@ pub const WRITE_FILE: KeyCode = KeyCode::Char('w');
 /// Cycle diff display format (color-words → stat → git)
 pub const DIFF_FORMAT_CYCLE: KeyCode = KeyCode::Char('m');
 
+/// Toggle full description in DiffView header (compact ↔ full)
+pub const DIFF_DESC_TOGGLE: KeyCode = KeyCode::Char('t');
+
 // =============================================================================
 // Undo/Redo keys
 // =============================================================================
@@ -526,6 +529,10 @@ pub const DIFF_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "m",
         description: "Cycle diff display mode (color-words/stat/git)",
+    },
+    KeyBindEntry {
+        key: "t",
+        description: "Toggle full description (expand/collapse header)",
     },
     KeyBindEntry {
         key: "j/k",
