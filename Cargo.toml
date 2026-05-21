@@ -31,7 +31,7 @@ scopeguard = "1"
 regex = "1"
 
 [dev-dependencies]
-insta = { version = "1.46.3", features = ["redactions"] }
+insta = { version = "1.47.2", features = ["redactions"] }
 proptest = "1.10.0"
 tempfile = "3"
 
