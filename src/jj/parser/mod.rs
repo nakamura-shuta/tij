@@ -14,7 +14,7 @@ mod status;
 mod tag;
 mod workspace;
 
-pub use bookmark::parse_bookmark_list;
+pub use bookmark::{parse_advance_bookmarks, parse_bookmark_list};
 pub use evolog::parse_evolog;
 pub use push::{
     PushPreviewAction, PushPreviewResult, SkippedRef, parse_push_dry_run, parse_push_skipped,

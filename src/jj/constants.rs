@@ -31,6 +31,7 @@ pub mod commands {
     pub const BOOKMARK_RENAME: &str = "rename";
     pub const BOOKMARK_FORGET: &str = "forget";
     pub const BOOKMARK_MOVE: &str = "move";
+    pub const BOOKMARK_ADVANCE: &str = "advance";
     pub const NEXT: &str = "next";
     pub const PREV: &str = "prev";
     pub const REBASE: &str = "rebase";

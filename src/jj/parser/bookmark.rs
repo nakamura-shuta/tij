@@ -48,9 +48,61 @@ pub fn parse_bookmark_list(output: &str) -> Vec<Bookmark> {
         .collect()
 }
 
+/// Parse `jj log -T 'bookmarks.map(|x| x.name()).join(" ")'` output into a
+/// de-duplicated, order-preserving list of bookmark names.
+///
+/// Each line is one commit; within a line names are space-separated.
+pub fn parse_advance_bookmarks(output: &str) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for line in output.lines() {
+        for name in line.split_whitespace() {
+            let name = name.to_string();
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+    }
+    names
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_advance_bookmarks_single() {
+        assert_eq!(parse_advance_bookmarks("main\n"), vec!["main".to_string()]);
+    }
+
+    #[test]
+    fn test_parse_advance_bookmarks_multiple_lines() {
+        assert_eq!(
+            parse_advance_bookmarks("main\nrelease\n"),
+            vec!["main".to_string(), "release".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_parse_advance_bookmarks_multiple_on_one_commit() {
+        assert_eq!(
+            parse_advance_bookmarks("main release\n"),
+            vec!["main".to_string(), "release".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_parse_advance_bookmarks_empty() {
+        assert!(parse_advance_bookmarks("").is_empty());
+        assert!(parse_advance_bookmarks("\n\n").is_empty());
+    }
+
+    #[test]
+    fn test_parse_advance_bookmarks_dedup() {
+        assert_eq!(
+            parse_advance_bookmarks("main\nmain\n"),
+            vec!["main".to_string()]
+        );
+    }
 
     #[test]
     fn test_parse_bookmark_list() {

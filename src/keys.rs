@@ -175,6 +175,12 @@ pub const BOOKMARK_FORGET: KeyCode = KeyCode::Char('f');
 /// Move bookmark to @ (Bookmark View)
 pub const BOOKMARK_MOVE: KeyCode = KeyCode::Char('m');
 
+/// Advance closest ancestor bookmark to @ (Log View)
+///
+/// Provisional single key. May migrate to a `b a` chord if a prefix-key
+/// mechanism is introduced. `b` is already "Create bookmark".
+pub const BOOKMARK_ADVANCE: KeyCode = KeyCode::Char('>');
+
 /// Move @ to next child (Log View)
 pub const NEXT_CHANGE: KeyCode = KeyCode::Char(']');
 
@@ -401,6 +407,10 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "D",
         description: "Delete bookmark",
+    },
+    KeyBindEntry {
+        key: ">",
+        description: "Advance ancestor bookmark to @",
     },
     KeyBindEntry {
         key: "R",

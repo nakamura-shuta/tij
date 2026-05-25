@@ -44,7 +44,8 @@ impl App {
                 | DialogCallback::BookmarkJump
                 | DialogCallback::BookmarkForget
                 | DialogCallback::BookmarkMoveToWc { .. }
-                | DialogCallback::BookmarkMoveBackwards { .. } => {
+                | DialogCallback::BookmarkMoveBackwards { .. }
+                | DialogCallback::BookmarkAdvance { .. } => {
                     self.handle_bookmark_dialog(callback, values);
                 }
                 // Tag
@@ -104,6 +105,7 @@ impl App {
             | DialogCallback::GitFetchBranch
             | DialogCallback::BookmarkMoveToWc { .. }
             | DialogCallback::BookmarkMoveBackwards { .. }
+            | DialogCallback::BookmarkAdvance { .. }
             | DialogCallback::RestoreFile { .. }
             | DialogCallback::RestoreAll
             | DialogCallback::Revert { .. }
@@ -215,6 +217,9 @@ impl App {
             }
             DialogCallback::BookmarkMoveBackwards { name } => {
                 self.execute_bookmark_move_backwards(&name);
+            }
+            DialogCallback::BookmarkAdvance { names } => {
+                self.execute_bookmark_advance(&names);
             }
             _ => {}
         }

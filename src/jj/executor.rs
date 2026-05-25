@@ -668,6 +668,24 @@ impl JjExecutor {
         Ok(result)
     }
 
+    /// Compute the local bookmarks that `jj bookmark advance` would move to `@`.
+    ///
+    /// Evaluates `heads(::@ & bookmarks()) ~ @`: the front-most local bookmark
+    /// on each ancestor branch, excluding bookmarks already at `@`
+    /// (i.e. only those that would actually move).
+    pub fn bookmarks_to_advance(&self) -> Result<Vec<String>, JjError> {
+        const TEMPLATE: &str = r#"bookmarks.map(|x| x.name()).join(" ") ++ "\n""#;
+        let output = self.run_readonly_str(&[
+            commands::LOG,
+            flags::NO_GRAPH,
+            flags::REVISION,
+            "heads(::@ & bookmarks()) ~ @",
+            flags::TEMPLATE,
+            TEMPLATE,
+        ])?;
+        Ok(super::parser::parse_advance_bookmarks(&output))
+    }
+
     /// Run `jj bookmark track <names>...` to start tracking remote bookmarks
     ///
     /// Starts tracking the specified remote bookmarks locally.

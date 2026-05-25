@@ -189,6 +189,8 @@ pub enum LogAction {
     BisectSameRevision,
     /// Arrange: interactively arrange the commit graph (jj arrange)
     Arrange,
+    /// Advance the closest ancestor bookmark(s) to @
+    AdvanceBookmark,
     /// Metaedit: edit metadata (author, change-id, timestamp)
     Metaedit {
         /// For UI display (notification)

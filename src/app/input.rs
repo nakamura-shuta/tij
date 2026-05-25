@@ -341,7 +341,8 @@ impl App {
             // Bookmark
             LogAction::CreateBookmark { .. }
             | LogAction::StartBookmarkDelete
-            | LogAction::StartBookmarkJump => {
+            | LogAction::StartBookmarkJump
+            | LogAction::AdvanceBookmark => {
                 self.handle_log_bookmark(action);
             }
 
@@ -543,6 +544,9 @@ impl App {
             }
             LogAction::StartBookmarkDelete => self.start_bookmark_delete(),
             LogAction::StartBookmarkJump => self.start_bookmark_jump(),
+            LogAction::AdvanceBookmark => {
+                self.start_bookmark_advance();
+            }
             _ => {}
         }
     }

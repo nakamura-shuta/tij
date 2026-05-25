@@ -133,3 +133,116 @@ fn test_bookmark_set_creates_if_not_exists() {
         "new bookmark should be created"
     );
 }
+
+#[test]
+fn test_bookmarks_to_advance_finds_ancestor() {
+    skip_if_no_jj!();
+    let repo = TestRepo::new();
+    repo.jj(&["describe", "-m", "base"]);
+    let base = repo.current_change_id();
+
+    repo.jj(&["bookmark", "create", "main", "-r", &base]);
+    repo.jj(&["new", "-m", "ahead"]);
+
+    let executor = JjExecutor::with_repo_path(repo.path());
+    let candidates = executor
+        .bookmarks_to_advance()
+        .expect("bookmarks_to_advance should succeed");
+    assert_eq!(
+        candidates,
+        vec!["main".to_string()],
+        "bookmarks_to_advance should return 'main' as an ancestor bookmark"
+    );
+
+    // Perform the advance as execute_bookmark_advance would
+    repo.jj(&["bookmark", "advance", "exact:main", "--to", "@"]);
+
+    // Verify main now points to @
+    let at = repo.current_change_id();
+    let main_rev = repo
+        .jj(&[
+            "log",
+            "-r",
+            "main",
+            "--no-graph",
+            "-T",
+            "change_id.short(8)",
+        ])
+        .trim()
+        .to_string();
+    assert_eq!(main_rev, at, "main should point to @ after advance");
+}
+
+#[test]
+fn test_bookmarks_to_advance_empty_when_at_wc() {
+    skip_if_no_jj!();
+    let repo = TestRepo::new();
+    let id = repo.current_change_id();
+
+    // Create bookmark AT @, not as ancestor
+    repo.jj(&["bookmark", "create", "main", "-r", &id]);
+
+    let executor = JjExecutor::with_repo_path(repo.path());
+    let candidates = executor
+        .bookmarks_to_advance()
+        .expect("bookmarks_to_advance should succeed");
+    assert!(
+        candidates.is_empty(),
+        "bookmarks_to_advance should be empty when the only bookmark is already at @, got: {:?}",
+        candidates
+    );
+}
+
+#[test]
+fn test_advance_exact_does_not_blast_sibling() {
+    skip_if_no_jj!();
+    let repo = TestRepo::new();
+    repo.jj(&["describe", "-m", "base"]);
+    let base = repo.current_change_id();
+
+    // Create a bookmark whose name contains a glob metacharacter ('*'), plus a
+    // sibling that a BARE glob would also match. Verified empirically against
+    // jj 0.41: `jj bookmark advance foo*` (bare) advances BOTH `foo*` and `foo1`
+    // ("Advanced 2 bookmarks"); only `exact:foo*` confines it to `foo*`.
+    // (jj allows '*' in local bookmark names; git export warns but the local
+    // bookmark exists and jj exits 0, so repo.jj does not panic.)
+    repo.jj(&["bookmark", "create", "foo*", "-r", &base]);
+    repo.jj(&["bookmark", "create", "foo1", "-r", &base]);
+    repo.jj(&["new", "-m", "ahead"]);
+    let at = repo.current_change_id();
+
+    // Advance ONLY `foo*` using the exact: prefix.
+    repo.jj(&["bookmark", "advance", "exact:foo*", "--to", "@"]);
+
+    // `foo*` advanced to @ — reference it via an exact bookmark revset, since
+    // `foo*` is not a literal name in revset syntax.
+    let foo_star_rev = repo
+        .jj(&[
+            "log",
+            "-r",
+            "bookmarks(exact:\"foo*\")",
+            "--no-graph",
+            "-T",
+            "change_id.short(8)",
+        ])
+        .trim()
+        .to_string();
+    // `foo1` (the sibling a bare glob would catch) must stay at base.
+    let foo1_rev = repo
+        .jj(&[
+            "log",
+            "-r",
+            "foo1",
+            "--no-graph",
+            "-T",
+            "change_id.short(8)",
+        ])
+        .trim()
+        .to_string();
+
+    assert_eq!(foo_star_rev, at, "foo* should have advanced to @");
+    assert_eq!(
+        foo1_rev, base,
+        "foo1 must NOT move — exact:foo* prevents glob blast onto sibling names"
+    );
+}

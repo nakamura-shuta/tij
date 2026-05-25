@@ -68,6 +68,9 @@ pub enum DialogCallback {
     BookmarkMoveToWc { name: String },
     /// Bookmark move with --allow-backwards confirmation
     BookmarkMoveBackwards { name: String },
+    /// Bookmark advance confirmation (Confirm dialog).
+    /// Holds the names computed at confirm time so execution never re-derives them.
+    BookmarkAdvance { names: Vec<String> },
     /// Restore a single file (Confirm dialog)
     RestoreFile { file_path: String },
     /// Restore all files (Confirm dialog)

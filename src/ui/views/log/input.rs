@@ -279,6 +279,7 @@ impl LogView {
                 }
             }
             k if k == keys::ARRANGE => LogAction::Arrange,
+            k if k == keys::BOOKMARK_ADVANCE => LogAction::AdvanceBookmark,
             _ => LogAction::None,
         }
     }

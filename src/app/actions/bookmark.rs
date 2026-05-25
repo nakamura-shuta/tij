@@ -467,6 +467,65 @@ impl App {
         self.run_jj_action(result, "Failed to untrack", &msg, dirty);
     }
 
+    /// Start bookmark advance flow from Log View.
+    ///
+    /// Computes the bookmarks that would move to @. If none, notifies only.
+    /// Otherwise shows a confirm dialog listing the exact target names.
+    pub(crate) fn start_bookmark_advance(&mut self) {
+        let names = match self.jj.bookmarks_to_advance() {
+            Ok(names) => names,
+            Err(e) => {
+                self.set_error(format!("Failed to compute advance targets: {}", e));
+                return;
+            }
+        };
+
+        if names.is_empty() {
+            self.notify_info("No bookmarks to advance.");
+            return;
+        }
+
+        let message = if names.len() == 1 {
+            format!("Advance bookmark '{}' to @?", names[0])
+        } else {
+            format!("Advance the following bookmarks to @: {}", names.join(", "))
+        };
+
+        let title = if names.len() == 1 {
+            "Advance Bookmark"
+        } else {
+            "Advance Bookmarks"
+        };
+
+        self.active_dialog = Some(Dialog::confirm(
+            title,
+            message,
+            Some("Can be undone with 'u'.".to_string()),
+            DialogCallback::BookmarkAdvance { names },
+        ));
+    }
+
+    /// Execute bookmark advance (called after confirmation).
+    ///
+    /// `names` are the exact targets computed at confirm time; they are NOT
+    /// re-derived here. Arg building is delegated to the pure `build_advance_args`
+    /// helper so it can be unit-tested without executing jj.
+    pub(super) fn execute_bookmark_advance(&mut self, names: &[String]) {
+        if names.is_empty() {
+            return;
+        }
+        let args = build_advance_args(names);
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let msg = format!("Advanced bookmarks: {}", names.join(", "));
+        let result = self.run_and_record("Bookmark advance", &arg_refs);
+        self.run_jj_action(
+            result,
+            "Failed to advance bookmarks",
+            &msg,
+            DirtyFlags::log_and_bookmarks(),
+        );
+    }
+
     /// Execute track for selected bookmarks
     pub(crate) fn execute_track(&mut self, names: &[String]) {
         if names.is_empty() {
@@ -491,6 +550,31 @@ impl App {
         };
         self.run_jj_action(result, "Failed to track", &msg, dirty);
     }
+}
+
+/// Wrap a bookmark name as an exact string pattern for jj.
+///
+/// jj treats bare bookmark arguments as glob patterns, so a bookmark named
+/// `foo*` would otherwise also match `foo1`. The `exact:` prefix forces a
+/// literal full-name match. See jj string-pattern syntax.
+fn exact_pattern(name: &str) -> String {
+    format!("exact:{name}")
+}
+
+/// Build the args for `jj bookmark advance` from the target bookmark names.
+///
+/// Each name is wrapped with `exact:` to avoid glob expansion, and `--to @`
+/// is appended. Pure (no side effects) so it can be unit-tested without
+/// executing jj — see the tests below.
+///
+/// Example: `["main", "release"]` →
+/// `["bookmark", "advance", "exact:main", "exact:release", "--to", "@"]`
+fn build_advance_args(names: &[String]) -> Vec<String> {
+    let mut args: Vec<String> = vec!["bookmark".to_string(), "advance".to_string()];
+    args.extend(names.iter().map(|n| exact_pattern(n)));
+    args.push("--to".to_string());
+    args.push("@".to_string());
+    args
 }
 
 /// Truncate a description string to max_len characters (UTF-8 safe)
@@ -524,6 +608,48 @@ fn is_bookmark_exists_error(error: &crate::jj::JjError) -> bool {
 mod tests {
     use super::*;
     use crate::jj::JjError;
+
+    #[test]
+    fn test_exact_pattern_plain_name() {
+        assert_eq!(exact_pattern("main"), "exact:main");
+    }
+
+    #[test]
+    fn test_exact_pattern_with_glob_metachars() {
+        // A bookmark literally named "foo*" must match ONLY "foo*",
+        // never "foo1"/"foobar". The exact: prefix disables glob expansion.
+        assert_eq!(exact_pattern("foo*"), "exact:foo*");
+    }
+
+    #[test]
+    fn test_exact_pattern_empty() {
+        assert_eq!(exact_pattern(""), "exact:");
+    }
+
+    #[test]
+    fn test_build_advance_args_single() {
+        assert_eq!(
+            build_advance_args(&["main".to_string()]),
+            vec!["bookmark", "advance", "exact:main", "--to", "@"]
+        );
+    }
+
+    #[test]
+    fn test_build_advance_args_multiple() {
+        // Verifies exact: wrapping AND ordering of the production arg vector,
+        // without executing jj (no side effects on any real repo).
+        assert_eq!(
+            build_advance_args(&["main".to_string(), "release".to_string()]),
+            vec![
+                "bookmark",
+                "advance",
+                "exact:main",
+                "exact:release",
+                "--to",
+                "@"
+            ]
+        );
+    }
 
     #[test]
     fn test_is_bookmark_exists_error_with_already_exists() {
