@@ -658,9 +658,8 @@ fn test_handle_key_bookmark_create() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    // Press b to start bookmark input
-    let action = press_key(&mut view, keys::BOOKMARK);
-    assert_eq!(action, LogAction::None);
+    // start_bookmark_input begins create (the `b c` chord calls this at App level)
+    view.start_bookmark_input();
     assert_eq!(view.input_mode, InputMode::BookmarkInput);
     assert_eq!(view.editing_revision, Some("def67890".to_string()));
 }
@@ -670,9 +669,8 @@ fn test_handle_key_bookmark_create_no_selection() {
     let mut view = LogView::new();
     // Empty changes list
 
-    let action = press_key(&mut view, keys::BOOKMARK);
-    assert_eq!(action, LogAction::None);
-    assert_eq!(view.input_mode, InputMode::Normal); // Should stay in normal mode
+    view.start_bookmark_input();
+    assert_eq!(view.input_mode, InputMode::Normal); // no selection → stays normal
 }
 
 #[test]
@@ -681,7 +679,7 @@ fn test_bookmark_input_submit() {
     view.set_changes(create_test_changes());
 
     // Start bookmark input
-    press_key(&mut view, keys::BOOKMARK);
+    view.start_bookmark_input();
     assert_eq!(view.input_mode, InputMode::BookmarkInput);
 
     // Type bookmark name
@@ -707,7 +705,7 @@ fn test_bookmark_input_empty_submit_cancels() {
     view.set_changes(create_test_changes());
 
     // Start bookmark input
-    press_key(&mut view, keys::BOOKMARK);
+    view.start_bookmark_input();
 
     // Submit empty - should cancel
     let action = submit(&mut view);
@@ -721,7 +719,7 @@ fn test_bookmark_input_cancel() {
     view.set_changes(create_test_changes());
 
     // Start bookmark input
-    press_key(&mut view, keys::BOOKMARK);
+    view.start_bookmark_input();
     type_text(&mut view, "test");
 
     // Cancel with Esc
@@ -732,41 +730,10 @@ fn test_bookmark_input_cancel() {
     assert!(view.editing_revision.is_none());
 }
 
-#[test]
-fn test_handle_key_bookmark_delete() {
-    let mut view = LogView::new();
-    view.set_changes(create_test_changes());
-
-    // Press D to start bookmark delete
-    let action = press_key(&mut view, keys::BOOKMARK_DELETE);
-    assert_eq!(action, LogAction::StartBookmarkDelete);
-}
-
-#[test]
-fn test_bookmark_delete_on_change_with_bookmarks() {
-    let mut view = LogView::new();
-    view.set_changes(create_test_changes());
-
-    // First change has "main" bookmark
-    assert_eq!(view.selected_change().unwrap().bookmarks, vec!["main"]);
-
-    let action = press_key(&mut view, keys::BOOKMARK_DELETE);
-    assert_eq!(action, LogAction::StartBookmarkDelete);
-}
-
-#[test]
-fn test_bookmark_delete_on_change_without_bookmarks() {
-    let mut view = LogView::new();
-    view.set_changes(create_test_changes());
-
-    // Move to second change (no bookmarks)
-    view.move_down();
-    assert!(view.selected_change().unwrap().bookmarks.is_empty());
-
-    // Should still return action - state.rs handles the "no bookmarks" case
-    let action = press_key(&mut view, keys::BOOKMARK_DELETE);
-    assert_eq!(action, LogAction::StartBookmarkDelete);
-}
+// Note: bookmark delete/track/jump are no longer single-key actions in Log View.
+// They are dispatched via the `b` chord at the App level (Phase 46-B), so the
+// former LogView single-key tests were removed; chord behavior is covered by
+// App-level chord tests in src/app/input.rs.
 
 // =============================================================================
 // Rebase tests
@@ -1352,27 +1319,8 @@ fn test_new_from_no_selection() {
     assert!(matches!(result, LogAction::None));
 }
 
-#[test]
-fn test_track_key_returns_start_track() {
-    let mut view = LogView::default();
-    view.set_changes(create_test_changes());
-
-    let result = view.handle_key(KeyEvent::from(KeyCode::Char('T')));
-    assert!(matches!(result, LogAction::StartTrack));
-}
-
-// =============================================================================
-// Bookmark Jump tests
-// =============================================================================
-
-#[test]
-fn test_bookmark_jump_key_returns_start_bookmark_jump() {
-    let mut view = LogView::default();
-    view.set_changes(create_test_changes());
-
-    let result = view.handle_key(KeyEvent::from(KeyCode::Char('\'')));
-    assert!(matches!(result, LogAction::StartBookmarkJump));
-}
+// Note: track (`b t`) and jump (`b j`) are now `b` chord actions dispatched at
+// the App level (Phase 46-B); the former single-key LogView tests were removed.
 
 #[test]
 fn test_select_change_by_id_found() {

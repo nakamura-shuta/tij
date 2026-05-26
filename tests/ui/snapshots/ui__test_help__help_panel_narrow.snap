@@ -17,6 +17,7 @@ expression: terminal.backend()
 "│  g/G       Go to top/bottom                    │"
 "│                                                │"
 "│Log View:                                       │"
+"│  :         Command palette (search low-frequenc│"
 "│  Enter     Show diff                           │"
 "│  d         Describe (1-line quick edit; opens e│"
 "│  Ctrl+e    Describe in external editor (full te│"
@@ -30,5 +31,4 @@ expression: terminal.backend()
 "│  o         Operation history                   │"
 "│  u         Undo                                │"
 "│  Ctrl+r    Redo                                │"
-"│  S         Squash (select target)              │"
 "└────────────────────────────────────────────────┘"

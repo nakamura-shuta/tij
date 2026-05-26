@@ -131,14 +131,6 @@ impl LogView {
                     LogAction::None
                 }
             }
-            k if k == keys::BOOKMARK => {
-                self.start_bookmark_input();
-                LogAction::None
-            }
-            k if k == keys::BOOKMARK_DELETE => {
-                // Let state.rs handle the dialog
-                LogAction::StartBookmarkDelete
-            }
             k if k == keys::REBASE => {
                 self.start_rebase_mode_select();
                 LogAction::None
@@ -177,8 +169,6 @@ impl LogView {
             }
             k if k == keys::FETCH => LogAction::Fetch,
             k if k == keys::PUSH => LogAction::StartPush,
-            k if k == keys::TRACK => LogAction::StartTrack,
-            k if k == keys::BOOKMARK_JUMP => LogAction::StartBookmarkJump,
             k if k == keys::COMPARE => {
                 if self.start_compare_select() {
                     let from_id = self.compare_from.as_ref().unwrap().0.to_string();
@@ -203,7 +193,6 @@ impl LogView {
                     LogAction::None
                 }
             }
-            k if k == keys::BOOKMARK_VIEW => LogAction::OpenBookmarkView,
             k if k == keys::TAG_VIEW => LogAction::OpenTagView,
             k if k == keys::WORKSPACE_VIEW => LogAction::OpenWorkspaceView,
             k if k == keys::COMMAND_HISTORY => LogAction::OpenCommandHistory,
@@ -279,7 +268,6 @@ impl LogView {
                 }
             }
             k if k == keys::ARRANGE => LogAction::Arrange,
-            k if k == keys::BOOKMARK_ADVANCE => LogAction::AdvanceBookmark,
             _ => LogAction::None,
         }
     }

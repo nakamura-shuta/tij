@@ -26,6 +26,14 @@ impl App {
             return;
         }
 
+        // Command palette active: capture all keys (Phase 46-C). Like the dialog
+        // block above, this intentionally traps every key (including Ctrl+C) while
+        // open — close with Esc first. Kept consistent with dialog behavior.
+        if self.palette_active {
+            self.handle_palette_key(key);
+            return;
+        }
+
         // Clear error message and expired notification on any key press
         self.error_message = None;
         self.clear_expired_notification();
@@ -35,6 +43,15 @@ impl App {
             && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('C'))
         {
             self.quit();
+            return;
+        }
+
+        // Chord resolve (Phase 46-B): if a `b` chord is pending, the next key
+        // resolves or cancels it — including Ctrl-modified keys (which cancel
+        // via resolve_chord). This MUST run before Ctrl+R/Ctrl+L below so those
+        // don't fire while a chord is pending (and leave pending_chord stuck).
+        if let Some(prefix) = self.pending_chord.take() {
+            self.resolve_chord(prefix, key);
             return;
         }
 
@@ -88,11 +105,121 @@ impl App {
             return;
         }
 
+        // Chord start (Phase 46-B): begin a `b` chord in Log View Normal mode.
+        // Resolution happens earlier (right after Ctrl+C), so a pending chord is
+        // always resolved/cancelled before Ctrl+R/Ctrl+L can fire.
+        if self.current_view == View::Log
+            && matches!(self.log_view.input_mode, InputMode::Normal)
+            && key.code == keys::CHORD_BOOKMARK
+            && key.modifiers.is_empty()
+        {
+            self.pending_chord = Some(keys::CHORD_BOOKMARK);
+            return;
+        }
+
+        // Command palette trigger (Phase 46-C): Log View Normal mode.
+        if self.current_view == View::Log
+            && matches!(self.log_view.input_mode, InputMode::Normal)
+            && key.code == keys::COMMAND_PALETTE
+            && key.modifiers.is_empty()
+        {
+            self.palette_active = true;
+            self.palette_input.clear();
+            self.palette_selected = 0;
+            return;
+        }
+
         if self.handle_global_key(key) {
             return;
         }
 
         self.handle_view_key(key);
+    }
+
+    /// Resolve a bookmark chord (prefix already consumed via `take()`).
+    /// Unknown or modified sub-keys cancel the chord silently.
+    fn resolve_chord(&mut self, prefix: KeyCode, key: KeyEvent) {
+        if prefix != keys::CHORD_BOOKMARK {
+            return; // only the bookmark chord exists in Phase 46-B
+        }
+        // P4: only plain sub-keys resolve. Ctrl-d / Alt-x etc. must NOT be
+        // treated as `b d` — they cancel the chord silently.
+        if !key.modifiers.is_empty() {
+            return;
+        }
+        match key.code {
+            keys::chord_bookmark::CREATE => self.log_view.start_bookmark_input(),
+            keys::chord_bookmark::DELETE => self.handle_log_action(LogAction::StartBookmarkDelete),
+            keys::chord_bookmark::TRACK => self.handle_log_action(LogAction::StartTrack),
+            keys::chord_bookmark::JUMP => self.handle_log_action(LogAction::StartBookmarkJump),
+            keys::chord_bookmark::ADVANCE => self.handle_log_action(LogAction::AdvanceBookmark),
+            keys::chord_bookmark::VIEW => self.handle_log_action(LogAction::OpenBookmarkView),
+            // Esc or any unknown sub-key: silent cancel (pending_chord already taken).
+            _ => {}
+        }
+    }
+
+    /// Handle a key while the command palette is active (Phase 46-C).
+    fn handle_palette_key(&mut self, key: KeyEvent) {
+        use crate::ui::components::{filter_commands, palette_commands};
+        match key.code {
+            KeyCode::Esc => self.close_palette(),
+            KeyCode::Enter => {
+                // Resolve current selection from the filtered list, then dispatch
+                // by delegating its key to the Log handler (reuses all logic).
+                let filtered = filter_commands(palette_commands(), &self.palette_input);
+                let chosen = filtered.get(self.palette_selected).map(|c| c.key);
+                self.close_palette();
+                if let Some(code) = chosen {
+                    let action = self.log_view.handle_key(KeyEvent::from(code));
+                    self.handle_log_action(action);
+                }
+            }
+            // Movement: arrows + Ctrl+n/Ctrl+p (NOT j/k — those are text input).
+            KeyCode::Down => self.palette_move(1),
+            KeyCode::Up => self.palette_move(-1),
+            KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.palette_move(1)
+            }
+            KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.palette_move(-1)
+            }
+            KeyCode::Backspace => {
+                self.palette_input.pop();
+                self.palette_selected = 0;
+            }
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                self.palette_input.push(c);
+                self.palette_selected = 0;
+            }
+            _ => {}
+        }
+    }
+
+    /// Close the command palette and reset its state.
+    fn close_palette(&mut self) {
+        self.palette_active = false;
+        self.palette_input.clear();
+        self.palette_selected = 0;
+    }
+
+    /// Move palette selection within the current filtered list bounds (wraps).
+    fn palette_move(&mut self, delta: isize) {
+        let len = crate::ui::components::filter_commands(
+            crate::ui::components::palette_commands(),
+            &self.palette_input,
+        )
+        .len();
+        if len == 0 {
+            self.palette_selected = 0;
+            return;
+        }
+        let next = (self.palette_selected as isize + delta).rem_euclid(len as isize);
+        self.palette_selected = next as usize;
     }
 
     fn handle_global_key(&mut self, key: KeyEvent) -> bool {
@@ -1090,5 +1217,158 @@ mod tests {
 
         // Should go back from Help view
         assert_ne!(app.current_view, View::Help);
+    }
+
+    // =========================================================================
+    // Bookmark chord (Phase 46-B)
+    // =========================================================================
+
+    #[test]
+    fn chord_b_sets_pending_in_log_normal() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Log;
+        press(&mut app, KeyCode::Char('b'));
+        assert_eq!(app.pending_chord, Some(KeyCode::Char('b')));
+    }
+
+    #[test]
+    fn chord_b_then_esc_cancels() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Log;
+        press(&mut app, KeyCode::Char('b'));
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.pending_chord, None);
+    }
+
+    #[test]
+    fn chord_b_then_unknown_key_cancels() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Log;
+        press(&mut app, KeyCode::Char('b'));
+        press(&mut app, KeyCode::Char('z'));
+        assert_eq!(app.pending_chord, None);
+    }
+
+    #[test]
+    fn chord_b_not_a_prefix_outside_log() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Status;
+        press(&mut app, KeyCode::Char('b'));
+        assert_eq!(
+            app.pending_chord, None,
+            "b must not start a chord outside Log Normal mode"
+        );
+    }
+
+    #[test]
+    fn chord_pending_cleared_on_view_change() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Log;
+        press(&mut app, KeyCode::Char('b'));
+        assert_eq!(app.pending_chord, Some(KeyCode::Char('b')));
+        app.go_to_view(View::Status);
+        assert_eq!(
+            app.pending_chord, None,
+            "view change must clear a pending chord"
+        );
+    }
+
+    #[test]
+    fn chord_b_then_ctrl_l_cancels_not_refresh() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Log;
+        press(&mut app, KeyCode::Char('b'));
+        assert_eq!(app.pending_chord, Some(KeyCode::Char('b')));
+        // Ctrl+L must cancel the chord (modified key), NOT trigger refresh
+        // while leaving the chord pending.
+        app.on_key_event(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL));
+        assert_eq!(
+            app.pending_chord, None,
+            "Ctrl+L after b must cancel the chord, not leave it pending"
+        );
+    }
+
+    #[test]
+    fn chord_b_then_ctrl_r_cancels_not_redo() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Log;
+        press(&mut app, KeyCode::Char('b'));
+        assert_eq!(app.pending_chord, Some(KeyCode::Char('b')));
+        // Ctrl+R must cancel the chord, not run redo with the chord still pending.
+        app.on_key_event(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL));
+        assert_eq!(
+            app.pending_chord, None,
+            "Ctrl+R after b must cancel the chord, not leave it pending"
+        );
+    }
+
+    // =========================================================================
+    // Command palette (Phase 46-C)
+    // =========================================================================
+
+    #[test]
+    fn palette_colon_opens_in_log_normal() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Log;
+        press(&mut app, KeyCode::Char(':'));
+        assert!(app.palette_active);
+    }
+
+    #[test]
+    fn palette_esc_closes() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Log;
+        press(&mut app, KeyCode::Char(':'));
+        press(&mut app, KeyCode::Esc);
+        assert!(!app.palette_active);
+    }
+
+    #[test]
+    fn palette_typing_filters_and_resets_selection() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Log;
+        press(&mut app, KeyCode::Char(':'));
+        press(&mut app, KeyCode::Char('f'));
+        press(&mut app, KeyCode::Char('i'));
+        press(&mut app, KeyCode::Char('x'));
+        assert_eq!(app.palette_input, "fix");
+        assert_eq!(app.palette_selected, 0);
+    }
+
+    #[test]
+    fn palette_not_opened_outside_log() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Status;
+        press(&mut app, KeyCode::Char(':'));
+        assert!(!app.palette_active);
+    }
+
+    #[test]
+    fn palette_cleared_on_view_change() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Log;
+        press(&mut app, KeyCode::Char(':'));
+        assert!(app.palette_active);
+        app.go_to_view(View::Status);
+        assert!(!app.palette_active);
+    }
+
+    #[test]
+    fn palette_enter_dispatches_command_history() {
+        // Core dispatch path: filter to a jj-independent command and Enter it.
+        // `command-history` opens View::CommandHistory via the delegated key.
+        let mut app = App::new_for_test();
+        app.current_view = View::Log;
+        press(&mut app, KeyCode::Char(':'));
+        for c in "command-history".chars() {
+            press(&mut app, KeyCode::Char(c));
+        }
+        press(&mut app, KeyCode::Enter);
+        assert!(!app.palette_active, "palette closes after Enter");
+        assert_eq!(
+            app.current_view,
+            View::CommandHistory,
+            "Enter dispatched the command (via log_view.handle_key delegation)"
+        );
     }
 }

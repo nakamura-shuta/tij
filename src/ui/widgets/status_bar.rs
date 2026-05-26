@@ -114,6 +114,39 @@ pub fn status_hints_height(hints: &[KeyHint], width: u16) -> u16 {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Chord hint bar (Phase 46-B): shown while a bookmark chord is pending.
+// Built as KeyHints so it reuses build_content / status_hints_height — keeping
+// render and height on the SAME wrap path (no narrow-width drift).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// KeyHints for the pending bookmark chord: `b` prefix + mnemonic sub-keys + cancel.
+///
+/// Rendered via `render_status_hints` and measured via `status_hints_height` —
+/// the SAME path as normal hints, so chord render and height never drift (P3).
+pub fn chord_bookmark_hints() -> Vec<KeyHint> {
+    let mut hints = vec![KeyHint {
+        key: "b",
+        label: "Bookmark",
+        color: Color::Yellow,
+    }];
+    hints.extend(
+        crate::keys::CHORD_BOOKMARK_HINTS
+            .iter()
+            .map(|(k, label)| KeyHint {
+                key: k,
+                label,
+                color: Color::Cyan,
+            }),
+    );
+    hints.push(KeyHint {
+        key: "Esc",
+        label: "cancel",
+        color: Color::DarkGray,
+    });
+    hints
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Rendering
 // ─────────────────────────────────────────────────────────────────────────────
 

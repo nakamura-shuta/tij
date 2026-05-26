@@ -246,6 +246,16 @@ pub struct App {
     pub(crate) help_show_all: bool,
     /// Help view: search input buffer
     pub(crate) help_input_buffer: String,
+    /// Pending chord prefix (e.g. `Some(Char('b'))`) while waiting for the
+    /// second key. Only ever Some in Log View Normal mode with no dialog.
+    /// Cleared on resolve, Esc, unknown sub-key, or any context transition.
+    pub(crate) pending_chord: Option<crossterm::event::KeyCode>,
+    /// Command palette active (Log View). When true, keys feed the palette.
+    pub(crate) palette_active: bool,
+    /// Current palette filter input.
+    pub(crate) palette_input: String,
+    /// Index of the highlighted command among the filtered list.
+    pub(crate) palette_selected: usize,
     /// Dirty flags for lazy refresh
     pub(crate) dirty: DirtyFlags,
     /// Command execution history (for Command History View)
@@ -295,6 +305,10 @@ impl App {
             help_search_query: None,
             help_search_input: false,
             help_show_all: false,
+            pending_chord: None,
+            palette_active: false,
+            palette_input: String::new(),
+            palette_selected: 0,
             help_input_buffer: String::new(),
             dirty: DirtyFlags {
                 log: false, // Log is loaded in new()
@@ -353,6 +367,12 @@ impl App {
     /// This avoids unnecessary jj subprocess spawns on Tab switching.
     pub(crate) fn go_to_view(&mut self, view: View) {
         if self.current_view != view {
+            // Cancel any pending chord on view transition (Phase 46-B)
+            self.pending_chord = None;
+            // Close the command palette on view transition (Phase 46-C)
+            self.palette_active = false;
+            self.palette_input.clear();
+            self.palette_selected = 0;
             // Cancel pending preview when leaving Log view
             if self.current_view == View::Log {
                 self.preview_pending_id = None;

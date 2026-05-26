@@ -52,11 +52,23 @@ impl App {
         if let Some(ref dialog) = self.active_dialog {
             dialog.render(frame, frame.area());
         }
+
+        // Render command palette overlay (Phase 46-C), above all else
+        if self.palette_active {
+            crate::ui::components::render_palette(
+                frame,
+                &self.palette_input,
+                self.palette_selected,
+            );
+        }
     }
 
     /// Get the status bar height for the current view
     fn get_current_status_bar_height(&self, width: u16) -> u16 {
         match self.current_view {
+            View::Log if self.pending_chord.is_some() => {
+                status_hints_height(&crate::ui::widgets::chord_bookmark_hints(), width)
+            }
             View::Log | View::Status | View::Operation => {
                 let ctx = self.build_hint_context();
                 let hints = keys::current_hints(self.current_view, self.log_view.input_mode, &ctx);
@@ -136,7 +148,14 @@ impl App {
     ) {
         let area = frame.area();
         let ctx = self.build_hint_context();
-        let hints = keys::current_hints(View::Log, self.log_view.input_mode, &ctx);
+        // Phase 46-B: while a bookmark chord is pending, replace the status bar
+        // with the chord hint bar. Both sb_height and the render below use the
+        // same `hints`, so layout and content never drift.
+        let hints = if self.pending_chord.is_some() {
+            crate::ui::widgets::chord_bookmark_hints()
+        } else {
+            keys::current_hints(View::Log, self.log_view.input_mode, &ctx)
+        };
         let sb_height = status_hints_height(&hints, area.width);
 
         // Reserve space for status bar at bottom

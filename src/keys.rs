@@ -102,10 +102,7 @@ pub const ABANDON: KeyCode = KeyCode::Char('A');
 /// Split change (Log View, opens external diff editor)
 pub const SPLIT: KeyCode = KeyCode::Char('x');
 
-/// Create bookmark (Log View)
-pub const BOOKMARK: KeyCode = KeyCode::Char('b');
-
-/// Delete bookmark (Log View)
+/// Delete bookmark (Bookmark View). Log View uses the `b d` chord (Phase 46-B).
 pub const BOOKMARK_DELETE: KeyCode = KeyCode::Char('D');
 
 /// Rebase change (Log View, uppercase)
@@ -133,9 +130,6 @@ pub const PUSH: KeyCode = KeyCode::Char('P');
 /// Track remote bookmarks (Log View, uppercase for remote ops)
 pub const TRACK: KeyCode = KeyCode::Char('T');
 
-/// Jump to bookmark (Log View)
-pub const BOOKMARK_JUMP: KeyCode = KeyCode::Char('\'');
-
 /// Compare two revisions (Log View)
 pub const COMPARE: KeyCode = KeyCode::Char('=');
 
@@ -147,9 +141,6 @@ pub const BISECT: KeyCode = KeyCode::Char('W');
 
 /// Metaedit — edit metadata (author, change-id, timestamp) (Log View)
 pub const METAEDIT: KeyCode = KeyCode::Char('v');
-
-/// Open Bookmark View (Log View)
-pub const BOOKMARK_VIEW: KeyCode = KeyCode::Char('M');
 
 /// Open Tag View (Log View)
 pub const TAG_VIEW: KeyCode = KeyCode::Char('t');
@@ -175,11 +166,44 @@ pub const BOOKMARK_FORGET: KeyCode = KeyCode::Char('f');
 /// Move bookmark to @ (Bookmark View)
 pub const BOOKMARK_MOVE: KeyCode = KeyCode::Char('m');
 
-/// Advance closest ancestor bookmark to @ (Log View)
+/// Bookmark chord prefix (Log View): press `b`, then a sub-key.
 ///
-/// Provisional single key. May migrate to a `b a` chord if a prefix-key
-/// mechanism is introduced. `b` is already "Create bookmark".
-pub const BOOKMARK_ADVANCE: KeyCode = KeyCode::Char('>');
+/// Phase 46-B: replaces the old single-key bookmark ops in Log View.
+/// Sub-keys are mnemonic (first letter of the action). See `chord_bookmark`.
+pub const CHORD_BOOKMARK: KeyCode = KeyCode::Char('b');
+
+/// Sub-keys under the `b` bookmark chord (mnemonic: first letter of action).
+pub mod chord_bookmark {
+    use crossterm::event::KeyCode;
+    /// `b c` — create bookmark
+    pub const CREATE: KeyCode = KeyCode::Char('c');
+    /// `b d` — delete bookmark
+    pub const DELETE: KeyCode = KeyCode::Char('d');
+    /// `b t` — track remote bookmarks
+    pub const TRACK: KeyCode = KeyCode::Char('t');
+    /// `b j` — jump to bookmark
+    pub const JUMP: KeyCode = KeyCode::Char('j');
+    /// `b a` — advance ancestor bookmark to @
+    pub const ADVANCE: KeyCode = KeyCode::Char('a');
+    /// `b v` — view bookmarks (open Bookmark View)
+    pub const VIEW: KeyCode = KeyCode::Char('v');
+}
+
+/// Command palette trigger (Log View Normal mode): `:` opens a searchable
+/// list of low-frequency commands. Distinct from the `:` used inside the
+/// rebase-mode-select sub-mode (different handler / mode).
+pub const COMMAND_PALETTE: KeyCode = KeyCode::Char(':');
+
+/// Hint entries for the `b` chord: (sub-key, action label). Used by the
+/// status-bar chord hint and the help panel.
+pub const CHORD_BOOKMARK_HINTS: &[(&str, &str)] = &[
+    ("c", "create"),
+    ("d", "delete"),
+    ("t", "track"),
+    ("j", "jump"),
+    ("a", "advance"),
+    ("v", "view bookmarks"),
+];
 
 /// Move @ to next child (Log View)
 pub const NEXT_CHANGE: KeyCode = KeyCode::Char(']');
@@ -337,6 +361,10 @@ pub const NAV_KEYS: &[KeyBindEntry] = &[
 /// Log view key bindings for help display
 pub const LOG_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
+        key: ":",
+        description: "Command palette (search low-frequency commands)",
+    },
+    KeyBindEntry {
         key: "Enter",
         description: "Show diff",
     },
@@ -401,16 +429,28 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         description: "Split change",
     },
     KeyBindEntry {
-        key: "b",
+        key: "b c",
         description: "Create bookmark",
     },
     KeyBindEntry {
-        key: "D",
+        key: "b d",
         description: "Delete bookmark",
     },
     KeyBindEntry {
-        key: ">",
+        key: "b t",
+        description: "Track remote bookmarks",
+    },
+    KeyBindEntry {
+        key: "b j",
+        description: "Jump to bookmark",
+    },
+    KeyBindEntry {
+        key: "b a",
         description: "Advance ancestor bookmark to @",
+    },
+    KeyBindEntry {
+        key: "b v",
+        description: "View bookmarks",
     },
     KeyBindEntry {
         key: "R",
@@ -433,24 +473,12 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         description: "Git push",
     },
     KeyBindEntry {
-        key: "T",
-        description: "Track remote bookmarks",
-    },
-    KeyBindEntry {
-        key: "'",
-        description: "Jump to bookmark",
-    },
-    KeyBindEntry {
         key: "=",
         description: "Compare revisions",
     },
     KeyBindEntry {
         key: "I",
         description: "Interdiff revisions",
-    },
-    KeyBindEntry {
-        key: "M",
-        description: "Bookmark view",
     },
     KeyBindEntry {
         key: "t",
@@ -644,6 +672,12 @@ pub const HINT_BOOKMARK: KeyHint = KeyHint {
     key: "b",
     label: "Bookmark",
     color: Color::Cyan,
+};
+/// Command palette hint (Log Normal only — palette is Log View scoped).
+pub const HINT_PALETTE: KeyHint = KeyHint {
+    key: ":",
+    label: "Palette",
+    color: Color::Magenta,
 };
 pub const HINT_DEL_BKM: KeyHint = KeyHint {
     key: "D",
@@ -1005,6 +1039,7 @@ fn log_normal_hints(ctx: &HintContext) -> Vec<KeyHint> {
     // Show only the most essential hints here; full list is in Help (?)
     let mut h = vec![
         HINT_HELP,
+        HINT_PALETTE,
         HINT_DESC,
         HINT_EDIT,
         HINT_NEW,
@@ -1019,15 +1054,19 @@ fn log_normal_hints(ctx: &HintContext) -> Vec<KeyHint> {
         h.push(HINT_RESOLVE);
     }
     if ctx.has_bookmarks {
-        h.push(HINT_DEL_BKM);
         h.push(HINT_PUSH);
     }
     h.extend([HINT_UNDO, HINT_QUIT]);
     h
 }
 
+/// Common trailing hints for views that support undo + refresh + back (Phase 46-D).
+fn undo_refresh_back() -> [KeyHint; 3] {
+    [HINT_UNDO, HINT_REFRESH, HINT_BACK]
+}
+
 fn resolve_hints(ctx: &HintContext) -> Vec<KeyHint> {
-    let mut h = Vec::new();
+    let mut h = vec![HINT_HELP];
     if ctx.is_working_copy {
         h.push(HINT_RESOLVE_ENTER);
     }
@@ -1036,7 +1075,7 @@ fn resolve_hints(ctx: &HintContext) -> Vec<KeyHint> {
 }
 
 fn bookmark_view_hints(ctx: &HintContext) -> Vec<KeyHint> {
-    let mut h = Vec::new();
+    let mut h = vec![HINT_HELP];
     match ctx.selected_bookmark_kind {
         Some(BookmarkKind::LocalJumpable) => {
             h.push(HINT_JUMP_ENTER);
@@ -1059,24 +1098,25 @@ fn bookmark_view_hints(ctx: &HintContext) -> Vec<KeyHint> {
         }
         None => {}
     }
-    h.extend([HINT_UNDO, HINT_REFRESH, HINT_BACK]);
+    h.extend(undo_refresh_back());
     h
 }
 
 fn tag_view_hints() -> Vec<KeyHint> {
-    vec![
+    let mut h = vec![
+        HINT_HELP,
         HINT_NAV,
         HINT_JUMP_ENTER,
         HINT_TAG_CREATE,
         HINT_TAG_DELETE,
-        HINT_UNDO,
-        HINT_REFRESH,
-        HINT_BACK,
-    ]
+    ];
+    h.extend(undo_refresh_back());
+    h
 }
 
 fn workspace_view_hints() -> Vec<KeyHint> {
     vec![
+        HINT_HELP,
         HINT_NAV,
         HINT_JUMP_ENTER,
         KeyHint {
@@ -1096,7 +1136,7 @@ fn workspace_view_hints() -> Vec<KeyHint> {
 }
 
 fn command_history_hints() -> Vec<KeyHint> {
-    vec![HINT_NAV, HINT_DETAIL, HINT_BACK]
+    vec![HINT_HELP, HINT_NAV, HINT_DETAIL, HINT_BACK]
 }
 
 /// ParallelizeSelect mode status bar hints
@@ -1280,6 +1320,7 @@ fn rebase_select_hints(
 
 /// Diff view status bar hints
 pub const DIFF_VIEW_HINTS: &[KeyHint] = &[
+    HINT_HELP,
     KeyHint {
         key: "j/k",
         label: "Scroll",
@@ -1666,6 +1707,7 @@ pub fn keys_for_view(view: View) -> &'static [KeyBindEntry] {
 
 /// Operation history view status bar hints
 pub const OPERATION_VIEW_HINTS: &[KeyHint] = &[
+    HINT_HELP,
     KeyHint {
         key: "j/k",
         label: "Move",
@@ -1690,6 +1732,7 @@ pub const OPERATION_VIEW_HINTS: &[KeyHint] = &[
 
 /// Blame view status bar hints
 pub const BLAME_VIEW_HINTS: &[KeyHint] = &[
+    HINT_HELP,
     KeyHint {
         key: "j/k",
         label: "Move",
@@ -1728,14 +1771,77 @@ mod tests {
     // --- Log Normal: context-dependent hints ---
 
     #[test]
-    fn log_normal_with_bookmarks_includes_push_and_del() {
+    fn all_status_bar_views_include_help_hint() {
+        let ctx = HintContext::default();
+        for view in [
+            View::Log,
+            View::Status,
+            View::Operation,
+            View::Resolve,
+            View::Bookmark,
+            View::Tag,
+            View::Workspace,
+            View::CommandHistory,
+        ] {
+            let hints = current_hints(view, InputMode::Normal, &ctx);
+            assert!(
+                hints.iter().any(|h| h.key == "?"),
+                "{view:?} status bar must include the ? help hint"
+            );
+        }
+    }
+
+    #[test]
+    fn diff_and_blame_hints_include_help() {
+        assert!(
+            DIFF_VIEW_HINTS.iter().any(|h| h.key == "?"),
+            "Diff status bar needs ? help"
+        );
+        assert!(
+            BLAME_VIEW_HINTS.iter().any(|h| h.key == "?"),
+            "Blame status bar needs ? help"
+        );
+    }
+
+    #[test]
+    fn help_hint_appears_exactly_once_per_view() {
+        let ctx = HintContext::default();
+        for view in [
+            View::Log,
+            View::Status,
+            View::Operation,
+            View::Resolve,
+            View::Bookmark,
+            View::Tag,
+            View::Workspace,
+            View::CommandHistory,
+        ] {
+            let hints = current_hints(view, InputMode::Normal, &ctx);
+            let n = hints.iter().filter(|h| h.key == "?").count();
+            assert_eq!(n, 1, "{view:?} must have exactly one ? hint, got {n}");
+        }
+        assert_eq!(DIFF_VIEW_HINTS.iter().filter(|h| h.key == "?").count(), 1);
+        assert_eq!(BLAME_VIEW_HINTS.iter().filter(|h| h.key == "?").count(), 1);
+    }
+
+    #[test]
+    fn log_normal_with_bookmarks_includes_push() {
         let ctx = HintContext {
             has_bookmarks: true,
             ..HintContext::default()
         };
         let hints = current_hints(View::Log, InputMode::Normal, &ctx);
         assert!(hints.iter().any(|h| h.key == "P"), "Push hint missing");
-        assert!(hints.iter().any(|h| h.key == "D"), "Del Bkm hint missing");
+        // Phase 46-B: delete moved to the `b` chord; `D` is no longer a single-key hint.
+        assert!(
+            !hints.iter().any(|h| h.key == "D"),
+            "Del Bkm should no longer be a single-key hint"
+        );
+        // The `b` chord prefix hint is always present in Log Normal.
+        assert!(
+            hints.iter().any(|h| h.key == "b"),
+            "bookmark chord prefix hint missing"
+        );
     }
 
     #[test]
