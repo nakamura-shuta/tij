@@ -1606,6 +1606,14 @@ pub const BLAME_KEYS: &[KeyBindEntry] = &[
     },
 ];
 
+/// Evolog view key bindings for help display.
+/// Only lists Evolog-specific actions; navigation (j/k, g/G) and quit (q)
+/// are shown via the shared Navigation/Global sections in current-view help.
+pub const EVOLOG_KEYS: &[KeyBindEntry] = &[KeyBindEntry {
+    key: "Enter",
+    description: "Show this revision's diff",
+}];
+
 /// Resolve view key bindings for help display
 #[allow(dead_code)] // planned for Help View integration
 pub const RESOLVE_KEYS: &[KeyBindEntry] = &[
@@ -1634,6 +1642,27 @@ pub const RESOLVE_KEYS: &[KeyBindEntry] = &[
         description: "Back to log",
     },
 ];
+
+/// Toggle between current-view and all-views in Help (Help View only).
+pub const HELP_TOGGLE_ALL: KeyCode = KeyCode::Char('a');
+
+/// Map a View to its view-specific key bindings (for current-view help).
+pub fn keys_for_view(view: View) -> &'static [KeyBindEntry] {
+    match view {
+        View::Log => LOG_KEYS,
+        View::Status => STATUS_KEYS,
+        View::Diff => DIFF_KEYS,
+        View::Operation => OPERATION_KEYS,
+        View::Bookmark => BOOKMARK_KEYS,
+        View::Tag => TAG_KEYS,
+        View::Workspace => WORKSPACE_KEYS,
+        View::CommandHistory => COMMAND_HISTORY_KEYS,
+        View::Blame => BLAME_KEYS,
+        View::Resolve => RESOLVE_KEYS,
+        View::Evolog => EVOLOG_KEYS,
+        View::Help => &[],
+    }
+}
 
 /// Operation history view status bar hints
 pub const OPERATION_VIEW_HINTS: &[KeyHint] = &[

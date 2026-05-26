@@ -60,11 +60,58 @@ pub struct HelpLine {
     pub matched: bool,
 }
 
+/// All help sections in canonical order (includes Blame/Resolve/Evolog, fixing previous omission).
+fn all_sections() -> [(&'static str, &'static [keys::KeyBindEntry]); 14] {
+    [
+        ("Global", keys::GLOBAL_KEYS),
+        ("Navigation", keys::NAV_KEYS),
+        ("Log View", keys::LOG_KEYS),
+        ("Input Mode", keys::INPUT_KEYS),
+        ("Diff View", keys::DIFF_KEYS),
+        ("Status View", keys::STATUS_KEYS),
+        ("Bookmark View", keys::BOOKMARK_KEYS),
+        ("Tag View", keys::TAG_KEYS),
+        ("Workspace View", keys::WORKSPACE_KEYS),
+        ("Command History View", keys::COMMAND_HISTORY_KEYS),
+        ("Operation View", keys::OPERATION_KEYS),
+        ("Blame View", keys::BLAME_KEYS),
+        ("Resolve View", keys::RESOLVE_KEYS),
+        ("Evolog View", keys::EVOLOG_KEYS),
+    ]
+}
+
+/// Map a `View` to its section title string.
+pub(crate) fn section_title_for(view: crate::app::View) -> &'static str {
+    use crate::app::View;
+    match view {
+        View::Log => "Log View",
+        View::Status => "Status View",
+        View::Diff => "Diff View",
+        View::Operation => "Operation View",
+        View::Bookmark => "Bookmark View",
+        View::Tag => "Tag View",
+        View::Workspace => "Workspace View",
+        View::CommandHistory => "Command History View",
+        View::Blame => "Blame View",
+        View::Resolve => "Resolve View",
+        View::Evolog => "Evolog View",
+        View::Help => "Help",
+    }
+}
+
 /// Build all help panel lines (Single Source of Truth for rendering and search).
 ///
 /// When `search_query` is `Some`, matching entries get `matched = true` and
 /// are rendered with a highlight style.
-pub fn build_help_lines(search_query: Option<&str>) -> Vec<HelpLine> {
+///
+/// When `current_view` is `Some` and `show_all` is `false`, only the sections
+/// for that view (plus Global and Navigation, deduped) are shown.
+/// When `show_all` is `true` or `current_view` is `None`, all sections are shown.
+pub fn build_help_lines(
+    search_query: Option<&str>,
+    current_view: Option<crate::app::View>,
+    show_all: bool,
+) -> Vec<HelpLine> {
     let query_lower = search_query.map(|q| q.to_lowercase());
     let synonyms = query_lower
         .as_deref()
@@ -85,85 +132,109 @@ pub fn build_help_lines(search_query: Option<&str>) -> Vec<HelpLine> {
         matched: false,
     });
 
-    push_section(
-        &mut lines,
-        "Global",
-        keys::GLOBAL_KEYS,
-        query_lower.as_deref(),
-        &synonyms,
-    );
-    push_section(
-        &mut lines,
-        "Navigation",
-        keys::NAV_KEYS,
-        query_lower.as_deref(),
-        &synonyms,
-    );
-    push_section(
-        &mut lines,
-        "Log View",
-        keys::LOG_KEYS,
-        query_lower.as_deref(),
-        &synonyms,
-    );
-    push_section(
-        &mut lines,
-        "Input Mode",
-        keys::INPUT_KEYS,
-        query_lower.as_deref(),
-        &synonyms,
-    );
-    push_section(
-        &mut lines,
-        "Diff View",
-        keys::DIFF_KEYS,
-        query_lower.as_deref(),
-        &synonyms,
-    );
-    push_section(
-        &mut lines,
-        "Status View",
-        keys::STATUS_KEYS,
-        query_lower.as_deref(),
-        &synonyms,
-    );
-    push_section(
-        &mut lines,
-        "Bookmark View",
-        keys::BOOKMARK_KEYS,
-        query_lower.as_deref(),
-        &synonyms,
-    );
-    push_section(
-        &mut lines,
-        "Tag View",
-        keys::TAG_KEYS,
-        query_lower.as_deref(),
-        &synonyms,
-    );
-    push_section(
-        &mut lines,
-        "Workspace View",
-        keys::WORKSPACE_KEYS,
-        query_lower.as_deref(),
-        &synonyms,
-    );
-    push_section(
-        &mut lines,
-        "Command History View",
-        keys::COMMAND_HISTORY_KEYS,
-        query_lower.as_deref(),
-        &synonyms,
-    );
-    push_section(
-        &mut lines,
-        "Operation View",
-        keys::OPERATION_KEYS,
-        query_lower.as_deref(),
-        &synonyms,
-    );
+    match (current_view, show_all) {
+        (Some(view), false) => {
+            let mut seen_keys: std::collections::HashSet<&'static str> =
+                std::collections::HashSet::new();
+            let view_title = section_title_for(view);
+            push_section_dedup(
+                &mut lines,
+                view_title,
+                keys::keys_for_view(view),
+                query_lower.as_deref(),
+                &synonyms,
+                &mut seen_keys,
+            );
+            push_section_dedup(
+                &mut lines,
+                "Global",
+                keys::GLOBAL_KEYS,
+                query_lower.as_deref(),
+                &synonyms,
+                &mut seen_keys,
+            );
+            push_section_dedup(
+                &mut lines,
+                "Navigation",
+                keys::NAV_KEYS,
+                query_lower.as_deref(),
+                &synonyms,
+                &mut seen_keys,
+            );
+        }
+        _ => {
+            for (title, entries) in all_sections() {
+                push_section(
+                    &mut lines,
+                    title,
+                    entries,
+                    query_lower.as_deref(),
+                    &synonyms,
+                );
+            }
+        }
+    }
 
     lines
+}
+
+fn push_section_dedup(
+    lines: &mut Vec<HelpLine>,
+    title: &str,
+    entries: &[keys::KeyBindEntry],
+    query_lower: Option<&str>,
+    synonyms: &[&str],
+    seen_keys: &mut std::collections::HashSet<&'static str>,
+) {
+    let fresh: Vec<&keys::KeyBindEntry> = entries
+        .iter()
+        .filter(|e| !seen_keys.contains(e.key))
+        .collect();
+    if fresh.is_empty() {
+        return;
+    }
+    for e in &fresh {
+        seen_keys.insert(e.key);
+    }
+    lines.push(HelpLine {
+        line: Line::from(format!("{title}:")).underlined(),
+        is_entry: false,
+        matched: false,
+    });
+    for entry in fresh {
+        let matched = query_lower.is_some_and(|q| {
+            let key_lc = entry.key.to_lowercase();
+            let desc_lc = entry.description.to_lowercase();
+            key_lc.contains(q)
+                || desc_lc.contains(q)
+                || synonyms
+                    .iter()
+                    .any(|s| key_lc.contains(s) || desc_lc.contains(s))
+        });
+        let style = if matched {
+            Style::default().bg(Color::Yellow).fg(Color::Black)
+        } else {
+            Style::default()
+        };
+        let key_style = if matched {
+            Style::default().bg(Color::Yellow).fg(Color::Black).bold()
+        } else {
+            Style::default().fg(Color::Yellow)
+        };
+        lines.push(HelpLine {
+            line: Line::from(vec![
+                Span::styled(format!("  {:10}", entry.key), key_style),
+                Span::styled(entry.description.to_string(), style),
+            ]),
+            is_entry: true,
+            matched,
+        });
+    }
+    lines.push(HelpLine {
+        line: Line::from(""),
+        is_entry: false,
+        matched: false,
+    });
 }
 
 fn push_section(
@@ -221,9 +292,16 @@ fn push_section(
     });
 }
 
-/// Collect indices of matching lines (for n/N navigation)
-pub fn matching_line_indices(query: &str) -> Vec<u16> {
-    build_help_lines(Some(query))
+/// Collect indices of matching lines (for n/N navigation).
+///
+/// `current_view` and `show_all` must match what is passed to `build_help_lines`
+/// so that search indices are consistent with the displayed line set.
+pub fn matching_line_indices(
+    query: &str,
+    current_view: Option<crate::app::View>,
+    show_all: bool,
+) -> Vec<u16> {
+    build_help_lines(Some(query), current_view, show_all)
         .iter()
         .enumerate()
         .filter(|(_, l)| l.matched)
@@ -238,14 +316,22 @@ pub fn matching_line_indices(query: &str) -> Vec<u16> {
 ///
 /// `search_query` highlights matching entries when `Some`.
 /// `search_input` shows a search input bar at the bottom when `Some`.
+/// `current_view` is the view from which Help was opened (for filtered display).
+/// `show_all` toggles between current-view mode and all-views mode.
 pub fn render_help_panel(
     frame: &mut Frame,
     area: Rect,
     scroll: u16,
     search_query: Option<&str>,
     search_input: Option<&str>,
+    current_view: Option<crate::app::View>,
+    show_all: bool,
 ) {
-    let title = Line::from(" Tij - Help ").bold().white().centered();
+    let title_text = match (current_view, show_all) {
+        (Some(v), false) => format!(" Tij - Help [{}]  (a: all views) ", section_title_for(v)),
+        _ => " Tij - Help [All Views]  (a: current view) ".to_string(),
+    };
+    let title = Line::from(title_text).bold().white().centered();
 
     // Split area for input bar if searching
     let (help_area, input_area) = if search_input.is_some() {
@@ -255,7 +341,7 @@ pub fn render_help_panel(
         (area, None)
     };
 
-    let help_lines = build_help_lines(search_query);
+    let help_lines = build_help_lines(search_query, current_view, show_all);
     let display_lines: Vec<Line<'static>> = help_lines.into_iter().map(|hl| hl.line).collect();
 
     frame.render_widget(
@@ -297,21 +383,21 @@ mod tests {
 
     #[test]
     fn build_help_lines_no_query_has_no_matches() {
-        let lines = build_help_lines(None);
+        let lines = build_help_lines(None, None, true);
         assert!(lines.iter().all(|l| !l.matched));
         assert!(!lines.is_empty());
     }
 
     #[test]
     fn build_help_lines_quit_matches() {
-        let lines = build_help_lines(Some("quit"));
+        let lines = build_help_lines(Some("quit"), None, true);
         let matched: Vec<_> = lines.iter().filter(|l| l.matched).collect();
         assert!(!matched.is_empty(), "Should match at least one Quit entry");
     }
 
     #[test]
     fn build_help_lines_bookmark_matches_multiple_sections() {
-        let lines = build_help_lines(Some("bookmark"));
+        let lines = build_help_lines(Some("bookmark"), None, true);
         let matched: Vec<_> = lines.iter().filter(|l| l.matched).collect();
         assert!(
             matched.len() >= 2,
@@ -321,14 +407,14 @@ mod tests {
 
     #[test]
     fn build_help_lines_no_match_returns_all_false() {
-        let lines = build_help_lines(Some("zzzzzznonexistent"));
+        let lines = build_help_lines(Some("zzzzzznonexistent"), None, true);
         assert!(lines.iter().all(|l| !l.matched));
     }
 
     #[test]
     fn build_help_lines_case_insensitive() {
-        let upper = build_help_lines(Some("QUIT"));
-        let lower = build_help_lines(Some("quit"));
+        let upper = build_help_lines(Some("QUIT"), None, true);
+        let lower = build_help_lines(Some("quit"), None, true);
         let upper_count = upper.iter().filter(|l| l.matched).count();
         let lower_count = lower.iter().filter(|l| l.matched).count();
         assert_eq!(
@@ -340,10 +426,10 @@ mod tests {
 
     #[test]
     fn matching_line_indices_returns_correct_indices() {
-        let indices = matching_line_indices("quit");
+        let indices = matching_line_indices("quit", None, true);
         assert!(!indices.is_empty());
         // Verify indices are valid
-        let lines = build_help_lines(Some("quit"));
+        let lines = build_help_lines(Some("quit"), None, true);
         for &idx in &indices {
             assert!(lines[idx as usize].matched);
         }
@@ -351,13 +437,13 @@ mod tests {
 
     #[test]
     fn matching_line_indices_empty_for_nonexistent() {
-        let indices = matching_line_indices("zzzzz");
+        let indices = matching_line_indices("zzzzz", None, true);
         assert!(indices.is_empty());
     }
 
     #[test]
     fn build_help_lines_entries_have_is_entry_true() {
-        let lines = build_help_lines(None);
+        let lines = build_help_lines(None, None, true);
         let entries: Vec<_> = lines.iter().filter(|l| l.is_entry).collect();
         assert!(entries.len() > 20, "Should have many key binding entries");
     }
@@ -395,7 +481,7 @@ mod tests {
 
     #[test]
     fn build_help_lines_commit_highlights_describe() {
-        let lines = build_help_lines(Some("commit"));
+        let lines = build_help_lines(Some("commit"), None, true);
         let matched_descs: Vec<_> = lines
             .iter()
             .filter(|l| l.matched && l.is_entry)
@@ -409,7 +495,7 @@ mod tests {
 
     #[test]
     fn build_help_lines_rebase_prefix_highlights_move() {
-        let lines = build_help_lines(Some("reb"));
+        let lines = build_help_lines(Some("reb"), None, true);
         let matched_descs: Vec<_> = lines
             .iter()
             .filter(|l| l.matched && l.is_entry)
@@ -423,7 +509,7 @@ mod tests {
 
     #[test]
     fn build_help_lines_original_search_unaffected() {
-        let lines = build_help_lines(Some("quit"));
+        let lines = build_help_lines(Some("quit"), None, true);
         let matched: Vec<_> = lines.iter().filter(|l| l.matched).collect();
         assert!(
             !matched.is_empty(),
@@ -433,8 +519,8 @@ mod tests {
 
     #[test]
     fn matching_line_indices_includes_synonyms() {
-        let commit_indices = matching_line_indices("commit");
-        let describe_indices = matching_line_indices("describe");
+        let commit_indices = matching_line_indices("commit", None, true);
+        let describe_indices = matching_line_indices("describe", None, true);
         // "commit" should pick up at least one "describe" match via synonyms
         assert!(
             !describe_indices.is_empty(),
@@ -448,5 +534,135 @@ mod tests {
             overlap > 0,
             "commit search should include at least one describe match via synonyms"
         );
+    }
+
+    // --- Current-view mode tests ---
+
+    #[test]
+    fn build_help_lines_current_view_shows_view_global_nav() {
+        use crate::app::View;
+        let lines = build_help_lines(None, Some(View::Log), false);
+        let section_titles: Vec<String> = lines
+            .iter()
+            .filter(|l| !l.is_entry && !l.line.spans.is_empty())
+            .filter_map(|l| {
+                let txt = l.line.spans.first()?.content.to_string();
+                if txt.ends_with(':') && txt != "Key bindings:" {
+                    Some(txt)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert!(
+            section_titles.iter().any(|t| t.contains("Log View")),
+            "should include Log View section"
+        );
+        assert!(
+            section_titles.iter().any(|t| t.contains("Global")),
+            "should include Global section"
+        );
+        assert!(
+            section_titles.iter().any(|t| t.contains("Navigation")),
+            "should include Navigation section"
+        );
+        assert!(
+            !section_titles.iter().any(|t| t.contains("Diff View")),
+            "should NOT include Diff View section"
+        );
+    }
+
+    #[test]
+    fn build_help_lines_show_all_includes_blame_resolve_evolog() {
+        let lines = build_help_lines(None, None, true);
+        let section_titles: Vec<String> = lines
+            .iter()
+            .filter(|l| !l.is_entry && !l.line.spans.is_empty())
+            .filter_map(|l| {
+                let txt = l.line.spans.first()?.content.to_string();
+                if txt.ends_with(':') && txt != "Key bindings:" {
+                    Some(txt)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert!(
+            section_titles.iter().any(|t| t.contains("Blame View")),
+            "all-mode should include Blame View"
+        );
+        assert!(
+            section_titles.iter().any(|t| t.contains("Resolve View")),
+            "all-mode should include Resolve View"
+        );
+        assert!(
+            section_titles.iter().any(|t| t.contains("Evolog View")),
+            "all-mode should include Evolog View"
+        );
+    }
+
+    #[test]
+    fn build_help_lines_current_view_dedups_quit_key() {
+        use crate::app::View;
+        // Diff の専用配列にも `q`、Global にも `q` がある。current-view モードでは
+        // first-wins dedup により `q` のエントリ行が 1 度だけ現れる（P3）。
+        let lines = build_help_lines(None, Some(View::Diff), false);
+        let q_count = lines
+            .iter()
+            .filter(|l| l.is_entry)
+            .filter(|l| {
+                l.line
+                    .spans
+                    .first()
+                    .map(|s| s.content.trim() == "q")
+                    .unwrap_or(false)
+            })
+            .count();
+        assert_eq!(q_count, 1, "q must appear exactly once after dedup");
+    }
+
+    #[test]
+    fn keys_for_view_maps_evolog_and_log() {
+        use crate::app::View;
+        // keys_for_view routes each View to its own array (exhaustive match).
+        assert_eq!(
+            keys::keys_for_view(View::Evolog).len(),
+            keys::EVOLOG_KEYS.len()
+        );
+        assert_eq!(keys::keys_for_view(View::Log).len(), keys::LOG_KEYS.len());
+    }
+
+    #[test]
+    fn current_view_evolog_excludes_diff_specific_keys() {
+        use crate::app::View;
+        // P2: Evolog must not inherit Diff-specific keys (m/y/w).
+        let lines = build_help_lines(None, Some(View::Evolog), false);
+        let entry_keys: Vec<String> = lines
+            .iter()
+            .filter(|l| l.is_entry)
+            .filter_map(|l| l.line.spans.first().map(|s| s.content.trim().to_string()))
+            .collect();
+        for k in ["m", "y", "w"] {
+            assert!(
+                !entry_keys.contains(&k.to_string()),
+                "Evolog current-view help must not contain Diff key '{k}'"
+            );
+        }
+    }
+
+    #[test]
+    fn matching_indices_within_current_view_diff() {
+        use crate::app::View;
+        // P1: search indices must stay within the current-view filtered line set.
+        let lines = build_help_lines(Some("q"), Some(View::Diff), false);
+        let indices = matching_line_indices("q", Some(View::Diff), false);
+        for i in &indices {
+            assert!(
+                (*i as usize) < lines.len(),
+                "index {i} out of current-view line bounds {}",
+                lines.len()
+            );
+            assert!(lines[*i as usize].matched, "indexed line must be a match");
+        }
     }
 }

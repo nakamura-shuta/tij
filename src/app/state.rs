@@ -242,6 +242,8 @@ pub struct App {
     pub(crate) help_search_query: Option<String>,
     /// Help view: search input mode active
     pub(crate) help_search_input: bool,
+    /// Help view: show all views (toggle with 'a')
+    pub(crate) help_show_all: bool,
     /// Help view: search input buffer
     pub(crate) help_input_buffer: String,
     /// Dirty flags for lazy refresh
@@ -292,6 +294,7 @@ impl App {
             help_scroll: 0,
             help_search_query: None,
             help_search_input: false,
+            help_show_all: false,
             help_input_buffer: String::new(),
             dirty: DirtyFlags {
                 log: false, // Log is loaded in new()
@@ -381,6 +384,7 @@ impl App {
                     self.help_scroll = 0;
                     self.help_search_query = None;
                     self.help_search_input = false;
+                    self.help_show_all = false;
                     self.help_input_buffer.clear();
                 }
                 _ => {}

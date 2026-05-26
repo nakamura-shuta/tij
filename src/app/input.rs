@@ -244,7 +244,11 @@ impl App {
                             } else {
                                 self.help_search_query = Some(query.clone());
                                 // Jump to first match
-                                let indices = crate::ui::widgets::matching_line_indices(&query);
+                                let indices = crate::ui::widgets::matching_line_indices(
+                                    &query,
+                                    self.previous_view,
+                                    self.help_show_all,
+                                );
                                 if let Some(&first) = indices.first() {
                                     self.help_scroll = first;
                                 }
@@ -277,7 +281,11 @@ impl App {
                         self.help_input_buffer.clear();
                     } else if key.code == keys::SEARCH_NEXT {
                         if let Some(ref query) = self.help_search_query {
-                            let indices = crate::ui::widgets::matching_line_indices(query);
+                            let indices = crate::ui::widgets::matching_line_indices(
+                                query,
+                                self.previous_view,
+                                self.help_show_all,
+                            );
                             if let Some(next) = indices.iter().find(|&&i| i > self.help_scroll) {
                                 self.help_scroll = *next;
                             } else if let Some(&first) = indices.first() {
@@ -288,13 +296,20 @@ impl App {
                     } else if key.code == keys::SEARCH_PREV
                         && let Some(ref query) = self.help_search_query
                     {
-                        let indices = crate::ui::widgets::matching_line_indices(query);
+                        let indices = crate::ui::widgets::matching_line_indices(
+                            query,
+                            self.previous_view,
+                            self.help_show_all,
+                        );
                         if let Some(prev) = indices.iter().rev().find(|&&i| i < self.help_scroll) {
                             self.help_scroll = *prev;
                         } else if let Some(&last) = indices.last() {
                             // Wrap to bottom
                             self.help_scroll = last;
                         }
+                    } else if key.code == keys::HELP_TOGGLE_ALL {
+                        self.help_show_all = !self.help_show_all;
+                        self.help_scroll = 0;
                     }
                 }
             }

@@ -428,6 +428,8 @@ impl App {
             self.help_scroll,
             search_query,
             search_input,
+            self.previous_view,
+            self.help_show_all,
         );
     }
 

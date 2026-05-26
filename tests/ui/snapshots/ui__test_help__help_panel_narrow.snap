@@ -2,7 +2,7 @@
 source: tests/ui/test_help.rs
 expression: terminal.backend()
 ---
-"┌────────────────── Tij - Help ──────────────────┐"
+"┌── Tij - Help [All Views]  (a: current view) ───┐"
 "│Key bindings:                                   │"
 "│                                                │"
 "│Global:                                         │"
