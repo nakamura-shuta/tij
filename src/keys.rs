@@ -244,8 +244,8 @@ pub const PARALLELIZE: KeyCode = KeyCode::Char('|');
 /// Arrange — interactively arrange the commit graph (Log View, jj 0.40+)
 pub const ARRANGE: KeyCode = KeyCode::Char('O');
 
-/// Jump to change in Log View (Blame View)
-pub const JUMP_TO_LOG: KeyCode = KeyCode::Char('J');
+// Note: Blame's "jump to Log" key is matched directly as Char('J') in
+// blame/input.rs (handles terminal SHIFT-modifier variance), so no constant here.
 
 /// Jump to first conflict file (Status View)
 pub const JUMP_CONFLICT: KeyCode = KeyCode::Char('f');
@@ -714,11 +714,6 @@ pub const HINT_TRACK: KeyHint = KeyHint {
     label: "Track",
     color: Color::Cyan,
 };
-pub const HINT_JUMP: KeyHint = KeyHint {
-    key: "'",
-    label: "Jump",
-    color: Color::Green,
-};
 pub const HINT_COMPARE: KeyHint = KeyHint {
     key: "=",
     label: "Compare",
@@ -831,12 +826,6 @@ pub const HINT_DIFF: KeyHint = KeyHint {
     key: "d",
     label: "Diff",
     color: Color::Magenta,
-};
-// Bookmark view hints
-pub const HINT_BOOKMARK_VIEW: KeyHint = KeyHint {
-    key: "M",
-    label: "Bookmarks",
-    color: Color::Cyan,
 };
 // Tag view hints
 pub const HINT_TAG_VIEW: KeyHint = KeyHint {
