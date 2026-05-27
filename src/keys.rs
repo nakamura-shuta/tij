@@ -681,7 +681,7 @@ pub const HINT_PALETTE: KeyHint = KeyHint {
 };
 pub const HINT_DEL_BKM: KeyHint = KeyHint {
     key: "D",
-    label: "Del Bkm",
+    label: "Delete",
     color: Color::Red,
 };
 pub const HINT_REBASE: KeyHint = KeyHint {
@@ -924,7 +924,7 @@ pub const HINT_DETAIL: KeyHint = KeyHint {
 // =============================================================================
 
 /// Bookmark kind for context-dependent Bookmark View hints
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum BookmarkKind {
     /// Local bookmark with change_id (jumpable)
     LocalJumpable,
@@ -1059,7 +1059,7 @@ fn resolve_hints(ctx: &HintContext) -> Vec<KeyHint> {
     if ctx.is_working_copy {
         h.push(HINT_RESOLVE_ENTER);
     }
-    h.extend([HINT_OURS, HINT_THEIRS, HINT_DIFF, HINT_BACK]);
+    h.extend([HINT_OURS, HINT_THEIRS, HINT_DIFF, HINT_REFRESH, HINT_BACK]);
     h
 }
 
@@ -1717,11 +1717,7 @@ pub fn keys_for_view(view: View) -> &'static [KeyBindEntry] {
 /// Operation history view status bar hints
 pub const OPERATION_VIEW_HINTS: &[KeyHint] = &[
     HINT_HELP,
-    KeyHint {
-        key: "j/k",
-        label: "Move",
-        color: Color::Cyan,
-    },
+    HINT_NAV,
     KeyHint {
         key: "Enter",
         label: "Restore",
@@ -1742,11 +1738,7 @@ pub const OPERATION_VIEW_HINTS: &[KeyHint] = &[
 /// Blame view status bar hints
 pub const BLAME_VIEW_HINTS: &[KeyHint] = &[
     HINT_HELP,
-    KeyHint {
-        key: "j/k",
-        label: "Move",
-        color: Color::Cyan,
-    },
+    HINT_NAV,
     KeyHint {
         key: "Enter",
         label: "Diff",
@@ -1778,6 +1770,7 @@ pub const EVOLOG_VIEW_HINTS: &[KeyHint] = &[
         label: "Diff",
         color: Color::Cyan,
     },
+    HINT_REFRESH,
     HINT_BACK,
 ];
 
@@ -1790,6 +1783,105 @@ mod tests {
     use super::*;
 
     // --- Log Normal: context-dependent hints ---
+
+    #[test]
+    fn undo_hint_only_in_log_bookmark_tag() {
+        let ctx = HintContext::default();
+        let has_undo = |v| {
+            current_hints(v, InputMode::Normal, &ctx)
+                .iter()
+                .any(|h| h.key == "u")
+        };
+        // undo works only in Log/Bookmark/Tag (app/input.rs global handler) — hints must match.
+        assert!(has_undo(View::Log), "Log has undo");
+        assert!(has_undo(View::Bookmark), "Bookmark has undo");
+        assert!(has_undo(View::Tag), "Tag has undo");
+        for v in [
+            View::Status,
+            View::Operation,
+            View::Resolve,
+            View::Workspace,
+            View::CommandHistory,
+        ] {
+            assert!(
+                !has_undo(v),
+                "{v:?} must NOT show undo (undo not active there)"
+            );
+        }
+    }
+
+    #[test]
+    fn delete_forget_terminology_matches_function() {
+        // tag delete = "Delete", workspace forget = "Forget" (jj `workspace forget`).
+        assert!(
+            TAG_KEYS.iter().any(|e| e.description.contains("Delete")),
+            "tag uses Delete"
+        );
+        assert!(
+            WORKSPACE_KEYS
+                .iter()
+                .any(|e| e.description.contains("Forget")),
+            "workspace uses Forget"
+        );
+    }
+
+    #[test]
+    fn bookmark_delete_status_hint_uses_delete_label() {
+        // G2: bookmark deletion is "Delete" (full delete), not an abbreviation.
+        // Both local kinds expose the `D` hint via the Bookmark View status bar.
+        for kind in [BookmarkKind::LocalJumpable, BookmarkKind::LocalNoChange] {
+            let ctx = HintContext {
+                selected_bookmark_kind: Some(kind),
+                ..HintContext::default()
+            };
+            let hints = current_hints(View::Bookmark, InputMode::Normal, &ctx);
+            let d = hints
+                .iter()
+                .find(|h| h.key == "D")
+                .unwrap_or_else(|| panic!("{kind:?} should expose D (delete) hint"));
+            assert_eq!(d.label, "Delete", "{kind:?} delete hint label");
+        }
+    }
+
+    #[test]
+    fn resolve_and_evolog_have_refresh_hint() {
+        let ctx = HintContext::default();
+        let resolve = current_hints(View::Resolve, InputMode::Normal, &ctx);
+        assert!(
+            resolve.iter().any(|h| h.key == "^L"),
+            "Resolve needs ^L refresh"
+        );
+        assert!(
+            EVOLOG_VIEW_HINTS.iter().any(|h| h.key == "^L"),
+            "Evolog needs ^L refresh"
+        );
+    }
+
+    #[test]
+    fn command_history_has_no_refresh_hint() {
+        // CommandHistory Ctrl+L is a no-op (in-memory), so it must NOT show refresh.
+        let ctx = HintContext::default();
+        let ch = current_hints(View::CommandHistory, InputMode::Normal, &ctx);
+        assert!(
+            !ch.iter().any(|h| h.key == "^L"),
+            "CommandHistory must not show refresh (no-op)"
+        );
+    }
+
+    #[test]
+    fn operation_and_blame_nav_label_is_navigate() {
+        // Operation/Blame use constant arrays (not current_hints), so check directly.
+        let op = OPERATION_VIEW_HINTS
+            .iter()
+            .find(|h| h.key == "j/k")
+            .expect("op has j/k");
+        assert_eq!(op.label, "Navigate", "Operation nav label");
+        let bl = BLAME_VIEW_HINTS
+            .iter()
+            .find(|h| h.key == "j/k")
+            .expect("blame has j/k");
+        assert_eq!(bl.label, "Navigate", "Blame nav label");
+    }
 
     #[test]
     fn all_status_bar_views_include_help_hint() {
