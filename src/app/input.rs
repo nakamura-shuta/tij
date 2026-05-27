@@ -13,6 +13,34 @@ use crate::ui::views::{
 };
 
 impl App {
+    /// Views where jj undo/redo is meaningful (mutating views). Read-only views
+    /// (Diff/Blame/Evolog/CommandHistory/Help) are excluded (Phase 48-D, G4).
+    pub(crate) fn view_allows_undo(view: View) -> bool {
+        matches!(
+            view,
+            View::Log
+                | View::Status
+                | View::Bookmark
+                | View::Tag
+                | View::Workspace
+                | View::Operation
+                | View::Resolve
+        )
+    }
+
+    /// True when the current view is in an input/rename/select special mode where
+    /// global single-key shortcuts (undo `u`, redo `^R`, refresh `^L`) must NOT
+    /// fire — keys belong to the active input/select widget instead.
+    pub(crate) fn in_special_input_mode(&self) -> bool {
+        match self.current_view {
+            View::Log => !matches!(self.log_view.input_mode, InputMode::Normal),
+            View::Status => self.status_view.input_mode != StatusInputMode::Normal,
+            View::Bookmark => self.bookmark_view.rename_state.is_some(),
+            View::Help => self.help_search_input,
+            _ => false,
+        }
+    }
+
     /// Handle key events
     pub fn on_key_event(&mut self, key: KeyEvent) {
         // Handle active dialog first (blocks other input)
@@ -46,21 +74,13 @@ impl App {
             return;
         }
 
-        // Chord resolve (Phase 46-B): if a `b` chord is pending, the next key
-        // resolves or cancels it — including Ctrl-modified keys (which cancel
-        // via resolve_chord). This MUST run before Ctrl+R/Ctrl+L below so those
-        // don't fire while a chord is pending (and leave pending_chord stuck).
-        if let Some(prefix) = self.pending_chord.take() {
-            self.resolve_chord(prefix, key);
-            return;
-        }
-
-        // Handle Ctrl+R for redo (only in Log view, normal mode)
-        // Only active in Normal mode to avoid conflicts with input modes
+        // Handle Ctrl+R for redo (all mutating views, normal/non-special mode).
+        // Excluded in read-only views and suppressed while any input/rename/select
+        // mode is active so the key reaches the active widget (Phase 48-D).
         if key.modifiers.contains(KeyModifiers::CONTROL)
             && matches!(key.code, KeyCode::Char('r') | KeyCode::Char('R'))
-            && self.current_view == View::Log
-            && matches!(self.log_view.input_mode, InputMode::Normal)
+            && Self::view_allows_undo(self.current_view)
+            && !self.in_special_input_mode()
         {
             self.notification = None; // Clear any existing notification
             self.execute_redo();
@@ -70,13 +90,7 @@ impl App {
         // Handle Ctrl+L for refresh (all views, normal mode)
         if keys::is_refresh_key(&key) {
             // Skip if in input mode or special mode (like RebaseSelect)
-            let in_special_mode = match self.current_view {
-                View::Log => !matches!(self.log_view.input_mode, InputMode::Normal),
-                View::Status => self.status_view.input_mode != StatusInputMode::Normal,
-                View::Help => self.help_search_input,
-                _ => false,
-            };
-            if !in_special_mode {
+            if !self.in_special_input_mode() {
                 self.execute_refresh();
                 return;
             }
@@ -106,21 +120,9 @@ impl App {
         }
 
         // Bookmark rename input: delegate all keys to the view so global keys
-        // (q/?/:/Tab) and chord/palette don't misfire while typing a new name.
+        // (q/?/:/Tab) and palette don't misfire while typing a new name.
         if self.current_view == View::Bookmark && self.bookmark_view.rename_state.is_some() {
             self.handle_view_key(key);
-            return;
-        }
-
-        // Chord start (Phase 46-B): begin a `b` chord in Log View Normal mode.
-        // Resolution happens earlier (right after Ctrl+C), so a pending chord is
-        // always resolved/cancelled before Ctrl+R/Ctrl+L can fire.
-        if self.current_view == View::Log
-            && matches!(self.log_view.input_mode, InputMode::Normal)
-            && key.code == keys::CHORD_BOOKMARK
-            && key.modifiers.is_empty()
-        {
-            self.pending_chord = Some(keys::CHORD_BOOKMARK);
             return;
         }
 
@@ -143,42 +145,25 @@ impl App {
         self.handle_view_key(key);
     }
 
-    /// Resolve a bookmark chord (prefix already consumed via `take()`).
-    /// Unknown or modified sub-keys cancel the chord silently.
-    fn resolve_chord(&mut self, prefix: KeyCode, key: KeyEvent) {
-        if prefix != keys::CHORD_BOOKMARK {
-            return; // only the bookmark chord exists in Phase 46-B
-        }
-        // P4: only plain sub-keys resolve. Ctrl-d / Alt-x etc. must NOT be
-        // treated as `b d` — they cancel the chord silently.
-        if !key.modifiers.is_empty() {
-            return;
-        }
-        match key.code {
-            keys::chord_bookmark::CREATE => self.log_view.start_bookmark_input(),
-            keys::chord_bookmark::DELETE => self.handle_log_action(LogAction::StartBookmarkDelete),
-            keys::chord_bookmark::TRACK => self.handle_log_action(LogAction::StartTrack),
-            keys::chord_bookmark::JUMP => self.handle_log_action(LogAction::StartBookmarkJump),
-            keys::chord_bookmark::ADVANCE => self.handle_log_action(LogAction::AdvanceBookmark),
-            keys::chord_bookmark::VIEW => self.handle_log_action(LogAction::OpenBookmarkView),
-            // Esc or any unknown sub-key: silent cancel (pending_chord already taken).
-            _ => {}
-        }
-    }
-
     /// Handle a key while the command palette is active (Phase 46-C).
     fn handle_palette_key(&mut self, key: KeyEvent) {
-        use crate::ui::components::{filter_commands, palette_commands};
+        use crate::ui::components::{PaletteDispatch, filter_commands, palette_commands};
         match key.code {
             KeyCode::Esc => self.close_palette(),
             KeyCode::Enter => {
                 // Resolve current selection from the filtered list, then dispatch
-                // by delegating its key to the Log handler (reuses all logic).
+                // (Phase 48-C): low-frequency commands by action-id, view-openers
+                // by their (still-bound) single key.
                 let filtered = filter_commands(palette_commands(), &self.palette_input);
-                let chosen = filtered.get(self.palette_selected).map(|c| c.key);
+                let chosen = filtered.get(self.palette_selected).map(|c| c.dispatch);
                 self.close_palette();
-                if let Some(code) = chosen {
-                    let action = self.log_view.handle_key(KeyEvent::from(code));
+                if let Some(dispatch) = chosen {
+                    let action = match dispatch {
+                        PaletteDispatch::Command(cmd) => self.log_view.command_action(cmd),
+                        PaletteDispatch::Key(code) => {
+                            self.log_view.handle_key(KeyEvent::from(code))
+                        }
+                    };
                     self.handle_log_action(action);
                 }
             }
@@ -256,7 +241,7 @@ impl App {
                 self.go_to_view(View::Status);
                 true
             }
-            keys::UNDO if matches!(self.current_view, View::Log | View::Bookmark | View::Tag) => {
+            keys::UNDO if Self::view_allows_undo(self.current_view) => {
                 self.notification = None; // Clear any existing notification
                 self.execute_undo();
                 true
@@ -839,6 +824,17 @@ impl App {
     fn handle_bookmark_action(&mut self, action: BookmarkAction) {
         match action {
             BookmarkAction::None => {}
+            // Open the create dialog with the captured target revision (default @).
+            BookmarkAction::StartCreate => {
+                use crate::ui::components::{Dialog, DialogCallback};
+                let target = self.create_target_revset();
+                let display = short_id(&target);
+                self.active_dialog = Some(Dialog::input(
+                    "Create Bookmark",
+                    format!("New bookmark on {}", display),
+                    DialogCallback::BookmarkCreate { revision: target },
+                ));
+            }
             BookmarkAction::Jump(change_id) => {
                 self.execute_bookmark_jump(&change_id);
                 self.go_to_view(View::Log);
@@ -868,7 +864,7 @@ impl App {
                     format!(
                         "Forget bookmark '{}'?\n\n\
                          This removes remote tracking.\n\
-                         Use 'D' for local delete only.\n\
+                         Use 'd' for local delete only.\n\
                          Undo with 'u' if needed.",
                         name
                     ),
@@ -894,10 +890,12 @@ impl App {
             }
             TagAction::StartCreate => {
                 use crate::ui::components::{Dialog, DialogCallback};
+                let target = self.create_target_revset();
+                let display = short_id(&target);
                 self.active_dialog = Some(Dialog::input(
                     "Create Tag",
-                    "Create tag on @ (working copy)",
-                    DialogCallback::TagCreate,
+                    format!("New tag on {}", display),
+                    DialogCallback::TagCreate { revision: target },
                 ));
             }
             TagAction::Delete(name) => {
@@ -1227,85 +1225,18 @@ mod tests {
     }
 
     // =========================================================================
-    // Bookmark chord (Phase 46-B)
+    // Bookmark view opener (Task 48-A)
     // =========================================================================
 
     #[test]
-    fn chord_b_sets_pending_in_log_normal() {
+    fn b_opens_bookmark_view_directly() {
         let mut app = App::new_for_test();
         app.current_view = View::Log;
-        press(&mut app, KeyCode::Char('b'));
-        assert_eq!(app.pending_chord, Some(KeyCode::Char('b')));
-    }
-
-    #[test]
-    fn chord_b_then_esc_cancels() {
-        let mut app = App::new_for_test();
-        app.current_view = View::Log;
-        press(&mut app, KeyCode::Char('b'));
-        press(&mut app, KeyCode::Esc);
-        assert_eq!(app.pending_chord, None);
-    }
-
-    #[test]
-    fn chord_b_then_unknown_key_cancels() {
-        let mut app = App::new_for_test();
-        app.current_view = View::Log;
-        press(&mut app, KeyCode::Char('b'));
-        press(&mut app, KeyCode::Char('z'));
-        assert_eq!(app.pending_chord, None);
-    }
-
-    #[test]
-    fn chord_b_not_a_prefix_outside_log() {
-        let mut app = App::new_for_test();
-        app.current_view = View::Status;
-        press(&mut app, KeyCode::Char('b'));
+        app.on_key_event(KeyEvent::from(KeyCode::Char('b')));
         assert_eq!(
-            app.pending_chord, None,
-            "b must not start a chord outside Log Normal mode"
-        );
-    }
-
-    #[test]
-    fn chord_pending_cleared_on_view_change() {
-        let mut app = App::new_for_test();
-        app.current_view = View::Log;
-        press(&mut app, KeyCode::Char('b'));
-        assert_eq!(app.pending_chord, Some(KeyCode::Char('b')));
-        app.go_to_view(View::Status);
-        assert_eq!(
-            app.pending_chord, None,
-            "view change must clear a pending chord"
-        );
-    }
-
-    #[test]
-    fn chord_b_then_ctrl_l_cancels_not_refresh() {
-        let mut app = App::new_for_test();
-        app.current_view = View::Log;
-        press(&mut app, KeyCode::Char('b'));
-        assert_eq!(app.pending_chord, Some(KeyCode::Char('b')));
-        // Ctrl+L must cancel the chord (modified key), NOT trigger refresh
-        // while leaving the chord pending.
-        app.on_key_event(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL));
-        assert_eq!(
-            app.pending_chord, None,
-            "Ctrl+L after b must cancel the chord, not leave it pending"
-        );
-    }
-
-    #[test]
-    fn chord_b_then_ctrl_r_cancels_not_redo() {
-        let mut app = App::new_for_test();
-        app.current_view = View::Log;
-        press(&mut app, KeyCode::Char('b'));
-        assert_eq!(app.pending_chord, Some(KeyCode::Char('b')));
-        // Ctrl+R must cancel the chord, not run redo with the chord still pending.
-        app.on_key_event(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL));
-        assert_eq!(
-            app.pending_chord, None,
-            "Ctrl+R after b must cancel the chord, not leave it pending"
+            app.current_view,
+            View::Bookmark,
+            "b opens Bookmark View (no chord)"
         );
     }
 
@@ -1399,6 +1330,260 @@ mod tests {
             app.current_view,
             View::CommandHistory,
             "Enter dispatched the command (via log_view.handle_key delegation)"
+        );
+    }
+
+    // =========================================================================
+    // Phase 48-B2: create_target capture and create dialogs
+    // =========================================================================
+
+    #[test]
+    fn opening_bookmark_view_from_log_captures_selected_change() {
+        use crate::model::{Change, ChangeId, CommitId};
+
+        let mut app = App::new_for_test();
+
+        // Pre-load a real change so selected_change() returns Some(...)
+        let test_change_id = "abc12345";
+        app.log_view.set_changes(vec![Change {
+            change_id: ChangeId::new(test_change_id.to_string()),
+            commit_id: CommitId::new("def67890".to_string()),
+            author: "user@example.com".to_string(),
+            timestamp: "2024-01-29".to_string(),
+            description: "Test commit".to_string(),
+            is_working_copy: true,
+            is_empty: false,
+            bookmarks: vec![],
+            graph_prefix: "@  ".to_string(),
+            is_graph_only: false,
+            has_conflict: false,
+            working_copy_names: vec![],
+        }]);
+
+        // Confirm the change is selected before navigation
+        let expected = app
+            .log_view
+            .selected_change()
+            .map(|c| c.change_id.to_string());
+        assert!(
+            expected.is_some(),
+            "pre-condition: log must have a selected change before navigating"
+        );
+
+        app.on_key_event(KeyEvent::from(KeyCode::Char('b'))); // Log -> Bookmark
+
+        assert_eq!(
+            app.create_target, expected,
+            "create_target = Log-selected change"
+        );
+        assert!(
+            app.create_target.is_some(),
+            "must capture a real change id, not None"
+        );
+        assert_eq!(
+            app.create_target.as_deref(),
+            Some(test_change_id),
+            "captured change id must match the loaded change"
+        );
+    }
+
+    #[test]
+    fn create_target_revset_defaults_to_at() {
+        let mut app = App::new_for_test();
+        app.create_target = None;
+        assert_eq!(app.create_target_revset(), "@");
+    }
+
+    #[test]
+    fn n_in_bookmark_view_opens_create_dialog_with_target() {
+        let mut app = App::new_for_test();
+        app.go_to_view(View::Bookmark); // capture happens here from real Log selection
+        // Press n -> create dialog opens
+        app.on_key_event(KeyEvent::from(KeyCode::Char('n')));
+        // Assert a create input dialog is active
+        let dialog = app.active_dialog.as_ref().expect("n opens a create dialog");
+        assert!(
+            matches!(dialog.kind, crate::ui::components::DialogKind::Input { .. }),
+            "Expected Input dialog, got: {:?}",
+            dialog.kind
+        );
+        // Assert dialog carries the BookmarkCreate callback with the captured target
+        let target = app.create_target_revset();
+        assert_eq!(
+            dialog.callback_id,
+            crate::ui::components::DialogCallback::BookmarkCreate {
+                revision: target.clone()
+            },
+            "Dialog callback should carry the captured target revision"
+        );
+        // Assert prompt text mentions the target revset
+        if let crate::ui::components::DialogKind::Input { message, .. } = &dialog.kind {
+            assert!(
+                message.contains(&target),
+                "Dialog prompt '{}' should mention target '{}'",
+                message,
+                target
+            );
+        }
+    }
+
+    // =========================================================================
+    // Phase 48-C: palette-only commands must be inert as single keys
+    // =========================================================================
+
+    #[test]
+    fn log_does_not_bind_palette_only_keys() {
+        use crate::model::{Change, ChangeId, CommitId};
+
+        let mut app = App::new_for_test();
+        // Load a real, non-empty change so that — if any of these keys were still
+        // bound — they would actually fire (enter a select mode, open a dialog,
+        // or change view). This makes the inert assertions meaningful.
+        app.log_view.set_changes(vec![Change {
+            change_id: ChangeId::new("abc12345".to_string()),
+            commit_id: CommitId::new("def67890".to_string()),
+            author: "user@example.com".to_string(),
+            timestamp: "2024-01-29".to_string(),
+            description: "Test commit".to_string(),
+            is_working_copy: false,
+            is_empty: false,
+            bookmarks: vec![],
+            graph_prefix: "○  ".to_string(),
+            is_graph_only: false,
+            has_conflict: false,
+            working_copy_names: vec![],
+        }]);
+
+        // The 11 low-frequency single keys removed in Phase 48-C.
+        for c in ['I', '=', 'Y', 'E', 'Z', 'i', '|', 'v', 'O', 'W', 'f'] {
+            let before = app.current_view;
+            press(&mut app, KeyCode::Char(c));
+            assert_eq!(
+                app.current_view, before,
+                "'{c}' must be inert as a single key (no view change)"
+            );
+            assert!(app.active_dialog.is_none(), "'{c}' must not open a dialog");
+            assert_eq!(
+                app.log_view.input_mode,
+                InputMode::Normal,
+                "'{c}' must not enter any select/input mode"
+            );
+        }
+    }
+
+    #[test]
+    fn palette_enter_dispatches_compare_command() {
+        use crate::model::{Change, ChangeId, CommitId};
+        use crate::ui::components::{filter_commands, palette_commands};
+
+        let mut app = App::new_for_test();
+        app.log_view.set_changes(vec![Change {
+            change_id: ChangeId::new("abc12345".to_string()),
+            commit_id: CommitId::new("def67890".to_string()),
+            author: "user@example.com".to_string(),
+            timestamp: "2024-01-29".to_string(),
+            description: "Test commit".to_string(),
+            is_working_copy: false,
+            is_empty: false,
+            bookmarks: vec![],
+            graph_prefix: "○  ".to_string(),
+            is_graph_only: false,
+            has_conflict: false,
+            working_copy_names: vec![],
+        }]);
+
+        // Open the palette and type "compare" to select that entry.
+        app.palette_active = true;
+        app.palette_input = "compare".to_string();
+        let filtered = filter_commands(palette_commands(), &app.palette_input);
+        assert_eq!(filtered.len(), 1, "exactly one 'compare' match expected");
+        app.palette_selected = 0;
+
+        // Enter dispatches the compare command via command_action.
+        app.on_key_event(KeyEvent::from(KeyCode::Enter));
+
+        assert!(!app.palette_active, "palette closes after Enter");
+        assert_eq!(
+            app.log_view.input_mode,
+            InputMode::CompareSelect,
+            "palette 'compare' must enter compare-select mode"
+        );
+    }
+
+    // =========================================================================
+    // Phase 48-D: undo/redo gating across views
+    // =========================================================================
+
+    #[test]
+    fn undo_redo_active_in_mutating_views_only() {
+        for v in [
+            View::Log,
+            View::Status,
+            View::Bookmark,
+            View::Tag,
+            View::Workspace,
+            View::Operation,
+            View::Resolve,
+        ] {
+            assert!(App::view_allows_undo(v), "{v:?} must allow undo/redo");
+        }
+        for v in [
+            View::Diff,
+            View::Blame,
+            View::Evolog,
+            View::CommandHistory,
+            View::Help,
+        ] {
+            assert!(!App::view_allows_undo(v), "{v:?} must NOT allow undo/redo");
+        }
+    }
+
+    #[test]
+    fn redo_ctrl_r_gated_by_view_and_special_mode() {
+        let mut app = App::new_for_test();
+
+        // Mutating view (Bookmark), normal mode: redo is allowed.
+        app.current_view = View::Bookmark;
+        assert!(App::view_allows_undo(app.current_view));
+        assert!(!app.in_special_input_mode(), "bookmark normal: not special");
+
+        // Bookmark rename mode suppresses undo/redo (^R must reach the input).
+        app.bookmark_view.rename_state =
+            Some(crate::ui::views::RenameState::new("feature-x".to_string()));
+        assert!(
+            app.in_special_input_mode(),
+            "bookmark rename must be a special mode"
+        );
+        app.bookmark_view.rename_state = None;
+
+        // Status input mode suppresses undo/redo.
+        app.current_view = View::Status;
+        app.status_view.input_mode = StatusInputMode::CommitInput;
+        assert!(
+            app.in_special_input_mode(),
+            "status commit input must be a special mode"
+        );
+        app.status_view.input_mode = StatusInputMode::Normal;
+        assert!(!app.in_special_input_mode());
+
+        // Read-only view (Diff): redo is not allowed regardless of mode.
+        app.current_view = View::Diff;
+        assert!(
+            !App::view_allows_undo(app.current_view),
+            "Diff must not allow redo"
+        );
+    }
+
+    #[test]
+    fn log_input_mode_suppresses_undo_redo() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Log;
+        assert!(!app.in_special_input_mode(), "log normal: not special");
+
+        app.log_view.input_mode = InputMode::SearchInput;
+        assert!(
+            app.in_special_input_mode(),
+            "log search input must suppress undo/redo"
         );
     }
 }

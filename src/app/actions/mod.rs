@@ -193,6 +193,7 @@ impl App {
                 let msg = Self::parse_undo_message(&r.stderr);
                 self.notify_success(msg);
                 self.mark_dirty_and_refresh_current(DirtyFlags::all());
+                self.refresh_current_view_after_op();
             }
             Err(e) => {
                 self.set_error(format!("Undo failed: {}", e));
@@ -467,6 +468,7 @@ impl App {
                     Ok(_) => {
                         self.notify_success("Redo complete");
                         self.mark_dirty_and_refresh_current(DirtyFlags::all());
+                        self.refresh_current_view_after_op();
                     }
                     Err(e) => {
                         self.set_error(format!("Redo failed: {}", e));

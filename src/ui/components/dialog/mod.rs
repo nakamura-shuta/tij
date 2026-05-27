@@ -95,8 +95,10 @@ pub enum DialogCallback {
         change_id: String,
         bookmarks: Vec<String>,
     },
+    /// Bookmark creation (Input dialog) — carries the target revision. (Phase 48-B2)
+    BookmarkCreate { revision: String },
     /// Tag creation (Input dialog)
-    TagCreate,
+    TagCreate { revision: String },
     /// Tag deletion (Confirm dialog)
     TagDelete { name: String },
     /// Workspace add (Input dialog for path)

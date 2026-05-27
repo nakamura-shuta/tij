@@ -210,7 +210,7 @@ mod tests {
     fn test_handle_key_add() {
         let mut view = WorkspaceView::new();
         view.set_workspaces(create_test_workspaces(), "/tmp/repo");
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('a')));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('n')));
         assert!(matches!(action, WorkspaceAction::StartAdd));
     }
 
@@ -219,7 +219,7 @@ mod tests {
         let mut view = WorkspaceView::new();
         view.set_workspaces(create_test_workspaces(), "/tmp/repo");
         view.select_next(); // select feature-a (not current)
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('D')));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('d')));
         assert!(matches!(action, WorkspaceAction::Forget(ref name) if name == "feature-a"));
     }
 
@@ -228,7 +228,7 @@ mod tests {
         let mut view = WorkspaceView::new();
         view.set_workspaces(create_test_workspaces(), "/tmp/repo");
         // selected is "default" which is current
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('D')));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('d')));
         assert!(matches!(action, WorkspaceAction::ForgetCurrentBlocked));
     }
 

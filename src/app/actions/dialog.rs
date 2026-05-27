@@ -45,11 +45,12 @@ impl App {
                 | DialogCallback::BookmarkForget
                 | DialogCallback::BookmarkMoveToWc { .. }
                 | DialogCallback::BookmarkMoveBackwards { .. }
-                | DialogCallback::BookmarkAdvance { .. } => {
+                | DialogCallback::BookmarkAdvance { .. }
+                | DialogCallback::BookmarkCreate { .. } => {
                     self.handle_bookmark_dialog(callback, values);
                 }
                 // Tag
-                DialogCallback::TagCreate | DialogCallback::TagDelete { .. } => {
+                DialogCallback::TagCreate { .. } | DialogCallback::TagDelete { .. } => {
                     self.handle_tag_dialog(callback, values);
                 }
                 // Workspace
@@ -106,13 +107,14 @@ impl App {
             | DialogCallback::BookmarkMoveToWc { .. }
             | DialogCallback::BookmarkMoveBackwards { .. }
             | DialogCallback::BookmarkAdvance { .. }
+            | DialogCallback::BookmarkCreate { .. }
             | DialogCallback::RestoreFile { .. }
             | DialogCallback::RestoreAll
             | DialogCallback::Revert { .. }
             | DialogCallback::SimplifyParents { .. }
             | DialogCallback::Parallelize { .. }
             | DialogCallback::Fix { .. }
-            | DialogCallback::TagCreate
+            | DialogCallback::TagCreate { .. }
             | DialogCallback::TagDelete { .. }
             | DialogCallback::BisectRun { .. }
             | DialogCallback::MetaeditSelect { .. }
@@ -220,6 +222,13 @@ impl App {
             }
             DialogCallback::BookmarkAdvance { names } => {
                 self.execute_bookmark_advance(&names);
+            }
+            DialogCallback::BookmarkCreate { revision } => {
+                if let Some(name) = values.first()
+                    && !name.is_empty()
+                {
+                    self.execute_bookmark_create(&revision, name);
+                }
             }
             _ => {}
         }

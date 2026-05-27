@@ -36,9 +36,9 @@ impl TagView {
                     TagAction::None
                 }
             }
-            KeyCode::Char('c') => TagAction::StartCreate,
-            k if k == keys::BOOKMARK_DELETE => {
-                // Reuse 'D' key for tag deletion
+            k if k == keys::OBJECT_NEW => TagAction::StartCreate,
+            k if k == keys::OBJECT_DELETE => {
+                // Use `d` key for tag deletion
                 if let Some(tag) = self.selected_tag() {
                     TagAction::Delete(tag.name.clone())
                 } else {

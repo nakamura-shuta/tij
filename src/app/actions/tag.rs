@@ -6,15 +6,10 @@ use crate::ui::components::DialogCallback;
 impl App {
     /// Open the tag view
     pub(crate) fn open_tag_view(&mut self) {
-        match self.jj.tag_list() {
-            Ok(tags) => {
-                self.tag_view.set_tags(tags);
-                self.go_to_view(View::Tag);
-            }
-            Err(e) => {
-                self.set_error(format!("Failed to list tags: {}", e));
-            }
-        }
+        // Always navigate (even on jj failure) so errors are visible from inside
+        // the tag view rather than trapping the user in Log.
+        self.refresh_tag_view();
+        self.go_to_view(View::Tag);
     }
 
     /// Refresh the tag view data
@@ -32,11 +27,11 @@ impl App {
     /// Handle confirmed Tag dialog results
     pub(crate) fn handle_tag_dialog(&mut self, callback: DialogCallback, values: Vec<String>) {
         match callback {
-            DialogCallback::TagCreate => {
+            DialogCallback::TagCreate { revision } => {
                 if let Some(name) = values.first()
                     && !name.is_empty()
                 {
-                    self.execute_tag_create(name);
+                    self.execute_tag_create(name, &revision);
                 }
             }
             DialogCallback::TagDelete { name } => {
@@ -46,9 +41,9 @@ impl App {
         }
     }
 
-    /// Execute tag creation on @ (working copy)
-    fn execute_tag_create(&mut self, name: &str) {
-        match self.run_and_record("Tag create", &["tag", "set", name, "-r", "@"]) {
+    /// Execute tag creation on the given revision
+    fn execute_tag_create(&mut self, name: &str, revision: &str) {
+        match self.run_and_record("Tag create", &["tag", "set", name, "-r", revision]) {
             Ok(_) => {
                 self.notify_success(format!("Tag '{}' created", name));
                 self.refresh_tag_view();

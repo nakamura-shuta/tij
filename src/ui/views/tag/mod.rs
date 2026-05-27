@@ -204,7 +204,7 @@ mod tests {
     fn test_handle_key_create() {
         let mut view = TagView::new();
         view.set_tags(create_test_tags());
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('c')));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('n')));
         assert!(matches!(action, TagAction::StartCreate));
     }
 
@@ -212,7 +212,7 @@ mod tests {
     fn test_handle_key_delete() {
         let mut view = TagView::new();
         view.set_tags(create_test_tags());
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('D')));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('d')));
         assert!(matches!(action, TagAction::Delete(name) if name == "v0.4.10"));
     }
 
@@ -220,7 +220,7 @@ mod tests {
     fn test_handle_key_delete_empty() {
         let mut view = TagView::new();
         view.set_tags(vec![]);
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('D')));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('d')));
         assert!(matches!(action, TagAction::None));
     }
 

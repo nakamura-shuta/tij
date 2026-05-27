@@ -2,7 +2,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent};
 
-use super::{InputMode, LogAction, LogView, RebaseMode, RebaseSource};
+use super::{InputMode, LogAction, LogCommand, LogView, RebaseMode, RebaseSource};
 use crate::jj::constants;
 use crate::keys;
 use crate::model::{Change, ChangeId, CommitId};
@@ -70,6 +70,81 @@ fn submit(view: &mut LogView) -> LogAction {
 
 fn escape(view: &mut LogView) -> LogAction {
     press_key(view, keys::ESC)
+}
+
+// ─── Phase 48-C: palette action-id dispatch + single-key removal ───
+
+#[test]
+fn palette_command_compare_enters_compare_mode() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    let action = v.command_action(LogCommand::Compare);
+    assert!(
+        matches!(action, LogAction::StartCompare(_)),
+        "compare command enters compare mode, got {action:?}"
+    );
+    assert_eq!(v.input_mode, InputMode::CompareSelect);
+}
+
+#[test]
+fn palette_command_interdiff_enters_interdiff_mode() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    let action = v.command_action(LogCommand::Interdiff);
+    assert!(
+        matches!(action, LogAction::StartInterdiff(_)),
+        "interdiff command enters interdiff mode, got {action:?}"
+    );
+    assert_eq!(v.input_mode, InputMode::InterdiffSelect);
+}
+
+#[test]
+fn palette_command_duplicate_returns_duplicate() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    let action = v.command_action(LogCommand::Duplicate);
+    assert!(
+        matches!(action, LogAction::Duplicate(_)),
+        "duplicate command, got {action:?}"
+    );
+}
+
+#[test]
+fn palette_command_arrange_returns_arrange() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    assert_eq!(v.command_action(LogCommand::Arrange), LogAction::Arrange);
+}
+
+#[test]
+fn removed_single_keys_do_not_fire() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    for code in [
+        keys::COMPARE,
+        keys::INTERDIFF,
+        keys::DUPLICATE,
+        keys::DIFFEDIT,
+        keys::REVERT,
+        keys::SIMPLIFY_PARENTS,
+        keys::PARALLELIZE,
+        keys::METAEDIT,
+        keys::ARRANGE,
+        keys::BISECT,
+        keys::FIX,
+    ] {
+        assert_eq!(
+            v.handle_key(KeyEvent::from(code)),
+            LogAction::None,
+            "{code:?} must not fire as a single key after Phase 48-C"
+        );
+        // Single key must not have entered a select mode either.
+        assert_eq!(
+            v.input_mode,
+            InputMode::Normal,
+            "{code:?} must not change input mode"
+        );
+    }
 }
 
 #[test]
@@ -658,7 +733,7 @@ fn test_handle_key_bookmark_create() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    // start_bookmark_input begins create (the `b c` chord calls this at App level)
+    // start_bookmark_input begins bookmark-name entry
     view.start_bookmark_input();
     assert_eq!(view.input_mode, InputMode::BookmarkInput);
     assert_eq!(view.editing_revision, Some("def67890".to_string()));
@@ -731,9 +806,9 @@ fn test_bookmark_input_cancel() {
 }
 
 // Note: bookmark delete/track/jump are no longer single-key actions in Log View.
-// They are dispatched via the `b` chord at the App level (Phase 46-B), so the
-// former LogView single-key tests were removed; chord behavior is covered by
-// App-level chord tests in src/app/input.rs.
+// They are Bookmark View operations; `b` opens the Bookmark View directly (Task 48-A),
+// so the former LogView single-key tests were removed. Bookmark View behavior is
+// covered by tests in src/app/input.rs and src/ui/views/bookmark/.
 
 // =============================================================================
 // Rebase tests
@@ -1319,8 +1394,8 @@ fn test_new_from_no_selection() {
     assert!(matches!(result, LogAction::None));
 }
 
-// Note: track (`b t`) and jump (`b j`) are now `b` chord actions dispatched at
-// the App level (Phase 46-B); the former single-key LogView tests were removed.
+// Note: track and jump are Bookmark View actions; `b` opens that view directly.
+// The former single-key LogView tests were removed.
 
 #[test]
 fn test_select_change_by_id_found() {
@@ -1341,7 +1416,7 @@ fn test_select_change_by_id_found() {
 fn test_compare_same_revision_returns_notification() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
-    press_key(&mut view, keys::COMPARE); // Enter CompareSelect mode
+    view.command_action(LogCommand::Compare); // Enter CompareSelect mode (palette)
     // Don't move — try to compare with self
 
     let action = press_key(&mut view, KeyCode::Enter);
@@ -1674,11 +1749,11 @@ fn test_reverse_falls_back_to_working_copy() {
 // =============================================================================
 
 #[test]
-fn test_diffedit_key_returns_action() {
+fn test_diffedit_command_returns_action() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    let action = press_key(&mut view, keys::DIFFEDIT);
+    let action = view.command_action(LogCommand::DiffEdit);
     assert_eq!(action, LogAction::DiffEdit("def67890".to_string()));
 }
 
@@ -1686,7 +1761,7 @@ fn test_diffedit_key_returns_action() {
 fn test_diffedit_no_selection() {
     let mut view = LogView::new();
     // Empty changes
-    let action = press_key(&mut view, keys::DIFFEDIT);
+    let action = view.command_action(LogCommand::DiffEdit);
     assert_eq!(action, LogAction::None);
 }
 
@@ -1695,12 +1770,12 @@ fn test_diffedit_does_not_conflict_with_edit() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    // 'e' (lowercase) = Edit
+    // 'e' (lowercase) = Edit (still a single key)
     let action = press_key(&mut view, keys::EDIT);
     assert_eq!(action, LogAction::Edit("def67890".to_string()));
 
-    // 'E' (uppercase) = DiffEdit — different action
-    let action = press_key(&mut view, keys::DIFFEDIT);
+    // DiffEdit is now palette-only (Phase 48-C) — different action
+    let action = view.command_action(LogCommand::DiffEdit);
     assert_eq!(action, LogAction::DiffEdit("def67890".to_string()));
 }
 
@@ -1740,7 +1815,7 @@ fn test_evolog_does_not_conflict_with_edit() {
 }
 
 #[test]
-fn test_diffedit_ignored_in_squash_select_mode() {
+fn test_diffedit_key_inert_in_squash_select_mode() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
@@ -1769,11 +1844,11 @@ fn test_evolog_ignored_in_rebase_select_mode() {
 // =============================================================================
 
 #[test]
-fn test_revert_key_returns_action() {
+fn test_revert_command_returns_action() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    let action = press_key(&mut view, keys::REVERT);
+    let action = view.command_action(LogCommand::Revert);
     assert_eq!(action, LogAction::Revert("def67890".to_string()));
 }
 
@@ -1786,7 +1861,7 @@ fn test_revert_empty_commit_returns_none() {
     view.move_to_bottom();
     assert!(view.selected_change().unwrap().is_empty);
 
-    let action = press_key(&mut view, keys::REVERT);
+    let action = view.command_action(LogCommand::Revert);
     assert_eq!(action, LogAction::None);
 }
 
@@ -1794,12 +1869,12 @@ fn test_revert_empty_commit_returns_none() {
 fn test_revert_no_selection() {
     let mut view = LogView::new();
     // Empty changes
-    let action = press_key(&mut view, keys::REVERT);
+    let action = view.command_action(LogCommand::Revert);
     assert_eq!(action, LogAction::None);
 }
 
 #[test]
-fn test_revert_ignored_in_squash_select_mode() {
+fn test_revert_key_inert_in_squash_select_mode() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
@@ -1811,7 +1886,7 @@ fn test_revert_ignored_in_squash_select_mode() {
 }
 
 #[test]
-fn test_revert_ignored_in_rebase_select_mode() {
+fn test_revert_key_inert_in_rebase_select_mode() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
@@ -2092,11 +2167,11 @@ fn test_simplify_parents_and_skip_emptied_both_on() {
 // =============================================================================
 
 #[test]
-fn test_simplify_parents_key_returns_action() {
+fn test_simplify_parents_command_returns_action() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    let action = press_key(&mut view, keys::SIMPLIFY_PARENTS);
+    let action = view.command_action(LogCommand::SimplifyParents);
     assert_eq!(action, LogAction::SimplifyParents("def67890".to_string()));
 }
 
@@ -2104,32 +2179,7 @@ fn test_simplify_parents_key_returns_action() {
 fn test_simplify_parents_no_selection() {
     let mut view = LogView::new();
     // Empty changes
-    let action = press_key(&mut view, keys::SIMPLIFY_PARENTS);
-    assert_eq!(action, LogAction::None);
-}
-
-#[test]
-fn test_simplify_parents_ignored_in_squash_select_mode() {
-    let mut view = LogView::new();
-    view.set_changes(create_test_changes());
-
-    press_key(&mut view, keys::SQUASH);
-    assert_eq!(view.input_mode, InputMode::SquashSelect);
-
-    let action = press_key(&mut view, keys::SIMPLIFY_PARENTS);
-    assert_eq!(action, LogAction::None);
-}
-
-#[test]
-fn test_simplify_parents_ignored_in_rebase_select_mode() {
-    let mut view = LogView::new();
-    view.set_changes(create_test_changes());
-
-    press_key(&mut view, keys::REBASE);
-    press_key(&mut view, KeyCode::Char('r'));
-    assert_eq!(view.input_mode, InputMode::RebaseSelect);
-
-    let action = press_key(&mut view, keys::SIMPLIFY_PARENTS);
+    let action = view.command_action(LogCommand::SimplifyParents);
     assert_eq!(action, LogAction::None);
 }
 
@@ -2138,11 +2188,11 @@ fn test_simplify_parents_ignored_in_rebase_select_mode() {
 // =============================================================================
 
 #[test]
-fn test_parallelize_key_enters_select_mode() {
+fn test_parallelize_command_enters_select_mode() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    let action = press_key(&mut view, keys::PARALLELIZE);
+    let action = view.command_action(LogCommand::Parallelize);
     assert_eq!(action, LogAction::StartParallelize("abc12345".to_string()));
     assert_eq!(view.input_mode, InputMode::ParallelizeSelect);
     assert_eq!(
@@ -2156,8 +2206,8 @@ fn test_parallelize_enter_returns_action() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    // Enter ParallelizeSelect mode
-    press_key(&mut view, keys::PARALLELIZE);
+    // Enter ParallelizeSelect mode (palette command)
+    view.command_action(LogCommand::Parallelize);
     // Move to second change
     press_key(&mut view, KeyCode::Char('j'));
 
@@ -2177,7 +2227,7 @@ fn test_parallelize_same_revision_returns_notification() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    press_key(&mut view, keys::PARALLELIZE);
+    view.command_action(LogCommand::Parallelize);
     // Don't move — try to parallelize with self
 
     let action = press_key(&mut view, KeyCode::Enter);
@@ -2194,7 +2244,7 @@ fn test_parallelize_esc_cancels() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    press_key(&mut view, keys::PARALLELIZE);
+    view.command_action(LogCommand::Parallelize);
     assert_eq!(view.input_mode, InputMode::ParallelizeSelect);
 
     escape(&mut view);
@@ -2210,8 +2260,8 @@ fn test_parallelize_reverse_selection() {
 
     // Move to second change first (older)
     press_key(&mut view, KeyCode::Char('j'));
-    // Enter ParallelizeSelect mode from "xyz98765"
-    press_key(&mut view, keys::PARALLELIZE);
+    // Enter ParallelizeSelect mode from "xyz98765" (palette command)
+    view.command_action(LogCommand::Parallelize);
     assert_eq!(
         view.parallelize_from,
         Some(("xyz98765".to_string(), "uvw43210".to_string()))
@@ -2449,11 +2499,11 @@ fn test_rebase_revset_backspace() {
 // =============================================================================
 
 #[test]
-fn test_fix_key_dispatches_action() {
+fn test_fix_command_dispatches_action() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    let action = press_key(&mut view, keys::FIX);
+    let action = view.command_action(LogCommand::Fix);
     assert_eq!(
         action,
         LogAction::Fix {
@@ -2467,20 +2517,7 @@ fn test_fix_key_dispatches_action() {
 fn test_fix_key_no_selection() {
     let mut view = LogView::new();
     // Empty changes
-    let action = press_key(&mut view, keys::FIX);
-    assert_eq!(action, LogAction::None);
-}
-
-#[test]
-fn test_fix_key_ignored_in_rebase_select_mode() {
-    let mut view = LogView::new();
-    view.set_changes(create_test_changes());
-
-    press_key(&mut view, keys::REBASE);
-    press_key(&mut view, KeyCode::Char('r'));
-    assert_eq!(view.input_mode, InputMode::RebaseSelect);
-
-    let action = press_key(&mut view, keys::FIX);
+    let action = view.command_action(LogCommand::Fix);
     assert_eq!(action, LogAction::None);
 }
 
@@ -2489,11 +2526,11 @@ fn test_fix_key_ignored_in_rebase_select_mode() {
 // =============================================================================
 
 #[test]
-fn test_metaedit_key_dispatches_action() {
+fn test_metaedit_command_dispatches_action() {
     let mut view = LogView::new();
     view.set_changes(create_test_changes());
 
-    let action = press_key(&mut view, keys::METAEDIT);
+    let action = view.command_action(LogCommand::Metaedit);
     assert_eq!(
         action,
         LogAction::Metaedit {
@@ -2506,19 +2543,6 @@ fn test_metaedit_key_dispatches_action() {
 #[test]
 fn test_metaedit_key_no_selection() {
     let mut view = LogView::new();
-    let action = press_key(&mut view, keys::METAEDIT);
-    assert_eq!(action, LogAction::None);
-}
-
-#[test]
-fn test_metaedit_key_ignored_in_rebase_select_mode() {
-    let mut view = LogView::new();
-    view.set_changes(create_test_changes());
-
-    press_key(&mut view, keys::REBASE);
-    press_key(&mut view, KeyCode::Char('r'));
-    assert_eq!(view.input_mode, InputMode::RebaseSelect);
-
-    let action = press_key(&mut view, keys::METAEDIT);
+    let action = view.command_action(LogCommand::Metaedit);
     assert_eq!(action, LogAction::None);
 }

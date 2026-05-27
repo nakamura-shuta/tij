@@ -102,8 +102,10 @@ fn test_duplicate_output_parsing_matches_app() {
 
 /// Test that duplicating under a narrow revset shows "not in current revset" notification.
 ///
-/// Exercises the full App::duplicate() path via on_key_event(Y), including
-/// the select_change_by_prefix() == false branch at src/app/actions.rs.
+/// Exercises the full App::duplicate() path via the command palette (Phase 48-C:
+/// Duplicate no longer has a single-key binding — it is reached by `:` then
+/// "duplicate" + Enter), including the select_change_by_prefix() == false branch
+/// at src/app/actions.rs.
 #[test]
 fn test_duplicate_not_in_revset_notification() {
     skip_if_no_jj!();
@@ -125,9 +127,14 @@ fn test_duplicate_not_in_revset_notification() {
         "should have at least 1 change"
     );
 
-    // Simulate pressing Y (Duplicate)
+    // Trigger Duplicate via the command palette: ':' opens it, type "duplicate",
+    // Enter dispatches LogCommand::Duplicate.
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    app.on_key_event(KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::NONE));
+    app.on_key_event(KeyEvent::new(KeyCode::Char(':'), KeyModifiers::NONE));
+    for c in "duplicate".chars() {
+        app.on_key_event(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+    }
+    app.on_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     // Notification should indicate the duplicate is outside the current revset
     let notif = app

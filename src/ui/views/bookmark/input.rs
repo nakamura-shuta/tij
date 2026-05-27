@@ -91,7 +91,7 @@ impl BookmarkView {
                     BookmarkAction::None
                 }
             }
-            k if k == keys::BOOKMARK_DELETE => {
+            k if k == keys::OBJECT_DELETE => {
                 if let Some(info) = self.selected_bookmark() {
                     if info.bookmark.remote.is_none() {
                         BookmarkAction::Delete(info.bookmark.name.clone())
@@ -102,7 +102,8 @@ impl BookmarkView {
                     BookmarkAction::None
                 }
             }
-            k if k == keys::BOOKMARK_RENAME => {
+            k if k == keys::OBJECT_NEW => BookmarkAction::StartCreate,
+            k if k == keys::OBJECT_RENAME => {
                 if self.rename_state.is_some() {
                     BookmarkAction::None
                 } else if let Some(info) = self.selected_bookmark() {

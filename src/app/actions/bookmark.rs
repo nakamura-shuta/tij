@@ -428,17 +428,13 @@ impl App {
         }
     }
 
-    /// Open the Bookmark View (only navigates if refresh succeeds)
+    /// Open the Bookmark View. Always navigates (even if jj refresh fails) so
+    /// transient jj errors are recoverable and visible from inside the view
+    /// rather than trapping the user in Log. Forces a refresh on every explicit
+    /// open by marking dirty; go_to_view's match arm runs refresh exactly once.
     pub(crate) fn open_bookmark_view(&mut self) {
-        match self.jj.bookmark_list_with_info() {
-            Ok(bookmarks) => {
-                self.bookmark_view.set_bookmarks(bookmarks);
-                self.go_to_view(View::Bookmark);
-            }
-            Err(e) => {
-                self.set_error(format!("Failed to list bookmarks: {}", e));
-            }
-        }
+        self.dirty.bookmarks = true;
+        self.go_to_view(View::Bookmark);
     }
 
     /// Refresh the bookmark view data

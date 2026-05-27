@@ -46,15 +46,15 @@ Press `?` for help, `q` to quit.
 
 | Area | Features |
 |------|----------|
-| Views | Log (with split-pane preview) / Diff / Status / Help (with `/` search + synonym expansion) / Operation History / Blame (with Log jump) / Bookmark / Tag / Workspace (`w`, list/add/forget/rename with `<name>@` markers in Log) / Evolog (evolution history) / Command History (`H`, shows executed jj commands with OK/NG status) |
-| History Editing | Describe (`d` quick edit / `Ctrl+E` external editor) / Edit / New / New from selected / Commit / Squash / Abandon / Split / Diffedit / Rebase (revision/source/branch/insert-after/insert-before, with `--skip-emptied` toggle and revset input for multi-revision rebase) / Absorb / Duplicate / Revert / Simplify Parents / Parallelize / Fix / Arrange (`O`, interactive commit graph rearrangement) / Metaedit (`v`, edit author/change-id/timestamp) |
+| Views | Log (with split-pane preview) / Diff / Status (`s`) / Help / Operation History (`o`) / Blame (with Log jump) / Bookmark (`b`) / Tag (`t`) / Workspace (`w`, `Enter` jump / `n` add / `d` forget / `r` rename, `<name>@` markers in Log) / Evolog (`L`, evolution history) / Command History (`H`, shows executed jj commands with OK/NG status) |
+| History Editing | Describe (`d` quick edit / `Ctrl+E` external editor) / Edit (`e`) / New change (`c`) / New from selected (`C`) / Squash (`S`) / Abandon (`A`) / Split (`x`) / Rebase (`R`: revision/source/branch/insert-after/insert-before, with `--skip-emptied` toggle and revset input for multi-revision rebase) / Absorb (`B`) / Resolve conflicts (`X`). Low-frequency ops via command palette (`:`): interdiff / compare / duplicate / revert / simplify-parents / parallelize / metaedit / arrange / bisect / fix |
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
-| Recovery | Undo (shows undone operation detail) / Redo / Operation Restore / Restore file / Restore all |
-| Bookmarks | Log View `b` chord (`b c` create / `b d` delete / `b t` track / `b j` jump / `b a` advance / `b v` bookmark view) / Bookmark View: Move to @ (with backward detection) / Rename / Forget / Untrack / multi-select delete |
-| Tags | Create on @ / Delete / Jump (with revset expansion) / Tag View (`t`) |
+| Recovery | Undo `u` (shows undone operation detail) / Redo `Ctrl+R` — available in all mutating views (Log, Status, Bookmark, Tag, Workspace, Operation, Resolve) / Operation Restore / Restore file / Restore all |
+| Bookmarks | `b` opens Bookmark View; in-view ops: `Enter` jump / `n` create / `d` delete / `r` rename / `t` track / `T` untrack / `f` forget / `m` move to @ (with backward detection). Create target defaults to Log selection (else `@`). |
+| Tags | Tag View (`t`): `Enter` jump / `n` create / `d` delete. Jump supports revset expansion. |
 | Git Integration | Fetch (multi-remote selection, branch-specific fetch, tracked-only fetch) / Push (with dry-run preview, force push warnings, protected bookmark detection, multi-remote selection, push-by-change, push-by-revision, bulk options: --all/--tracked/--deleted, auto-retry for private commits and empty descriptions) |
 | Navigation | Next/Prev (`]`/`[` to move @ through history) / Reversed log order (`V`) |
-| Diff | Compare two revisions (`=`, `jj diff --from --to`) / Interdiff (`I`, `jj interdiff --from --to`: compare patches between revisions) / Bisect (`W`, `jj bisect run`: binary search for bad revision with command or interactive shell) / Display mode cycle (`m`: color-words → stat → git) / Copy to clipboard (`y` full / `Y` diff-only) / Export to `.patch` file (`w`, git unified format) |
+| Diff | Display mode cycle (`m`: color-words → stat → git) / Copy to clipboard (`y` full / `Y` diff-only) / Export to `.patch` file (`w`, git unified format). Compare, interdiff, and bisect are reachable via command palette (`:`) in Log View. |
 | Usability | Command palette (`:`, fuzzy-search low-frequency commands) / Current-view help (`?` shows only the current view's keys, `a` toggles all views) / Revset filtering (with count + truncation indicator) / Text search / Adaptive status bar / Dynamic context-aware hints / `--limit 200` for all queries / Startup jj version check (>= 0.41) |
 
 ## Revset Examples

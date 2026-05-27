@@ -7,18 +7,10 @@ use crate::ui::views::WorkspaceAction;
 impl App {
     /// Open the workspace view
     pub(crate) fn open_workspace_view(&mut self) {
-        let current_root = self.jj.workspace_root().unwrap_or_else(|_| String::new());
-
-        match self.jj.workspace_list() {
-            Ok(workspaces) => {
-                self.workspace_view
-                    .set_workspaces(workspaces, &current_root);
-                self.go_to_view(View::Workspace);
-            }
-            Err(e) => {
-                self.set_error(format!("Failed to list workspaces: {}", e));
-            }
-        }
+        // Always navigate (even on jj failure) so errors are visible from inside
+        // the workspace view rather than trapping the user in Log.
+        self.refresh_workspace_view();
+        self.go_to_view(View::Workspace);
     }
 
     /// Refresh the workspace view data

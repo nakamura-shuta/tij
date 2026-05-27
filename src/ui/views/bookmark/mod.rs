@@ -11,6 +11,8 @@ use crate::ui::navigation;
 pub enum BookmarkAction {
     /// No action needed
     None,
+    /// Start bookmark creation (open name-input dialog)
+    StartCreate,
     /// Jump to bookmark's change in Log View (change_id)
     Jump(String),
     /// Track selected remote bookmark (full_name)
@@ -424,7 +426,7 @@ mod tests {
         let mut view = BookmarkView::new();
         view.set_bookmarks(create_test_bookmarks());
         view.select_last();
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('T')));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('t')));
         assert!(matches!(action, BookmarkAction::Track(n) if n == "dependabot/cargo@origin"));
     }
 
@@ -432,7 +434,7 @@ mod tests {
     fn test_handle_key_track_on_local_noop() {
         let mut view = BookmarkView::new();
         view.set_bookmarks(create_test_bookmarks());
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('T')));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('t')));
         assert!(matches!(action, BookmarkAction::None));
     }
 
@@ -442,7 +444,7 @@ mod tests {
         view.set_bookmarks(create_test_bookmarks());
         view.select_next();
         view.select_next(); // tracked remote
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('U')));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('T')));
         assert!(matches!(action, BookmarkAction::Untrack(n) if n == "feature-x@origin"));
     }
 
@@ -450,7 +452,7 @@ mod tests {
     fn test_handle_key_untrack_on_local_noop() {
         let mut view = BookmarkView::new();
         view.set_bookmarks(create_test_bookmarks());
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('U')));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('T')));
         assert!(matches!(action, BookmarkAction::None));
     }
 
@@ -459,7 +461,7 @@ mod tests {
         let mut view = BookmarkView::new();
         view.set_bookmarks(create_test_bookmarks());
         view.select_last();
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('U')));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('T')));
         assert!(matches!(action, BookmarkAction::None));
     }
 
@@ -467,7 +469,7 @@ mod tests {
     fn test_handle_key_delete() {
         let mut view = BookmarkView::new();
         view.set_bookmarks(create_test_bookmarks());
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('D')));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('d')));
         assert!(matches!(action, BookmarkAction::Delete(n) if n == "feature-x"));
     }
 
@@ -477,7 +479,7 @@ mod tests {
         view.set_bookmarks(create_test_bookmarks());
         view.select_next();
         view.select_next();
-        let action = view.handle_key(KeyEvent::from(KeyCode::Char('D')));
+        let action = view.handle_key(KeyEvent::from(KeyCode::Char('d')));
         assert!(matches!(action, BookmarkAction::None));
     }
 
@@ -676,5 +678,37 @@ mod tests {
         view.select_last(); // untracked remote
         let action = view.handle_key(KeyEvent::from(KeyCode::Char('m')));
         assert!(matches!(action, BookmarkAction::MoveUnavailable));
+    }
+
+    #[test]
+    fn bookmark_keys_normalized() {
+        use crate::keys;
+        // `n` = create: works regardless of selection
+        let mut v = BookmarkView::new();
+        v.set_bookmarks(create_test_bookmarks());
+        assert!(
+            matches!(
+                v.handle_key(KeyEvent::from(keys::OBJECT_NEW)),
+                BookmarkAction::StartCreate
+            ),
+            "n should trigger StartCreate"
+        );
+        // `d` = delete: first selection is a local bookmark (feature-x)
+        assert!(
+            matches!(
+                v.handle_key(KeyEvent::from(keys::OBJECT_DELETE)),
+                BookmarkAction::Delete(_)
+            ),
+            "d should trigger Delete on a local bookmark"
+        );
+        // `t` = track: last item is the untracked-remote bookmark
+        v.select_last();
+        assert!(
+            matches!(
+                v.handle_key(KeyEvent::from(keys::TRACK)),
+                BookmarkAction::Track(_)
+            ),
+            "t should trigger Track on an untracked-remote bookmark"
+        );
     }
 }

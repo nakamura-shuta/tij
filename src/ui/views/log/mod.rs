@@ -200,6 +200,23 @@ pub enum LogAction {
     },
 }
 
+/// Identifiers for low-frequency Log commands reachable only via the palette
+/// (Phase 48-C). Decouples palette dispatch from single-key bindings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogCommand {
+    Interdiff,
+    Compare,
+    Duplicate,
+    DiffEdit,
+    Revert,
+    SimplifyParents,
+    Parallelize,
+    Metaedit,
+    Arrange,
+    Bisect,
+    Fix,
+}
+
 /// Log View state
 #[derive(Debug, Default)]
 pub struct LogView {

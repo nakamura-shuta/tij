@@ -32,9 +32,9 @@ impl WorkspaceView {
                     WorkspaceAction::None
                 }
             }
-            KeyCode::Char('a') => WorkspaceAction::StartAdd,
-            k if k == keys::BOOKMARK_DELETE => {
-                // D key: forget workspace (blocked for current)
+            k if k == keys::OBJECT_NEW => WorkspaceAction::StartAdd,
+            k if k == keys::OBJECT_DELETE => {
+                // `d` key: forget workspace (blocked for current)
                 if let Some(ws) = self.selected_workspace() {
                     if self.is_current(ws) {
                         WorkspaceAction::ForgetCurrentBlocked
@@ -45,7 +45,7 @@ impl WorkspaceView {
                     WorkspaceAction::None
                 }
             }
-            KeyCode::Char('r') => {
+            k if k == keys::OBJECT_RENAME => {
                 // Rename: only allowed for current workspace
                 if let Some(ws) = self.selected_workspace() {
                     if self.is_current(ws) {

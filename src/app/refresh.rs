@@ -58,6 +58,34 @@ impl App {
         }
     }
 
+    /// Re-load the current view's data after a repo-mutating op (undo/redo).
+    ///
+    /// `mark_dirty_and_refresh_current(DirtyFlags::all())` already re-loads the
+    /// dirty-flag-backed views (Log/Status/Operation/Bookmark). Tag/Workspace/
+    /// Resolve have no dirty flag, so undo/redo — which are repo-wide — must
+    /// reload them explicitly to show the post-op state without leaving the view
+    /// (Phase 48-D). The `set_*` helpers reset selection to 0, so the cursor
+    /// always stays in bounds. This must run AFTER the dirty refresh and only
+    /// covers views the dirty path misses (no double jj invocation).
+    pub(crate) fn refresh_current_view_after_op(&mut self) {
+        match self.current_view {
+            View::Tag => self.refresh_tag_view(),
+            View::Workspace => self.refresh_workspace_view(),
+            View::Resolve => {
+                // ResolveView stores its own revision/is_working_copy, so we can
+                // re-run the conflict listing for the same target.
+                if let Some(ref resolve_view) = self.resolve_view {
+                    let revision = resolve_view.revision.clone();
+                    let is_wc = resolve_view.is_working_copy;
+                    self.refresh_resolve_list(&revision, is_wc);
+                }
+            }
+            // Log/Status/Operation/Bookmark are handled by the dirty refresh;
+            // read-only views never reach undo/redo.
+            _ => {}
+        }
+    }
+
     /// Refresh the log view with optional revset
     ///
     /// Also invalidates the preview cache, since repository state may have changed

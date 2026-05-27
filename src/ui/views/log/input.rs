@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::keys;
 use crate::model::Change;
 
-use super::{InputMode, LogAction, LogView, RebaseMode, RebaseSource};
+use super::{InputMode, LogAction, LogCommand, LogView, RebaseMode, RebaseSource};
 
 /// Search direction/mode
 #[derive(Clone, Copy)]
@@ -169,50 +169,13 @@ impl LogView {
             }
             k if k == keys::FETCH => LogAction::Fetch,
             k if k == keys::PUSH => LogAction::StartPush,
-            k if k == keys::COMPARE => {
-                if self.start_compare_select() {
-                    let from_id = self.compare_from.as_ref().unwrap().0.to_string();
-                    LogAction::StartCompare(from_id)
-                } else {
-                    LogAction::None
-                }
-            }
-            k if k == keys::INTERDIFF => {
-                if self.start_interdiff_select() {
-                    let from_id = self.interdiff_from.as_ref().unwrap().0.to_string();
-                    LogAction::StartInterdiff(from_id)
-                } else {
-                    LogAction::None
-                }
-            }
-            k if k == keys::BISECT => {
-                if self.start_bisect_select() {
-                    let bad_id = self.bisect_bad.as_ref().unwrap().1.to_string();
-                    LogAction::StartBisect(bad_id)
-                } else {
-                    LogAction::None
-                }
-            }
+            k if k == keys::BOOKMARK_VIEW => LogAction::OpenBookmarkView,
             k if k == keys::TAG_VIEW => LogAction::OpenTagView,
             k if k == keys::WORKSPACE_VIEW => LogAction::OpenWorkspaceView,
             k if k == keys::COMMAND_HISTORY => LogAction::OpenCommandHistory,
             k if k == keys::NEXT_CHANGE => LogAction::NextChange,
             k if k == keys::PREV_CHANGE => LogAction::PrevChange,
             k if k == keys::LOG_REVERSE => LogAction::ToggleReversed,
-            k if k == keys::DUPLICATE => {
-                if let Some(change) = self.selected_change() {
-                    LogAction::Duplicate(change.commit_id.to_string())
-                } else {
-                    LogAction::None
-                }
-            }
-            k if k == keys::DIFFEDIT => {
-                if let Some(change) = self.selected_change() {
-                    LogAction::DiffEdit(change.commit_id.to_string())
-                } else {
-                    LogAction::None
-                }
-            }
             k if k == keys::EVOLOG => {
                 if let Some(change) = self.selected_change() {
                     LogAction::OpenEvolog(change.commit_id.to_string())
@@ -220,7 +183,57 @@ impl LogView {
                     LogAction::None
                 }
             }
-            k if k == keys::REVERT => {
+            _ => LogAction::None,
+        }
+    }
+
+    /// Dispatch a low-frequency Log command selected from the command palette
+    /// (Phase 48-C). These commands no longer have single-key bindings; the
+    /// bodies here are the verbatim logic that previously lived in
+    /// `handle_normal_key`. Compare/interdiff/bisect/parallelize use the same
+    /// `start_*_select` select-mode flow (mutating `self.compare_from` etc.) as
+    /// before, so the multi-step "from/to" interaction is preserved.
+    pub fn command_action(&mut self, cmd: LogCommand) -> LogAction {
+        match cmd {
+            LogCommand::Compare => {
+                if self.start_compare_select() {
+                    let from_id = self.compare_from.as_ref().unwrap().0.to_string();
+                    LogAction::StartCompare(from_id)
+                } else {
+                    LogAction::None
+                }
+            }
+            LogCommand::Interdiff => {
+                if self.start_interdiff_select() {
+                    let from_id = self.interdiff_from.as_ref().unwrap().0.to_string();
+                    LogAction::StartInterdiff(from_id)
+                } else {
+                    LogAction::None
+                }
+            }
+            LogCommand::Bisect => {
+                if self.start_bisect_select() {
+                    let bad_id = self.bisect_bad.as_ref().unwrap().1.to_string();
+                    LogAction::StartBisect(bad_id)
+                } else {
+                    LogAction::None
+                }
+            }
+            LogCommand::Duplicate => {
+                if let Some(change) = self.selected_change() {
+                    LogAction::Duplicate(change.commit_id.to_string())
+                } else {
+                    LogAction::None
+                }
+            }
+            LogCommand::DiffEdit => {
+                if let Some(change) = self.selected_change() {
+                    LogAction::DiffEdit(change.commit_id.to_string())
+                } else {
+                    LogAction::None
+                }
+            }
+            LogCommand::Revert => {
                 if let Some(change) = self.selected_change() {
                     if change.is_empty {
                         // Empty commit has nothing to revert
@@ -232,14 +245,14 @@ impl LogView {
                     LogAction::None
                 }
             }
-            k if k == keys::SIMPLIFY_PARENTS => {
+            LogCommand::SimplifyParents => {
                 if let Some(change) = self.selected_change() {
                     LogAction::SimplifyParents(change.commit_id.to_string())
                 } else {
                     LogAction::None
                 }
             }
-            k if k == keys::FIX => {
+            LogCommand::Fix => {
                 if let Some(change) = self.selected_change() {
                     LogAction::Fix {
                         revision: change.commit_id.to_string(),
@@ -249,7 +262,7 @@ impl LogView {
                     LogAction::None
                 }
             }
-            k if k == keys::METAEDIT => {
+            LogCommand::Metaedit => {
                 if let Some(change) = self.selected_change() {
                     LogAction::Metaedit {
                         change_id: change.change_id.to_string(),
@@ -259,7 +272,7 @@ impl LogView {
                     LogAction::None
                 }
             }
-            k if k == keys::PARALLELIZE => {
+            LogCommand::Parallelize => {
                 if self.start_parallelize_select() {
                     let from_id = self.parallelize_from.as_ref().unwrap().0.clone();
                     LogAction::StartParallelize(from_id)
@@ -267,8 +280,7 @@ impl LogView {
                     LogAction::None
                 }
             }
-            k if k == keys::ARRANGE => LogAction::Arrange,
-            _ => LogAction::None,
+            LogCommand::Arrange => LogAction::Arrange,
         }
     }
 

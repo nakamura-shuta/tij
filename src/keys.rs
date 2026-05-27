@@ -102,8 +102,13 @@ pub const ABANDON: KeyCode = KeyCode::Char('A');
 /// Split change (Log View, opens external diff editor)
 pub const SPLIT: KeyCode = KeyCode::Char('x');
 
-/// Delete bookmark (Bookmark View). Log View uses the `b d` chord (Phase 46-B).
-pub const BOOKMARK_DELETE: KeyCode = KeyCode::Char('D');
+/// Delete/forget key shared by all object views (Bookmark, Tag, Workspace).
+/// Lowercase `d` — matches the normalized verb: delete (tag/bookmark) or forget (workspace).
+pub const OBJECT_DELETE: KeyCode = KeyCode::Char('d');
+
+/// Create/add key shared by all object views (Bookmark, Tag, Workspace).
+/// Lowercase `n` — normalized verb: new/create/add.
+pub const OBJECT_NEW: KeyCode = KeyCode::Char('n');
 
 /// Rebase change (Log View, uppercase)
 pub const REBASE: KeyCode = KeyCode::Char('R');
@@ -127,8 +132,8 @@ pub const FETCH: KeyCode = KeyCode::Char('F');
 /// Push to remote (Log View, uppercase for remote ops)
 pub const PUSH: KeyCode = KeyCode::Char('P');
 
-/// Track remote bookmarks (Log View, uppercase for remote ops)
-pub const TRACK: KeyCode = KeyCode::Char('T');
+/// Track remote bookmarks (Bookmark View normal-mode `t`; Log View uppercase remote ops use PUSH/FETCH).
+pub const TRACK: KeyCode = KeyCode::Char('t');
 
 /// Compare two revisions (Log View)
 pub const COMPARE: KeyCode = KeyCode::Char('=');
@@ -148,17 +153,20 @@ pub const TAG_VIEW: KeyCode = KeyCode::Char('t');
 /// Open Workspace View (Log View)
 pub const WORKSPACE_VIEW: KeyCode = KeyCode::Char('w');
 
+/// Open Bookmark View (Log View)
+pub const BOOKMARK_VIEW: KeyCode = KeyCode::Char('b');
+
 /// Open Command History View (Log View)
 pub const COMMAND_HISTORY: KeyCode = KeyCode::Char('H');
 
 /// Toggle preview pane (Log View)
 pub const PREVIEW: KeyCode = KeyCode::Char('p');
 
-/// Untrack remote bookmark (Bookmark View)
-pub const BOOKMARK_UNTRACK: KeyCode = KeyCode::Char('U');
+/// Untrack remote bookmark (Bookmark View) — Shift+T is the inverse of `t` track.
+pub const BOOKMARK_UNTRACK: KeyCode = KeyCode::Char('T');
 
-/// Rename bookmark (Bookmark View)
-pub const BOOKMARK_RENAME: KeyCode = KeyCode::Char('r');
+/// Shared rename verb for object views (Bookmark, Workspace).
+pub const OBJECT_RENAME: KeyCode = KeyCode::Char('r');
 
 /// Forget bookmark (Bookmark View)
 pub const BOOKMARK_FORGET: KeyCode = KeyCode::Char('f');
@@ -166,44 +174,10 @@ pub const BOOKMARK_FORGET: KeyCode = KeyCode::Char('f');
 /// Move bookmark to @ (Bookmark View)
 pub const BOOKMARK_MOVE: KeyCode = KeyCode::Char('m');
 
-/// Bookmark chord prefix (Log View): press `b`, then a sub-key.
-///
-/// Phase 46-B: replaces the old single-key bookmark ops in Log View.
-/// Sub-keys are mnemonic (first letter of the action). See `chord_bookmark`.
-pub const CHORD_BOOKMARK: KeyCode = KeyCode::Char('b');
-
-/// Sub-keys under the `b` bookmark chord (mnemonic: first letter of action).
-pub mod chord_bookmark {
-    use crossterm::event::KeyCode;
-    /// `b c` — create bookmark
-    pub const CREATE: KeyCode = KeyCode::Char('c');
-    /// `b d` — delete bookmark
-    pub const DELETE: KeyCode = KeyCode::Char('d');
-    /// `b t` — track remote bookmarks
-    pub const TRACK: KeyCode = KeyCode::Char('t');
-    /// `b j` — jump to bookmark
-    pub const JUMP: KeyCode = KeyCode::Char('j');
-    /// `b a` — advance ancestor bookmark to @
-    pub const ADVANCE: KeyCode = KeyCode::Char('a');
-    /// `b v` — view bookmarks (open Bookmark View)
-    pub const VIEW: KeyCode = KeyCode::Char('v');
-}
-
 /// Command palette trigger (Log View Normal mode): `:` opens a searchable
 /// list of low-frequency commands. Distinct from the `:` used inside the
 /// rebase-mode-select sub-mode (different handler / mode).
 pub const COMMAND_PALETTE: KeyCode = KeyCode::Char(':');
-
-/// Hint entries for the `b` chord: (sub-key, action label). Used by the
-/// status-bar chord hint and the help panel.
-pub const CHORD_BOOKMARK_HINTS: &[(&str, &str)] = &[
-    ("c", "create"),
-    ("d", "delete"),
-    ("t", "track"),
-    ("j", "jump"),
-    ("a", "advance"),
-    ("v", "view bookmarks"),
-];
 
 /// Move @ to next child (Log View)
 pub const NEXT_CHANGE: KeyCode = KeyCode::Char(']');
@@ -429,28 +403,8 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         description: "Split change",
     },
     KeyBindEntry {
-        key: "b c",
-        description: "Create bookmark",
-    },
-    KeyBindEntry {
-        key: "b d",
-        description: "Delete bookmark",
-    },
-    KeyBindEntry {
-        key: "b t",
-        description: "Track remote bookmarks",
-    },
-    KeyBindEntry {
-        key: "b j",
-        description: "Jump to bookmark",
-    },
-    KeyBindEntry {
-        key: "b a",
-        description: "Advance ancestor bookmark to @",
-    },
-    KeyBindEntry {
-        key: "b v",
-        description: "View bookmarks",
+        key: "b",
+        description: "Bookmark view",
     },
     KeyBindEntry {
         key: "R",
@@ -473,14 +427,6 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         description: "Git push",
     },
     KeyBindEntry {
-        key: "=",
-        description: "Compare revisions",
-    },
-    KeyBindEntry {
-        key: "I",
-        description: "Interdiff revisions",
-    },
-    KeyBindEntry {
         key: "t",
         description: "Tag view",
     },
@@ -501,48 +447,12 @@ pub const LOG_KEYS: &[KeyBindEntry] = &[
         description: "Toggle reversed order",
     },
     KeyBindEntry {
-        key: "Y",
-        description: "Duplicate change",
-    },
-    KeyBindEntry {
-        key: "E",
-        description: "Diffedit (external diff editor)",
-    },
-    KeyBindEntry {
         key: "L",
         description: "Evolution log (change history)",
     },
     KeyBindEntry {
-        key: "Z",
-        description: "Revert change (create reverse-diff commit)",
-    },
-    KeyBindEntry {
-        key: "i",
-        description: "Simplify parents (remove redundant parent edges)",
-    },
-    KeyBindEntry {
-        key: "|",
-        description: "Parallelize commits (convert linear chain to siblings)",
-    },
-    KeyBindEntry {
-        key: "f",
-        description: "Fix (apply configured code formatters to revision and descendants)",
-    },
-    KeyBindEntry {
-        key: "O",
-        description: "Arrange (interactively arrange the commit graph, jj 0.40+)",
-    },
-    KeyBindEntry {
         key: "H",
         description: "Command history",
-    },
-    KeyBindEntry {
-        key: "W",
-        description: "Bisect (find bad revision)",
-    },
-    KeyBindEntry {
-        key: "v",
-        description: "Metaedit (edit author, change-id, timestamp)",
     },
 ];
 
@@ -680,7 +590,7 @@ pub const HINT_PALETTE: KeyHint = KeyHint {
     color: Color::Magenta,
 };
 pub const HINT_DEL_BKM: KeyHint = KeyHint {
-    key: "D",
+    key: "d",
     label: "Delete",
     color: Color::Red,
 };
@@ -710,23 +620,20 @@ pub const HINT_PUSH: KeyHint = KeyHint {
     color: Color::Blue,
 };
 pub const HINT_TRACK: KeyHint = KeyHint {
-    key: "T",
+    key: "t",
     label: "Track",
     color: Color::Cyan,
-};
-pub const HINT_COMPARE: KeyHint = KeyHint {
-    key: "=",
-    label: "Compare",
-    color: Color::Yellow,
-};
-pub const HINT_OPS: KeyHint = KeyHint {
-    key: "o",
-    label: "Ops",
-    color: Color::Blue,
 };
 pub const HINT_UNDO: KeyHint = KeyHint {
     key: "u",
     label: "Undo",
+    color: Color::Green,
+};
+// Caret notation ("^R"/"^L") for space-constrained status-bar hints;
+// the `*_KEYS` help arrays use the long form ("Ctrl+r"/"Ctrl+l").
+pub const HINT_REDO: KeyHint = KeyHint {
+    key: "^R",
+    label: "Redo",
     color: Color::Green,
 };
 pub const HINT_REFRESH: KeyHint = KeyHint {
@@ -834,14 +741,19 @@ pub const HINT_TAG_VIEW: KeyHint = KeyHint {
     color: Color::Cyan,
 };
 pub const HINT_TAG_CREATE: KeyHint = KeyHint {
-    key: "c",
+    key: "n",
     label: "Create Tag",
     color: Color::Green,
 };
 pub const HINT_TAG_DELETE: KeyHint = KeyHint {
-    key: "D",
+    key: "d",
     label: "Delete",
     color: Color::Red,
+};
+pub const HINT_BKM_CREATE: KeyHint = KeyHint {
+    key: "n",
+    label: "Create",
+    color: Color::Green,
 };
 pub const HINT_JUMP_ENTER: KeyHint = KeyHint {
     key: "Enter",
@@ -849,7 +761,7 @@ pub const HINT_JUMP_ENTER: KeyHint = KeyHint {
     color: Color::Green,
 };
 pub const HINT_UNTRACK: KeyHint = KeyHint {
-    key: "U",
+    key: "T",
     label: "Untrack",
     color: Color::Yellow,
 };
@@ -868,11 +780,6 @@ pub const HINT_REVERSE: KeyHint = KeyHint {
     label: "Reverse",
     color: Color::Yellow,
 };
-pub const HINT_DUPLICATE: KeyHint = KeyHint {
-    key: "Y",
-    label: "Duplicate",
-    color: Color::Magenta,
-};
 pub const HINT_RENAME: KeyHint = KeyHint {
     key: "r",
     label: "Rename",
@@ -888,11 +795,6 @@ pub const HINT_MOVE_BKM: KeyHint = KeyHint {
     label: "Move",
     color: Color::Yellow,
 };
-pub const HINT_DIFFEDIT: KeyHint = KeyHint {
-    key: "E",
-    label: "DiffEdit",
-    color: Color::Yellow,
-};
 pub const HINT_EVOLOG: KeyHint = KeyHint {
     key: "L",
     label: "Evolog",
@@ -906,11 +808,6 @@ pub const HINT_RESTORE: KeyHint = KeyHint {
 pub const HINT_RESTORE_ALL: KeyHint = KeyHint {
     key: "R",
     label: "RestoreAll",
-    color: Color::Red,
-};
-pub const HINT_REVERT: KeyHint = KeyHint {
-    key: "Z",
-    label: "Revert",
     color: Color::Red,
 };
 pub const HINT_DETAIL: KeyHint = KeyHint {
@@ -1034,7 +931,6 @@ fn log_normal_hints(ctx: &HintContext) -> Vec<KeyHint> {
         HINT_NEW,
         HINT_SQUASH,
         HINT_ABANDON,
-        HINT_REVERT,
         HINT_BOOKMARK,
         HINT_REBASE,
         HINT_FETCH,
@@ -1045,13 +941,14 @@ fn log_normal_hints(ctx: &HintContext) -> Vec<KeyHint> {
     if ctx.has_bookmarks {
         h.push(HINT_PUSH);
     }
-    h.extend([HINT_UNDO, HINT_QUIT]);
+    h.extend([HINT_UNDO, HINT_REDO, HINT_QUIT]);
     h
 }
 
-/// Common trailing hints for views that support undo + refresh + back (Phase 46-D).
-fn undo_refresh_back() -> [KeyHint; 3] {
-    [HINT_UNDO, HINT_REFRESH, HINT_BACK]
+/// Common trailing hints for mutating views that support undo + redo + refresh +
+/// back (Phase 46-D; redo added in Phase 48-D).
+fn undo_redo_refresh_back() -> [KeyHint; 4] {
+    [HINT_UNDO, HINT_REDO, HINT_REFRESH, HINT_BACK]
 }
 
 fn resolve_hints(ctx: &HintContext) -> Vec<KeyHint> {
@@ -1059,12 +956,20 @@ fn resolve_hints(ctx: &HintContext) -> Vec<KeyHint> {
     if ctx.is_working_copy {
         h.push(HINT_RESOLVE_ENTER);
     }
-    h.extend([HINT_OURS, HINT_THEIRS, HINT_DIFF, HINT_REFRESH, HINT_BACK]);
+    h.extend([
+        HINT_OURS,
+        HINT_THEIRS,
+        HINT_DIFF,
+        HINT_UNDO,
+        HINT_REDO,
+        HINT_REFRESH,
+        HINT_BACK,
+    ]);
     h
 }
 
 fn bookmark_view_hints(ctx: &HintContext) -> Vec<KeyHint> {
-    let mut h = vec![HINT_HELP];
+    let mut h = vec![HINT_HELP, HINT_BKM_CREATE];
     match ctx.selected_bookmark_kind {
         Some(BookmarkKind::LocalJumpable) => {
             h.push(HINT_JUMP_ENTER);
@@ -1087,7 +992,7 @@ fn bookmark_view_hints(ctx: &HintContext) -> Vec<KeyHint> {
         }
         None => {}
     }
-    h.extend(undo_refresh_back());
+    h.extend(undo_redo_refresh_back());
     h
 }
 
@@ -1099,29 +1004,29 @@ fn tag_view_hints() -> Vec<KeyHint> {
         HINT_TAG_CREATE,
         HINT_TAG_DELETE,
     ];
-    h.extend(undo_refresh_back());
+    h.extend(undo_redo_refresh_back());
     h
 }
 
 fn workspace_view_hints() -> Vec<KeyHint> {
-    vec![
+    let mut h = vec![
         HINT_HELP,
         HINT_NAV,
         HINT_JUMP_ENTER,
         KeyHint {
-            key: "a",
+            key: "n",
             label: "Add",
             color: Color::Green,
         },
         KeyHint {
-            key: "D",
+            key: "d",
             label: "Forget",
             color: Color::Red,
         },
         HINT_RENAME,
-        HINT_REFRESH,
-        HINT_BACK,
-    ]
+    ];
+    h.extend(undo_redo_refresh_back());
+    h
 }
 
 fn command_history_hints() -> Vec<KeyHint> {
@@ -1394,6 +1299,8 @@ pub const STATUS_VIEW_HINTS: &[KeyHint] = &[
         label: "DiffEdit",
         color: Color::Yellow,
     },
+    HINT_UNDO,
+    HINT_REDO,
     KeyHint {
         key: "^L",
         label: "Refresh",
@@ -1450,6 +1357,14 @@ pub const STATUS_KEYS: &[KeyBindEntry] = &[
         description: "Diffedit (external diff editor)",
     },
     KeyBindEntry {
+        key: "u",
+        description: "Undo",
+    },
+    KeyBindEntry {
+        key: "Ctrl+r",
+        description: "Redo",
+    },
+    KeyBindEntry {
         key: "Tab",
         description: "Switch to log",
     },
@@ -1474,6 +1389,14 @@ pub const OPERATION_KEYS: &[KeyBindEntry] = &[
         description: "Restore operation",
     },
     KeyBindEntry {
+        key: "u",
+        description: "Undo",
+    },
+    KeyBindEntry {
+        key: "Ctrl+r",
+        description: "Redo",
+    },
+    KeyBindEntry {
         key: "q",
         description: "Back to log",
     },
@@ -1494,16 +1417,20 @@ pub const BOOKMARK_KEYS: &[KeyBindEntry] = &[
         description: "Jump to bookmark in log",
     },
     KeyBindEntry {
-        key: "T",
+        key: "n",
+        description: "Create bookmark",
+    },
+    KeyBindEntry {
+        key: "d",
+        description: "Delete local bookmark",
+    },
+    KeyBindEntry {
+        key: "t",
         description: "Track remote bookmark",
     },
     KeyBindEntry {
-        key: "U",
+        key: "T",
         description: "Untrack remote bookmark",
-    },
-    KeyBindEntry {
-        key: "D",
-        description: "Delete local bookmark",
     },
     KeyBindEntry {
         key: "r",
@@ -1520,6 +1447,10 @@ pub const BOOKMARK_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "u",
         description: "Undo",
+    },
+    KeyBindEntry {
+        key: "Ctrl+r",
+        description: "Redo",
     },
     KeyBindEntry {
         key: "q",
@@ -1542,16 +1473,20 @@ pub const TAG_KEYS: &[KeyBindEntry] = &[
         description: "Jump to tag in log",
     },
     KeyBindEntry {
-        key: "c",
+        key: "n",
         description: "Create tag on @",
     },
     KeyBindEntry {
-        key: "D",
+        key: "d",
         description: "Delete tag",
     },
     KeyBindEntry {
         key: "u",
         description: "Undo",
+    },
+    KeyBindEntry {
+        key: "Ctrl+r",
+        description: "Redo",
     },
     KeyBindEntry {
         key: "q",
@@ -1574,16 +1509,24 @@ pub const WORKSPACE_KEYS: &[KeyBindEntry] = &[
         description: "Jump to working copy in log",
     },
     KeyBindEntry {
-        key: "a",
+        key: "n",
         description: "Add workspace",
     },
     KeyBindEntry {
-        key: "D",
+        key: "d",
         description: "Forget workspace",
     },
     KeyBindEntry {
         key: "r",
         description: "Rename workspace (current only)",
+    },
+    KeyBindEntry {
+        key: "u",
+        description: "Undo",
+    },
+    KeyBindEntry {
+        key: "Ctrl+r",
+        description: "Redo",
     },
     KeyBindEntry {
         key: "q",
@@ -1688,6 +1631,14 @@ pub const RESOLVE_KEYS: &[KeyBindEntry] = &[
         description: "Show diff",
     },
     KeyBindEntry {
+        key: "u",
+        description: "Undo",
+    },
+    KeyBindEntry {
+        key: "Ctrl+r",
+        description: "Redo",
+    },
+    KeyBindEntry {
         key: "q",
         description: "Back to log",
     },
@@ -1723,6 +1674,8 @@ pub const OPERATION_VIEW_HINTS: &[KeyHint] = &[
         label: "Restore",
         color: Color::Green,
     },
+    HINT_UNDO,
+    HINT_REDO,
     KeyHint {
         key: "^L",
         label: "Refresh",
@@ -1785,29 +1738,53 @@ mod tests {
     // --- Log Normal: context-dependent hints ---
 
     #[test]
-    fn undo_hint_only_in_log_bookmark_tag() {
+    fn object_view_verbs_are_normalized() {
+        assert_eq!(OBJECT_NEW, KeyCode::Char('n'), "create/add = n");
+        assert_eq!(OBJECT_DELETE, KeyCode::Char('d'), "delete/forget = d");
+        assert_eq!(TRACK, KeyCode::Char('t'), "track = t");
+        assert_eq!(
+            BOOKMARK_UNTRACK,
+            KeyCode::Char('T'),
+            "untrack = T (shift inverse)"
+        );
+        assert_eq!(OBJECT_RENAME, KeyCode::Char('r'), "rename = r");
+        assert_eq!(BOOKMARK_FORGET, KeyCode::Char('f'), "forget(tracking) = f");
+        assert_eq!(BOOKMARK_MOVE, KeyCode::Char('m'), "move = m");
+    }
+
+    #[test]
+    fn bookmark_view_opener_is_single_key_b() {
+        assert_eq!(BOOKMARK_VIEW, KeyCode::Char('b'), "b opens Bookmark View");
+    }
+
+    #[test]
+    fn undo_hint_in_all_mutating_views() {
+        // Covers the `current_hints`-routed subset of mutating views (Log/Status/Bookmark/Tag/Workspace/Resolve).
+        // `undo_redo_hints_match_mutating_views` is the authoritative both-keys/all-views check (including Operation).
         let ctx = HintContext::default();
         let has_undo = |v| {
             current_hints(v, InputMode::Normal, &ctx)
                 .iter()
                 .any(|h| h.key == "u")
         };
-        // undo works only in Log/Bookmark/Tag (app/input.rs global handler) — hints must match.
-        assert!(has_undo(View::Log), "Log has undo");
-        assert!(has_undo(View::Bookmark), "Bookmark has undo");
-        assert!(has_undo(View::Tag), "Tag has undo");
+        // Phase 48-D: undo/redo are repo-wide, active in ALL mutating views
+        // (Log/Status/Bookmark/Tag/Workspace/Resolve via current_hints; Operation
+        // via OPERATION_VIEW_HINTS). Hints must match the input.rs global handler.
         for v in [
+            View::Log,
             View::Status,
-            View::Operation,
-            View::Resolve,
+            View::Bookmark,
+            View::Tag,
             View::Workspace,
-            View::CommandHistory,
+            View::Resolve,
         ] {
-            assert!(
-                !has_undo(v),
-                "{v:?} must NOT show undo (undo not active there)"
-            );
+            assert!(has_undo(v), "{v:?} (mutating) must show undo");
         }
+        // CommandHistory is read-only: no undo hint.
+        assert!(
+            !has_undo(View::CommandHistory),
+            "CommandHistory must NOT show undo (read-only)"
+        );
     }
 
     #[test]
@@ -1828,7 +1805,7 @@ mod tests {
     #[test]
     fn bookmark_delete_status_hint_uses_delete_label() {
         // G2: bookmark deletion is "Delete" (full delete), not an abbreviation.
-        // Both local kinds expose the `D` hint via the Bookmark View status bar.
+        // Both local kinds expose the `d` hint via the Bookmark View status bar.
         for kind in [BookmarkKind::LocalJumpable, BookmarkKind::LocalNoChange] {
             let ctx = HintContext {
                 selected_bookmark_kind: Some(kind),
@@ -1837,8 +1814,8 @@ mod tests {
             let hints = current_hints(View::Bookmark, InputMode::Normal, &ctx);
             let d = hints
                 .iter()
-                .find(|h| h.key == "D")
-                .unwrap_or_else(|| panic!("{kind:?} should expose D (delete) hint"));
+                .find(|h| h.key == "d")
+                .unwrap_or_else(|| panic!("{kind:?} should expose d (delete) hint"));
             assert_eq!(d.label, "Delete", "{kind:?} delete hint label");
         }
     }
@@ -1854,6 +1831,60 @@ mod tests {
         assert!(
             EVOLOG_VIEW_HINTS.iter().any(|h| h.key == "^L"),
             "Evolog needs ^L refresh"
+        );
+    }
+
+    #[test]
+    fn undo_redo_hints_match_mutating_views() {
+        let ctx = HintContext::default();
+        // Views routed through current_hints.
+        let has_cur = |v, k| {
+            current_hints(v, InputMode::Normal, &ctx)
+                .iter()
+                .any(|h| h.key == k)
+        };
+        for v in [
+            View::Log,
+            View::Status,
+            View::Bookmark,
+            View::Tag,
+            View::Workspace,
+            View::Resolve,
+        ] {
+            assert!(has_cur(v, "u"), "{v:?} must show undo hint");
+            assert!(has_cur(v, "^R"), "{v:?} must show redo hint");
+        }
+        // Read-only view routed through current_hints must NOT show undo/redo.
+        let ch = View::CommandHistory;
+        assert!(!has_cur(ch, "u"), "{ch:?} must not show undo hint");
+        assert!(!has_cur(ch, "^R"), "{ch:?} must not show redo hint");
+        // Operation uses a constant array (not current_hints) — check directly.
+        assert!(
+            OPERATION_VIEW_HINTS.iter().any(|h| h.key == "u"),
+            "Operation must show undo hint"
+        );
+        assert!(
+            OPERATION_VIEW_HINTS.iter().any(|h| h.key == "^R"),
+            "Operation must show redo hint"
+        );
+        // Read-only constant-array views must NOT show undo/redo.
+        assert!(
+            !BLAME_VIEW_HINTS
+                .iter()
+                .any(|h| h.key == "u" || h.key == "^R"),
+            "Blame must not show undo/redo hints"
+        );
+        assert!(
+            !EVOLOG_VIEW_HINTS
+                .iter()
+                .any(|h| h.key == "u" || h.key == "^R"),
+            "Evolog must not show undo/redo hints"
+        );
+        assert!(
+            !DIFF_VIEW_HINTS
+                .iter()
+                .any(|h| h.key == "u" || h.key == "^R"),
+            "Diff must not show undo/redo hints"
         );
     }
 
@@ -1945,15 +1976,15 @@ mod tests {
         };
         let hints = current_hints(View::Log, InputMode::Normal, &ctx);
         assert!(hints.iter().any(|h| h.key == "P"), "Push hint missing");
-        // Phase 46-B: delete moved to the `b` chord; `D` is no longer a single-key hint.
+        // `D` is not a single-key hint in Log Normal (it belongs to Bookmark View).
         assert!(
             !hints.iter().any(|h| h.key == "D"),
-            "Del Bkm should no longer be a single-key hint"
+            "Del Bkm should not be a single-key hint in Log Normal"
         );
-        // The `b` chord prefix hint is always present in Log Normal.
+        // `b` opens Bookmark View directly — hint must be present in Log Normal.
         assert!(
             hints.iter().any(|h| h.key == "b"),
-            "bookmark chord prefix hint missing"
+            "bookmark view opener hint missing"
         );
     }
 
@@ -2183,5 +2214,48 @@ mod tests {
         let ctx = HintContext::default();
         let hints = current_hints(View::Help, InputMode::Normal, &ctx);
         assert!(hints.is_empty());
+    }
+
+    #[test]
+    fn help_arrays_list_undo_redo_for_mutating_views() {
+        // Every view where undo/redo works must document both in its help array,
+        // since u/Ctrl+r are not in GLOBAL_KEYS.
+        for v in [
+            View::Log,
+            View::Status,
+            View::Bookmark,
+            View::Tag,
+            View::Workspace,
+            View::Operation,
+            View::Resolve,
+        ] {
+            let ks = keys_for_view(v);
+            assert!(
+                ks.iter().any(|e| e.description.contains("Undo")),
+                "{v:?} help missing Undo"
+            );
+            assert!(
+                ks.iter().any(|e| e.description.contains("Redo")),
+                "{v:?} help missing Redo"
+            );
+        }
+        // Read-only views must NOT list them.
+        for v in [
+            View::Diff,
+            View::Blame,
+            View::Evolog,
+            View::CommandHistory,
+            View::Help,
+        ] {
+            let ks = keys_for_view(v);
+            assert!(
+                !ks.iter().any(|e| e.description.contains("Undo")),
+                "{v:?} help should not list Undo"
+            );
+            assert!(
+                !ks.iter().any(|e| e.description.contains("Redo")),
+                "{v:?} help should not list Redo"
+            );
+        }
     }
 }

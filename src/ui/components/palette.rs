@@ -1,9 +1,15 @@
 //! Command palette: searchable list of low-frequency Log View commands.
 //!
-//! Each command carries the `KeyCode` of its existing single-key binding; the
-//! palette dispatches by delegating that key to `LogView::handle_key`, so the
-//! existing command logic (including `start_*_select` and building actions from
-//! the selected change) is reused verbatim — no duplication.
+//! Each command carries a [`PaletteDispatch`] describing how it is invoked
+//! (Phase 48-C):
+//!
+//! - Low-frequency commands (compare, interdiff, duplicate, …) dispatch by an
+//!   action-id ([`PaletteDispatch::Command`] → `LogView::command_action`).
+//!   These commands have NO single-key binding any more — the palette is the
+//!   only way to reach them — so dispatch must not depend on a key.
+//! - View-opener commands (evolog, command-history, tag-view, workspace-view)
+//!   still keep their single keys, so they dispatch by [`PaletteDispatch::Key`]
+//!   → `LogView::handle_key`, reusing the existing key logic verbatim.
 
 use crossterm::event::KeyCode;
 use ratatui::{
@@ -12,13 +18,25 @@ use ratatui::{
 };
 
 use crate::keys;
+use crate::ui::views::LogCommand;
 
-/// A palette entry: display name, description, and the Log View key it triggers.
+/// How a palette entry is dispatched (Phase 48-C).
+#[derive(Debug, Clone, Copy)]
+pub enum PaletteDispatch {
+    /// Low-frequency command with no single key — dispatched via
+    /// `LogView::command_action`.
+    Command(LogCommand),
+    /// View-opener that keeps its single key — dispatched via
+    /// `LogView::handle_key`.
+    Key(KeyCode),
+}
+
+/// A palette entry: display name, description, and how it dispatches.
 #[derive(Debug, Clone, Copy)]
 pub struct PaletteCommand {
     pub name: &'static str,
     pub description: &'static str,
-    pub key: KeyCode,
+    pub dispatch: PaletteDispatch,
 }
 
 /// All commands available from the palette (Log View, low-frequency ops).
@@ -27,77 +45,78 @@ pub fn palette_commands() -> &'static [PaletteCommand] {
         PaletteCommand {
             name: "simplify-parents",
             description: "Remove redundant parent edges",
-            key: keys::SIMPLIFY_PARENTS,
+            dispatch: PaletteDispatch::Command(LogCommand::SimplifyParents),
         },
         PaletteCommand {
             name: "parallelize",
             description: "Convert linear chain to siblings",
-            key: keys::PARALLELIZE,
+            dispatch: PaletteDispatch::Command(LogCommand::Parallelize),
         },
         PaletteCommand {
             name: "fix",
             description: "Apply configured code formatters",
-            key: keys::FIX,
+            dispatch: PaletteDispatch::Command(LogCommand::Fix),
         },
         PaletteCommand {
             name: "arrange",
             description: "Interactively arrange the commit graph",
-            key: keys::ARRANGE,
+            dispatch: PaletteDispatch::Command(LogCommand::Arrange),
         },
         PaletteCommand {
             name: "metaedit",
             description: "Edit author, change-id, timestamp",
-            key: keys::METAEDIT,
+            dispatch: PaletteDispatch::Command(LogCommand::Metaedit),
         },
         PaletteCommand {
             name: "bisect",
             description: "Find bad revision (binary search)",
-            key: keys::BISECT,
+            dispatch: PaletteDispatch::Command(LogCommand::Bisect),
         },
         PaletteCommand {
             name: "interdiff",
             description: "Patch diff between two revisions",
-            key: keys::INTERDIFF,
+            dispatch: PaletteDispatch::Command(LogCommand::Interdiff),
         },
         PaletteCommand {
             name: "duplicate",
             description: "Duplicate change",
-            key: keys::DUPLICATE,
+            dispatch: PaletteDispatch::Command(LogCommand::Duplicate),
         },
         PaletteCommand {
             name: "diffedit",
             description: "Edit diff in external editor",
-            key: keys::DIFFEDIT,
+            dispatch: PaletteDispatch::Command(LogCommand::DiffEdit),
         },
+        // View openers (Key dispatch — single keys retained)
         PaletteCommand {
             name: "evolog",
             description: "Evolution log (change history)",
-            key: keys::EVOLOG,
+            dispatch: PaletteDispatch::Key(keys::EVOLOG),
         },
         PaletteCommand {
             name: "revert",
             description: "Create reverse-diff commit",
-            key: keys::REVERT,
+            dispatch: PaletteDispatch::Command(LogCommand::Revert),
         },
         PaletteCommand {
             name: "command-history",
             description: "Show executed jj commands",
-            key: keys::COMMAND_HISTORY,
+            dispatch: PaletteDispatch::Key(keys::COMMAND_HISTORY),
         },
         PaletteCommand {
             name: "compare",
             description: "Compare two revisions",
-            key: keys::COMPARE,
+            dispatch: PaletteDispatch::Command(LogCommand::Compare),
         },
         PaletteCommand {
             name: "tag-view",
             description: "Open Tag View",
-            key: keys::TAG_VIEW,
+            dispatch: PaletteDispatch::Key(keys::TAG_VIEW),
         },
         PaletteCommand {
             name: "workspace-view",
             description: "Open Workspace View",
-            key: keys::WORKSPACE_VIEW,
+            dispatch: PaletteDispatch::Key(keys::WORKSPACE_VIEW),
         },
     ]
 }
