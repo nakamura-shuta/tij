@@ -585,8 +585,8 @@ pub const DIFF_KEYS: &[KeyBindEntry] = &[
         description: "Go to top/bottom",
     },
     KeyBindEntry {
-        key: "]/[",
-        description: "Next/prev file",
+        key: "[/]",
+        description: "Prev/next file",
     },
     KeyBindEntry {
         key: "a",
@@ -1321,8 +1321,8 @@ pub const DIFF_VIEW_HINTS: &[KeyHint] = &[
         color: Color::Green,
     },
     KeyHint {
-        key: "]/[",
-        label: "File",
+        key: "[/]",
+        label: "Prev/next file",
         color: Color::Magenta,
     },
     KeyHint {

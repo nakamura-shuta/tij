@@ -81,7 +81,7 @@ expression: terminal.backend()
 "│  j/k       Scroll down/up                                                    │"
 "│  d/u       Half page down/up                                                 │"
 "│  g/G       Go to top/bottom                                                  │"
-"│  ]/[       Next/prev file                                                    │"
+"│  [/]       Prev/next file                                                    │"
 "│  a         Show file blame                                                   │"
 "│  y         Copy to clipboard (full: jj show)                                 │"
 "│  Y         Copy to clipboard (diff only: jj diff)                            │"
