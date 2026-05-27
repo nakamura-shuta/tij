@@ -132,6 +132,16 @@ pub fn build_help_lines(
         matched: false,
     });
 
+    // The Help panel's own controls (search / nav / toggle / close) — shown in
+    // both current-view and all-views modes so they're discoverable here.
+    push_section(
+        &mut lines,
+        "Help panel",
+        keys::HELP_KEYS,
+        query_lower.as_deref(),
+        &synonyms,
+    );
+
     match (current_view, show_all) {
         (Some(view), false) => {
             let mut seen_keys: std::collections::HashSet<&'static str> =

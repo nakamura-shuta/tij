@@ -105,6 +105,13 @@ impl App {
             return;
         }
 
+        // Bookmark rename input: delegate all keys to the view so global keys
+        // (q/?/:/Tab) and chord/palette don't misfire while typing a new name.
+        if self.current_view == View::Bookmark && self.bookmark_view.rename_state.is_some() {
+            self.handle_view_key(key);
+            return;
+        }
+
         // Chord start (Phase 46-B): begin a `b` chord in Log View Normal mode.
         // Resolution happens earlier (right after Ctrl+C), so a pending chord is
         // always resolved/cancelled before Ctrl+R/Ctrl+L can fire.
@@ -1351,6 +1358,29 @@ mod tests {
         assert!(app.palette_active);
         app.go_to_view(View::Status);
         assert!(!app.palette_active);
+    }
+
+    #[test]
+    fn bookmark_rename_captures_global_keys_as_text() {
+        // Rename mode must intercept global keys (q/?/Tab/:) as text input,
+        // not let them quit / open help / switch view.
+        let mut app = App::new_for_test();
+        app.current_view = View::Bookmark;
+        app.bookmark_view.rename_state = Some(RenameState::new("old".to_string()));
+
+        press(&mut app, KeyCode::Char('q'));
+        assert!(
+            app.bookmark_view.rename_state.is_some(),
+            "q must be typed into rename, not quit"
+        );
+        assert!(app.running, "q must not quit the app during rename");
+
+        press(&mut app, KeyCode::Char('?'));
+        assert_eq!(
+            app.current_view,
+            View::Bookmark,
+            "? must not open Help during rename"
+        );
     }
 
     #[test]

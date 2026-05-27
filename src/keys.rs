@@ -1655,6 +1655,26 @@ pub const EVOLOG_KEYS: &[KeyBindEntry] = &[KeyBindEntry {
     description: "Show this revision's diff",
 }];
 
+/// Controls available inside the Help panel itself.
+pub const HELP_KEYS: &[KeyBindEntry] = &[
+    KeyBindEntry {
+        key: "/",
+        description: "Search help",
+    },
+    KeyBindEntry {
+        key: "n/N",
+        description: "Next/prev match",
+    },
+    KeyBindEntry {
+        key: "a",
+        description: "Toggle all views / current view",
+    },
+    KeyBindEntry {
+        key: "q/Esc",
+        description: "Close help",
+    },
+];
+
 /// Resolve view key bindings for help display
 #[allow(dead_code)] // planned for Help View integration
 pub const RESOLVE_KEYS: &[KeyBindEntry] = &[
@@ -1701,7 +1721,7 @@ pub fn keys_for_view(view: View) -> &'static [KeyBindEntry] {
         View::Blame => BLAME_KEYS,
         View::Resolve => RESOLVE_KEYS,
         View::Evolog => EVOLOG_KEYS,
-        View::Help => &[],
+        View::Help => HELP_KEYS,
     }
 }
 
@@ -1758,6 +1778,18 @@ pub const BLAME_VIEW_HINTS: &[KeyHint] = &[
         label: "Back",
         color: Color::Red,
     },
+];
+
+/// Evolog view status bar hints (Phase 46-D follow-up: Evolog had no status bar).
+pub const EVOLOG_VIEW_HINTS: &[KeyHint] = &[
+    HINT_HELP,
+    HINT_NAV,
+    KeyHint {
+        key: "Enter",
+        label: "Diff",
+        color: Color::Cyan,
+    },
+    HINT_BACK,
 ];
 
 // =============================================================================

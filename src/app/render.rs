@@ -95,7 +95,8 @@ impl App {
                     keys::current_hints(View::CommandHistory, self.log_view.input_mode, &ctx);
                 status_hints_height(&hints, width)
             }
-            View::Evolog | View::Diff => 1,
+            View::Evolog => status_hints_height(keys::EVOLOG_VIEW_HINTS, width),
+            View::Diff => 1,
             View::Blame => status_hints_height(keys::BLAME_VIEW_HINTS, width),
             View::Help => 0,
         }
@@ -401,7 +402,17 @@ impl App {
         notification: Option<&crate::model::Notification>,
     ) {
         if let Some(ref evolog_view) = self.evolog_view {
-            evolog_view.render(frame, frame.area(), notification);
+            // Reserve a status bar row at the bottom (Phase 46-D follow-up).
+            let area = frame.area();
+            let sb_height = status_hints_height(keys::EVOLOG_VIEW_HINTS, area.width);
+            let main_area = Rect {
+                x: area.x,
+                y: area.y,
+                width: area.width,
+                height: area.height.saturating_sub(sb_height),
+            };
+            evolog_view.render(frame, main_area, notification);
+            render_status_hints(frame, keys::EVOLOG_VIEW_HINTS);
         } else {
             render_placeholder(
                 frame,
