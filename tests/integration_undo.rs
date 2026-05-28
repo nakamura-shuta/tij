@@ -90,3 +90,63 @@ fn test_op_restore_reverts_to_previous_state() {
 
     assert_eq!(repo.get_description("@"), "before");
 }
+
+// =============================================================================
+// Phase 48-M4: create_target is cleared after undo/redo
+// =============================================================================
+
+/// After a successful undo ('u' key), create_target must be cleared so that
+/// a change-id captured before the undo cannot survive as a stale bookmark/tag
+/// creation target after the op-log has advanced.
+#[test]
+fn test_undo_key_clears_create_target() {
+    skip_if_no_jj!();
+    let repo = TestRepo::new();
+    repo.jj(&["describe", "-m", "original"]);
+    repo.jj(&["describe", "-m", "changed"]);
+
+    // Use new_for_test() to avoid a spurious jj subprocess against the CWD.
+    let mut app = tij::app::App::new_for_test();
+    app.jj = JjExecutor::with_repo_path(repo.path());
+
+    // Pre-set a captured create_target that would become stale after undo.
+    app.create_target = Some("stale-change-id".to_string());
+
+    // Trigger undo via the 'u' key (same path used by the real UI).
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    app.on_key_event(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::NONE));
+
+    assert_eq!(
+        app.create_target, None,
+        "undo ('u') must clear create_target; stale id survived the undo"
+    );
+}
+
+/// After a successful redo (Ctrl+R), create_target must be cleared for the
+/// same reason: the op-log has advanced, old ids may be gone.
+#[test]
+fn test_redo_key_clears_create_target() {
+    skip_if_no_jj!();
+    let repo = TestRepo::new();
+    repo.jj(&["describe", "-m", "original"]);
+    repo.jj(&["describe", "-m", "changed"]);
+
+    // Use new_for_test() to avoid a spurious jj subprocess against the CWD.
+    let mut app = tij::app::App::new_for_test();
+    app.jj = JjExecutor::with_repo_path(repo.path());
+
+    // Perform an undo first (via key) so that a redo target exists.
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    app.on_key_event(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::NONE));
+
+    // Pre-set a stale target.
+    app.create_target = Some("stale-change-id".to_string());
+
+    // Trigger redo via Ctrl+R.
+    app.on_key_event(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL));
+
+    assert_eq!(
+        app.create_target, None,
+        "redo (Ctrl+R) must clear create_target; stale id survived the redo"
+    );
+}

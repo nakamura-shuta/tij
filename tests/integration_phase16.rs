@@ -106,6 +106,12 @@ fn test_duplicate_output_parsing_matches_app() {
 /// Duplicate no longer has a single-key binding — it is reached by `:` then
 /// "duplicate" + Enter), including the select_change_by_prefix() == false branch
 /// at src/app/actions.rs.
+///
+/// Stability note (A2): the Duplicate action must use change_id, not commit_id.
+/// refresh_log() uses --no-integrate-operation, which can return a commit_id for a
+/// working-copy snapshot that was computed but not written to the object store (~10%
+/// of runs). Using change_id (jj's stable logical identifier) avoids "revision doesn't
+/// exist" errors in jj duplicate. Fixed in src/ui/views/log/input.rs (Phase 48 A2).
 #[test]
 fn test_duplicate_not_in_revset_notification() {
     skip_if_no_jj!();
@@ -115,8 +121,10 @@ fn test_duplicate_not_in_revset_notification() {
     repo.jj(&["describe", "-m", "my-change"]);
     repo.write_file("file.txt", "content");
 
-    // Build App pointing at test repo
-    let mut app = tij::app::App::new();
+    // Build App pointing at test repo.
+    // Use new_for_test() (no subprocess calls) so we don't race with other
+    // parallel test processes that also spawn jj against the CWD repo. (A2)
+    let mut app = tij::app::App::new_for_test();
     app.jj = JjExecutor::with_repo_path(repo.path());
     app.error_message = None;
 

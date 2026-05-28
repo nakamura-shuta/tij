@@ -221,7 +221,11 @@ impl LogView {
             }
             LogCommand::Duplicate => {
                 if let Some(change) = self.selected_change() {
-                    LogAction::Duplicate(change.commit_id.to_string())
+                    // Use change_id (stable across snapshots) rather than commit_id.
+                    // commit_id may refer to a non-persisted snapshot when the log was
+                    // loaded with --no-integrate-operation, causing "revision doesn't
+                    // exist" errors in jj duplicate. change_id is always valid. (A2)
+                    LogAction::Duplicate(change.change_id.to_string())
                 } else {
                     LogAction::None
                 }

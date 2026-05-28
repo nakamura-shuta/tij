@@ -258,7 +258,7 @@ pub struct App {
     pub(crate) command_history: CommandHistory,
     /// Change id captured when opening Bookmark/Tag view from Log; the default
     /// `-r` target for in-view `n` (create). `None` means `@`. (Phase 48-B2)
-    pub(crate) create_target: Option<String>,
+    pub create_target: Option<String>,
 }
 
 impl Default for App {
@@ -332,11 +332,12 @@ impl App {
         app
     }
 
-    /// Create a new App for unit tests.
+    /// Create a new App without running any external commands.
     ///
-    /// Pure initialization only — no `jj log` or other external commands.
-    /// Safe to use in CI environments without a jj repository.
-    #[cfg(test)]
+    /// Pure initialization only — no `jj log` or other subprocess calls.
+    /// Use this in unit tests (within the crate) and in integration tests that
+    /// need to override `app.jj` before issuing their own refresh calls.
+    /// Never use in production code — use [`App::new()`] instead.
     pub fn new_for_test() -> Self {
         Self::init()
     }
@@ -375,15 +376,22 @@ impl App {
                 self.preview_pending_id = None;
             }
 
-            // Capture the Log-selected change as the default create target
-            // when navigating from Log to Bookmark or Tag view. (Phase 48-B2)
-            if self.current_view == View::Log && matches!(view, View::Bookmark | View::Tag) {
-                self.create_target = self
-                    .log_view
-                    .selected_change()
-                    .map(|c| c.change_id.to_string());
-            } else if !matches!(view, View::Bookmark | View::Tag) {
-                // Leaving to a non-create view: don't carry a stale target.
+            // Invariant: `create_target` is captured only on Log→{Bookmark,Tag}.
+            // It is cleared on every other transition — including Bookmark→Tag,
+            // Tag→Bookmark, or any exit from those views — so a stale change-id
+            // from a prior Log selection can never survive unexpected view hops.
+            // (Phase 48-B2; defensive rewrite Phase 48-M2)
+            if matches!(view, View::Bookmark | View::Tag) {
+                // Entering a create-capable view: capture only when coming from Log.
+                self.create_target = if self.current_view == View::Log {
+                    self.log_view
+                        .selected_change()
+                        .map(|c| c.change_id.to_string())
+                } else {
+                    None
+                };
+            } else {
+                // Leaving to a non-create view: clear any stale target.
                 self.create_target = None;
             }
 
@@ -550,6 +558,51 @@ mod tests {
         app.previous_view = None;
         app.go_back();
         assert_eq!(app.current_view, View::Log);
+    }
+
+    // =========================================================================
+    // go_to_view create_target invariant tests (Phase 48-M2)
+    // =========================================================================
+
+    #[test]
+    fn go_to_view_bookmark_to_tag_clears_stale_create_target() {
+        // Bookmark→Tag is currently unreachable via UI keys, but exercising it
+        // here ensures the destination-based logic holds for future view additions.
+        let mut app = App::new_for_test();
+        // Pre-set a stale target as if an earlier Log→Bookmark transition captured one.
+        app.create_target = Some("STALE".to_string());
+        // Simulate being in Bookmark view (go_to_view guards on current != target).
+        app.current_view = View::Bookmark;
+        // Transition to Tag: not coming from Log, so target must be cleared.
+        app.go_to_view(View::Tag);
+        assert_eq!(
+            app.create_target, None,
+            "Bookmark→Tag must clear create_target; stale id survived the transition"
+        );
+    }
+
+    #[test]
+    fn go_to_view_tag_to_bookmark_clears_stale_create_target() {
+        let mut app = App::new_for_test();
+        app.create_target = Some("STALE".to_string());
+        app.current_view = View::Tag;
+        app.go_to_view(View::Bookmark);
+        assert_eq!(
+            app.create_target, None,
+            "Tag→Bookmark must clear create_target"
+        );
+    }
+
+    #[test]
+    fn go_to_view_non_log_to_bookmark_clears_create_target() {
+        let mut app = App::new_for_test();
+        app.create_target = Some("STALE".to_string());
+        app.current_view = View::Status;
+        app.go_to_view(View::Bookmark);
+        assert_eq!(
+            app.create_target, None,
+            "non-Log→Bookmark must not carry stale target"
+        );
     }
 
     // =========================================================================

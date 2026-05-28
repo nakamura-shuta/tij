@@ -194,6 +194,7 @@ impl App {
                 self.notify_success(msg);
                 self.mark_dirty_and_refresh_current(DirtyFlags::all());
                 self.refresh_current_view_after_op();
+                self.create_target = None; // op-log advanced; any pre-undo captured change id may be stale (Phase 48 M4)
             }
             Err(e) => {
                 self.set_error(format!("Undo failed: {}", e));
@@ -469,6 +470,7 @@ impl App {
                         self.notify_success("Redo complete");
                         self.mark_dirty_and_refresh_current(DirtyFlags::all());
                         self.refresh_current_view_after_op();
+                        self.create_target = None; // op-log advanced; any pre-redo captured change id may be stale (Phase 48 M4)
                     }
                     Err(e) => {
                         self.set_error(format!("Redo failed: {}", e));
