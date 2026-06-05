@@ -114,6 +114,11 @@ pub fn palette_commands() -> &'static [PaletteCommand] {
             dispatch: PaletteDispatch::Command(LogCommand::ShowStackDiff),
         },
         PaletteCommand {
+            name: "show-traces",
+            description: "Agent traces on selected change (AI attribution)",
+            dispatch: PaletteDispatch::Command(LogCommand::ShowTraces),
+        },
+        PaletteCommand {
             name: "tag-view",
             description: "Open Tag View",
             dispatch: PaletteDispatch::Key(keys::TAG_VIEW),
@@ -209,6 +214,19 @@ mod tests {
         let cmds = palette_commands();
         assert!(!cmds.is_empty());
         assert!(cmds.iter().any(|c| c.name == "metaedit"));
+    }
+
+    #[test]
+    fn registry_has_show_traces() {
+        let cmds = palette_commands();
+        let cmd = cmds
+            .iter()
+            .find(|c| c.name == "show-traces")
+            .expect("show-traces registered");
+        assert!(matches!(
+            cmd.dispatch,
+            PaletteDispatch::Command(LogCommand::ShowTraces)
+        ));
     }
 
     #[test]

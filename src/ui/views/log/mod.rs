@@ -202,6 +202,13 @@ pub enum LogAction {
     /// stack. Carries change_id for the working copy, commit_id otherwise
     /// (same convention as OpenDiff — unambiguous for divergent changes).
     ShowStackDiff(String),
+    /// Show Agent Trace records for the selected change (Phase 2).
+    /// Carries both short IDs because trace matching needs change_id (jj
+    /// anchors) AND commit_id (git anchors) — see `TraceIndex::records_for`.
+    ShowTraces {
+        change_id: String,
+        commit_id: String,
+    },
 }
 
 /// Identifiers for low-frequency Log commands reachable only via the palette
@@ -220,6 +227,7 @@ pub enum LogCommand {
     Bisect,
     Fix,
     ShowStackDiff,
+    ShowTraces,
 }
 
 /// Log View state

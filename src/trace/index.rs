@@ -34,13 +34,19 @@ impl AiBadgeSets {
     }
 }
 
-/// Pre-filtered revision anchors from AI-contributing records
+/// One AI-contributing record with a usable VCS anchor
+#[derive(Debug, Clone)]
+struct AnchoredRecord {
+    vcs_type: TraceVcsType,
+    /// Full revision string (jj change ID or git commit SHA)
+    revision: String,
+    record: TraceRecord,
+}
+
+/// Pre-filtered AI-contributing records, anchored by VCS revision
 #[derive(Debug, Clone, Default)]
 pub struct TraceIndex {
-    /// Full jj change IDs from `vcs.type: "jj"` records
-    jj_revisions: Vec<String>,
-    /// Full git commit SHAs from `vcs.type: "git"` records
-    git_revisions: Vec<String>,
+    anchored: Vec<AnchoredRecord>,
 }
 
 impl TraceIndex {
@@ -56,18 +62,21 @@ impl TraceIndex {
             if vcs.revision.len() < MIN_REVISION_LEN {
                 continue;
             }
-            match vcs.vcs_type {
-                TraceVcsType::Jj => index.jj_revisions.push(vcs.revision.clone()),
-                TraceVcsType::Git => index.git_revisions.push(vcs.revision.clone()),
-                TraceVcsType::Other => {}
+            if vcs.vcs_type == TraceVcsType::Other {
+                continue;
             }
+            index.anchored.push(AnchoredRecord {
+                vcs_type: vcs.vcs_type,
+                revision: vcs.revision.clone(),
+                record: record.clone(),
+            });
         }
         index
     }
 
     /// True when no record can ever match (skip per-refresh work)
     pub fn is_empty(&self) -> bool {
-        self.jj_revisions.is_empty() && self.git_revisions.is_empty()
+        self.anchored.is_empty()
     }
 
     /// Match log rows against the index (prefix match, §6.2).
@@ -86,13 +95,42 @@ impl TraceIndex {
                 continue;
             }
 
-            if self.jj_revisions.iter().any(|r| r.starts_with(change_id)) {
+            if self
+                .anchored
+                .iter()
+                .any(|a| a.vcs_type == TraceVcsType::Jj && a.revision.starts_with(change_id))
+            {
                 sets.confirmed.insert(commit_id.to_string());
-            } else if self.git_revisions.iter().any(|r| r.starts_with(commit_id)) {
+            } else if self
+                .anchored
+                .iter()
+                .any(|a| a.vcs_type == TraceVcsType::Git && a.revision.starts_with(commit_id))
+            {
                 sets.heuristic.insert(commit_id.to_string());
             }
         }
         sets
+    }
+
+    /// All records anchored to the given change (Phase 2: trace detail).
+    ///
+    /// `change_id` / `commit_id` are the log row's short(8) IDs; matching is
+    /// the same prefix rule as [`Self::match_commits`]. Both confirmed (jj)
+    /// and heuristic (git) anchors are returned — the caller distinguishes
+    /// them per-record via the record's `vcs` field if needed.
+    pub fn records_for(&self, change_id: &str, commit_id: &str) -> Vec<&TraceRecord> {
+        if change_id.is_empty() || commit_id.is_empty() {
+            return Vec::new();
+        }
+        self.anchored
+            .iter()
+            .filter(|a| match a.vcs_type {
+                TraceVcsType::Jj => a.revision.starts_with(change_id),
+                TraceVcsType::Git => a.revision.starts_with(commit_id),
+                TraceVcsType::Other => false,
+            })
+            .map(|a| &a.record)
+            .collect()
     }
 }
 
@@ -198,6 +236,32 @@ mod tests {
         r.vcs = None;
         let index = TraceIndex::build(&[r]);
         assert!(index.is_empty());
+    }
+
+    #[test]
+    fn records_for_returns_jj_anchored_records() {
+        let index =
+            TraceIndex::build(&[record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv")]);
+        let records = index.records_for("xqnktzml", "2d31c7f1");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].tool_name.as_deref(), Some("claude-code"));
+    }
+
+    #[test]
+    fn records_for_returns_git_anchored_records() {
+        let index = TraceIndex::build(&[record(
+            TraceVcsType::Git,
+            "a6b2ed5ac3b509694c746a4763b97995f395172b",
+        )]);
+        assert_eq!(index.records_for("rlxnnrwv", "a6b2ed5a").len(), 1);
+        assert_eq!(index.records_for("rlxnnrwv", "deadbeef").len(), 0);
+    }
+
+    #[test]
+    fn records_for_empty_ids_returns_nothing() {
+        let index =
+            TraceIndex::build(&[record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv")]);
+        assert!(index.records_for("", "").is_empty());
     }
 
     #[test]

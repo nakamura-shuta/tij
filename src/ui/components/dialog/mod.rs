@@ -109,6 +109,9 @@ pub enum DialogCallback {
     WorkspaceRename { old_name: String },
     /// Bisect run (Input dialog for command entry)
     BisectRun { good: String, bad: String },
+    /// Agent Trace record selection — Enter copies the conversation URL
+    /// (Select dialog, single_select; value = URL or empty)
+    TraceCopyUrl,
     /// Metaedit operation selection (Select dialog, single_select)
     MetaeditSelect {
         commit_id: String,

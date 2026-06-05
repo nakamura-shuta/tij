@@ -149,6 +149,29 @@ fn palette_command_show_stack_diff_without_selection_is_none() {
 }
 
 #[test]
+fn palette_command_show_traces_carries_both_ids() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    let change = v.selected_change().unwrap();
+    let (cid, coid) = (change.change_id.to_string(), change.commit_id.to_string());
+    let action = v.command_action(LogCommand::ShowTraces);
+    assert_eq!(
+        action,
+        LogAction::ShowTraces {
+            change_id: cid,
+            commit_id: coid,
+        }
+    );
+}
+
+#[test]
+fn palette_command_show_traces_without_selection_is_none() {
+    let mut v = LogView::new();
+    let action = v.command_action(LogCommand::ShowTraces);
+    assert_eq!(action, LogAction::None);
+}
+
+#[test]
 fn removed_single_keys_do_not_fire() {
     let mut v = LogView::new();
     v.set_changes(create_test_changes());

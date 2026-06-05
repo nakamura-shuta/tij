@@ -59,6 +59,10 @@ impl App {
                 | DialogCallback::WorkspaceRename { .. } => {
                     self.handle_workspace_dialog(callback, values);
                 }
+                // Agent Trace (copy conversation URL)
+                DialogCallback::TraceCopyUrl => {
+                    self.handle_trace_dialog(values);
+                }
                 // Misc
                 DialogCallback::OpRestore
                 | DialogCallback::Track
@@ -117,6 +121,7 @@ impl App {
             | DialogCallback::TagCreate { .. }
             | DialogCallback::TagDelete { .. }
             | DialogCallback::BisectRun { .. }
+            | DialogCallback::TraceCopyUrl
             | DialogCallback::MetaeditSelect { .. }
             | DialogCallback::MetaeditSetAuthor { .. }
             | DialogCallback::MetaeditNewChangeId { .. }

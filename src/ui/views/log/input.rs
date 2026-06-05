@@ -285,6 +285,16 @@ impl LogView {
                 }
             }
             LogCommand::Arrange => LogAction::Arrange,
+            LogCommand::ShowTraces => {
+                if let Some(change) = self.selected_change() {
+                    LogAction::ShowTraces {
+                        change_id: change.change_id.to_string(),
+                        commit_id: change.commit_id.to_string(),
+                    }
+                } else {
+                    LogAction::None
+                }
+            }
             LogCommand::ShowStackDiff => {
                 if let Some(change) = self.selected_change() {
                     // Same convention as OpenDiff: working copy uses change_id

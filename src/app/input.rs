@@ -442,6 +442,7 @@ impl App {
             // Navigation
             LogAction::OpenDiff(_)
             | LogAction::ShowStackDiff(_)
+            | LogAction::ShowTraces { .. }
             | LogAction::ExecuteRevset(_)
             | LogAction::ClearRevset
             | LogAction::OpenBookmarkView
@@ -528,6 +529,10 @@ impl App {
         match action {
             LogAction::OpenDiff(change_id) => self.open_diff(&change_id),
             LogAction::ShowStackDiff(change_id) => self.open_stack_diff(&change_id),
+            LogAction::ShowTraces {
+                change_id,
+                commit_id,
+            } => self.open_trace_dialog(&change_id, &commit_id),
             LogAction::ExecuteRevset(revset) => self.refresh_log(Some(&revset)),
             LogAction::ClearRevset => self.refresh_log(None),
             LogAction::OpenBookmarkView => self.open_bookmark_view(),

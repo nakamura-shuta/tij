@@ -124,4 +124,37 @@ impl TraceRecord {
 
         !saw_contributor && self.tool_name.is_some()
     }
+
+    /// First conversation URL in the record (Phase 2: copy target)
+    pub fn primary_url(&self) -> Option<&str> {
+        self.files
+            .iter()
+            .flat_map(|f| &f.conversations)
+            .find_map(|c| c.url.as_deref())
+    }
+
+    /// First model ID found in any contributor (conversation- or range-level)
+    pub fn primary_model_id(&self) -> Option<&str> {
+        self.files
+            .iter()
+            .flat_map(|f| &f.conversations)
+            .find_map(|c| {
+                c.contributor
+                    .as_ref()
+                    .and_then(|ct| ct.model_id.as_deref())
+                    .or_else(|| {
+                        c.ranges
+                            .iter()
+                            .find_map(|r| r.contributor.as_ref()?.model_id.as_deref())
+                    })
+            })
+    }
+
+    /// Number of code files in the record (pseudo-files excluded)
+    pub fn code_file_count(&self) -> usize {
+        self.files
+            .iter()
+            .filter(|f| !PSEUDO_FILES.contains(&f.path.as_str()))
+            .count()
+    }
 }

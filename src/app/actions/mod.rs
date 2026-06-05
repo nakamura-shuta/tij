@@ -4,6 +4,7 @@ mod bookmark;
 mod dialog;
 mod push;
 mod tag;
+mod trace;
 mod workspace;
 
 use std::io;
