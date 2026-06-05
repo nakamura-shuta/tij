@@ -12,6 +12,7 @@ impl App {
         match self.jj.show(revision) {
             Ok(content) => {
                 self.diff_view = Some(DiffView::new(revision.to_string(), content));
+                self.apply_ai_diff_overlay(revision);
                 self.go_to_view(View::Diff);
                 self.error_message = None;
             }
@@ -80,6 +81,7 @@ impl App {
                 // Jump to the specified file
                 diff_view.jump_to_file(file_path);
                 self.diff_view = Some(diff_view);
+                self.apply_ai_diff_overlay(revision);
                 self.go_to_view(View::Diff);
                 self.error_message = None;
             }

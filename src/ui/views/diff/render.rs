@@ -316,14 +316,29 @@ impl DiffView {
             return;
         }
 
-        // Build visible lines
+        // Build visible lines. With an AI overlay (Phase 3), every line gets
+        // a 2-char gutter — "▎ " (AI hint) or "  " — so columns stay aligned.
+        let has_overlay = self.has_ai_overlay();
         let lines: Vec<Line> = self
             .content
             .lines
             .iter()
+            .enumerate()
             .skip(self.scroll_offset)
             .take(inner_height)
-            .map(|diff_line| self.render_diff_line(diff_line))
+            .map(|(i, diff_line)| {
+                let mut line = self.render_diff_line(diff_line);
+                if has_overlay {
+                    let marked = self.ai_line_marks.get(i).copied().unwrap_or(false);
+                    let gutter = if marked {
+                        Span::styled("▎ ", Style::default().fg(theme::diff_view::AI_MARK).bold())
+                    } else {
+                        Span::raw("  ")
+                    };
+                    line.spans.insert(0, gutter);
+                }
+                line
+            })
             .collect();
 
         let diff = Paragraph::new(lines).block(components::side_borders_block());

@@ -1624,9 +1624,12 @@ impl App {
         match self.fetch_diff_content(&revision, new_format, compare_info.as_ref(), mode) {
             Ok(content) => {
                 let diff_view = self.diff_view.as_mut().unwrap();
-                diff_view.set_content(revision, content);
+                diff_view.set_content(revision.clone(), content);
                 diff_view.compare_info = compare_info;
                 diff_view.display_format = new_format;
+                // Re-apply AI overlay (set_content cleared it; no-op unless
+                // Single + ColorWords)
+                self.apply_ai_diff_overlay(&revision);
 
                 self.notify_info(format!(
                     "Display: {} ({}/{})",

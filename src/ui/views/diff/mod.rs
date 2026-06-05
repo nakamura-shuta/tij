@@ -55,6 +55,10 @@ pub struct DiffView {
     /// When true, header expands to show the full description even if it
     /// shrinks the diff area. Default false keeps diff visibility prioritized.
     pub description_expanded: bool,
+    /// Agent Trace AI overlay: one mark per `content.lines` entry (Phase 3).
+    /// Empty = no overlay (no gutter is rendered). Cleared by `set_content`
+    /// and recomputed by App when applicable (Single + ColorWords).
+    pub ai_line_marks: Vec<bool>,
 }
 
 impl Default for DiffView {
@@ -81,6 +85,7 @@ impl DiffView {
             mode: DiffMode::Single,
             display_format: DiffDisplayFormat::default(),
             description_expanded: false,
+            ai_line_marks: Vec::new(),
         }
     }
 
@@ -194,6 +199,18 @@ impl DiffView {
         self.content = content;
         self.scroll_offset = 0;
         self.current_file_index = 0;
+        // Marks index into content.lines — always invalidated by new content
+        self.ai_line_marks.clear();
+    }
+
+    /// Set the Agent Trace AI overlay marks (must align with content.lines)
+    pub fn set_ai_line_marks(&mut self, marks: Vec<bool>) {
+        self.ai_line_marks = marks;
+    }
+
+    /// Whether the AI overlay gutter should be rendered
+    pub fn has_ai_overlay(&self) -> bool {
+        self.ai_line_marks.iter().any(|&m| m)
     }
 
     /// Clear the view (test-only helper)

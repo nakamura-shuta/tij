@@ -47,6 +47,57 @@ impl App {
         ));
     }
 
+    /// Apply the Agent Trace AI overlay to the current Diff View (Phase 3).
+    ///
+    /// `revision` follows the OpenDiff convention (change_id for the working
+    /// copy, commit_id otherwise) — but trace matching needs BOTH IDs (jj
+    /// anchors match change_id, git anchors match commit_id), so the Change
+    /// is looked up in the current log list. When the revision is not in the
+    /// log (e.g. Blame jump), fall back to passing `revision` as both keys:
+    /// change-ID (k–z) and SHA (hex) alphabets are disjoint, so the wrong-
+    /// kind prefix never FALSE-matches — only same-kind anchors can apply.
+    ///
+    /// Applies only to Single mode + ColorWords format — the only combination
+    /// whose parsed lines carry the new-side line numbers the trace ranges
+    /// refer to. All other cases keep the marks cleared by `set_content`.
+    pub(crate) fn apply_ai_diff_overlay(&mut self, revision: &str) {
+        use crate::model::{DiffDisplayFormat, DiffMode};
+
+        if self.trace_index.is_none() {
+            return;
+        }
+        match self.diff_view.as_ref() {
+            Some(dv)
+                if dv.mode == DiffMode::Single
+                    && dv.display_format == DiffDisplayFormat::ColorWords => {}
+            _ => return,
+        }
+
+        // Resolve both IDs from the log row when possible (see doc comment)
+        let (change_id, commit_id) = self
+            .log_view
+            .changes
+            .iter()
+            .find(|c| {
+                !c.is_graph_only
+                    && (c.commit_id.as_str() == revision || c.change_id.as_str() == revision)
+            })
+            .map(|c| (c.change_id.to_string(), c.commit_id.to_string()))
+            .unwrap_or_else(|| (revision.to_string(), revision.to_string()));
+
+        let ranges = self
+            .trace_index
+            .as_ref()
+            .expect("checked above")
+            .ai_ranges_for(&change_id, &commit_id);
+        if ranges.is_empty() {
+            return;
+        }
+        let diff_view = self.diff_view.as_mut().expect("checked above");
+        let marks = crate::trace::compute_ai_line_marks(&diff_view.content, &ranges);
+        diff_view.set_ai_line_marks(marks);
+    }
+
     /// Handle the confirmed trace dialog: copy the selected conversation URL.
     pub(crate) fn handle_trace_dialog(&mut self, values: Vec<String>) {
         let url = values.into_iter().find(|v| !v.is_empty());
@@ -190,5 +241,117 @@ mod tests {
         app.handle_trace_dialog(vec![String::new()]);
         assert!(app.notification.is_some());
         assert!(app.error_message.is_none());
+    }
+
+    // ── Phase 3: Diff View AI overlay ──
+
+    fn record_with_range(start: usize, end: usize) -> TraceRecord {
+        use crate::trace::TraceRange;
+        let mut r = record_with(None, None);
+        r.files[0].conversations[0].ranges = vec![TraceRange {
+            start_line: start,
+            end_line: end,
+            contributor: None,
+        }];
+        r
+    }
+
+    fn diff_view_for(revision: &str) -> crate::ui::views::DiffView {
+        use crate::model::{DiffContent, DiffLine, DiffLineKind, FileOperation};
+        let content = DiffContent {
+            lines: vec![
+                DiffLine::file_header_with_op("src/main.rs", FileOperation::Modified),
+                DiffLine {
+                    kind: DiffLineKind::Added,
+                    line_numbers: Some((None, Some(2))),
+                    content: "new line".to_string(),
+                    file_op: None,
+                },
+            ],
+            ..Default::default()
+        };
+        crate::ui::views::DiffView::new(revision.to_string(), content)
+    }
+
+    #[test]
+    fn overlay_marks_single_colorwords_diff() {
+        let mut app = App::new_for_test();
+        app.trace_index = Some(TraceIndex::build(&[record_with_range(1, 5)]));
+        app.diff_view = Some(diff_view_for("xqnktzml"));
+
+        app.apply_ai_diff_overlay("xqnktzml");
+
+        let dv = app.diff_view.as_ref().unwrap();
+        assert!(dv.has_ai_overlay());
+        assert_eq!(dv.ai_line_marks, vec![false, true]);
+    }
+
+    #[test]
+    fn overlay_skips_non_colorwords_format() {
+        use crate::model::DiffDisplayFormat;
+        let mut app = App::new_for_test();
+        app.trace_index = Some(TraceIndex::build(&[record_with_range(1, 5)]));
+        let mut dv = diff_view_for("xqnktzml");
+        dv.display_format = DiffDisplayFormat::Stat;
+        app.diff_view = Some(dv);
+
+        app.apply_ai_diff_overlay("xqnktzml");
+        assert!(!app.diff_view.as_ref().unwrap().has_ai_overlay());
+    }
+
+    #[test]
+    fn overlay_resolves_commit_id_revision_via_log_lookup() {
+        // OpenDiff passes commit_id for non-working-copy changes; jj-anchored
+        // records match change_id — the Change lookup must bridge the two.
+        // (Regression: found live — badge showed but overlay stayed empty.)
+        use crate::model::{Change, ChangeId, CommitId};
+        let mut app = App::new_for_test();
+        app.trace_index = Some(TraceIndex::build(&[record_with_range(1, 5)]));
+        app.log_view.set_changes(vec![Change {
+            change_id: ChangeId::new("xqnktzml".to_string()),
+            commit_id: CommitId::new("2d31c7f1".to_string()),
+            author: String::new(),
+            timestamp: String::new(),
+            description: String::new(),
+            is_working_copy: false,
+            is_empty: false,
+            bookmarks: vec![],
+            graph_prefix: String::new(),
+            is_graph_only: false,
+            has_conflict: false,
+            working_copy_names: vec![],
+        }]);
+        app.diff_view = Some(diff_view_for("2d31c7f1")); // commit_id, not change_id
+
+        app.apply_ai_diff_overlay("2d31c7f1");
+        assert!(
+            app.diff_view.as_ref().unwrap().has_ai_overlay(),
+            "jj-anchored record must apply when diff was opened by commit_id"
+        );
+    }
+
+    #[test]
+    fn overlay_skips_unmatched_revision() {
+        let mut app = App::new_for_test();
+        app.trace_index = Some(TraceIndex::build(&[record_with_range(1, 5)]));
+        app.diff_view = Some(diff_view_for("zzzzzzzz"));
+
+        app.apply_ai_diff_overlay("zzzzzzzz");
+        assert!(!app.diff_view.as_ref().unwrap().has_ai_overlay());
+    }
+
+    #[test]
+    fn set_content_clears_overlay_marks() {
+        let mut app = App::new_for_test();
+        app.trace_index = Some(TraceIndex::build(&[record_with_range(1, 5)]));
+        app.diff_view = Some(diff_view_for("xqnktzml"));
+        app.apply_ai_diff_overlay("xqnktzml");
+        assert!(app.diff_view.as_ref().unwrap().has_ai_overlay());
+
+        // New content invalidates the marks (e.g. format cycle re-fetch)
+        let dv = app.diff_view.as_mut().unwrap();
+        dv.set_content("xqnktzml".to_string(), Default::default());
+        assert!(!dv.has_ai_overlay());
+        assert!(dv.ai_line_marks.is_empty());
     }
 }

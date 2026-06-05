@@ -20,6 +20,7 @@
 mod index;
 mod loader;
 mod model;
+mod overlay;
 
 pub use index::{AiBadgeSets, TraceIndex};
 pub use loader::{DEFAULT_TRACE_PATH, LoadResult, load};
@@ -27,3 +28,4 @@ pub use model::{
     ContributorKind, TraceContributor, TraceConversation, TraceFile, TraceRange, TraceRecord,
     TraceVcs, TraceVcsType,
 };
+pub use overlay::compute_ai_line_marks;

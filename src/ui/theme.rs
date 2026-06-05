@@ -52,6 +52,8 @@ pub mod diff_view {
     pub const FILE_HEADER: Color = Color::Cyan;
     /// Change boundary header color in stack mode (bold applied in rendering)
     pub const CHANGE_HEADER: Color = Color::Yellow;
+    /// Agent Trace AI overlay gutter mark (▎) color
+    pub const AI_MARK: Color = Color::Magenta;
     /// Line number color
     pub const LINE_NUMBER: Color = Color::DarkGray;
 }

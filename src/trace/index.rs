@@ -9,7 +9,7 @@
 //!   reference writer records `git rev-parse HEAD`, which in jj colocated
 //!   repos points at @- — the trace may be anchored one change off.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::model::Change;
 
@@ -131,6 +131,47 @@ impl TraceIndex {
             })
             .map(|a| &a.record)
             .collect()
+    }
+
+    /// AI-contributed line ranges per file for the given change (Phase 3:
+    /// Diff View overlay). Line numbers are 1-indexed positions at the
+    /// recorded revision (spec semantics — matches what `jj show` displays).
+    ///
+    /// A range counts as AI when its effective contributor (range-level
+    /// override, else conversation-level) is `ai`/`mixed`, or — mirroring the
+    /// record-level heuristic of §5.3 — when no contributor is recorded at
+    /// all but the record names a tool.
+    pub fn ai_ranges_for(
+        &self,
+        change_id: &str,
+        commit_id: &str,
+    ) -> HashMap<String, Vec<(usize, usize)>> {
+        use super::model::ContributorKind;
+
+        let mut by_file: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+        for record in self.records_for(change_id, commit_id) {
+            let tool_fallback = record.tool_name.is_some();
+            for file in &record.files {
+                for conv in &file.conversations {
+                    for range in &conv.ranges {
+                        let effective = range.contributor.as_ref().or(conv.contributor.as_ref());
+                        let is_ai = match effective {
+                            Some(c) => {
+                                matches!(c.kind, ContributorKind::Ai | ContributorKind::Mixed)
+                            }
+                            None => tool_fallback,
+                        };
+                        if is_ai {
+                            by_file
+                                .entry(file.path.clone())
+                                .or_default()
+                                .push((range.start_line, range.end_line));
+                        }
+                    }
+                }
+            }
+        }
+        by_file
     }
 }
 
@@ -262,6 +303,60 @@ mod tests {
         let index =
             TraceIndex::build(&[record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv")]);
         assert!(index.records_for("", "").is_empty());
+    }
+
+    #[test]
+    fn ai_ranges_for_collects_ranges_per_file() {
+        use crate::trace::model::TraceRange;
+        let mut r = record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv");
+        r.files[0].conversations[0].ranges = vec![
+            TraceRange {
+                start_line: 1,
+                end_line: 10,
+                contributor: None,
+            },
+            TraceRange {
+                start_line: 20,
+                end_line: 25,
+                contributor: None,
+            },
+        ];
+        let index = TraceIndex::build(&[r]);
+
+        let ranges = index.ai_ranges_for("xqnktzml", "2d31c7f1");
+        assert_eq!(
+            ranges.get("src/main.rs"),
+            Some(&vec![(1, 10), (20, 25)]),
+            "conversation-level ai contributor applies to its ranges"
+        );
+        // Unrelated change → empty
+        assert!(index.ai_ranges_for("zzzzzzzz", "00000000").is_empty());
+    }
+
+    #[test]
+    fn ai_ranges_for_excludes_human_ranges() {
+        use crate::trace::model::{ContributorKind, TraceContributor, TraceRange};
+        let mut r = record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv");
+        // Conversation is ai, but one range is overridden to human
+        r.files[0].conversations[0].ranges = vec![
+            TraceRange {
+                start_line: 1,
+                end_line: 5,
+                contributor: Some(TraceContributor {
+                    kind: ContributorKind::Human,
+                    model_id: None,
+                }),
+            },
+            TraceRange {
+                start_line: 6,
+                end_line: 9,
+                contributor: None,
+            },
+        ];
+        let index = TraceIndex::build(&[r]);
+
+        let ranges = index.ai_ranges_for("xqnktzml", "2d31c7f1");
+        assert_eq!(ranges.get("src/main.rs"), Some(&vec![(6, 9)]));
     }
 
     #[test]
