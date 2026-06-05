@@ -31,7 +31,7 @@ git clone https://github.com/nakamura-shuta/tij.git
 cd tij && cargo install --path .
 ```
 
-**Requirements**: [Jujutsu](https://github.com/jj-vcs/jj) >= 0.41.0 in PATH (Homebrew installs it automatically)
+**Requirements**: [Jujutsu](https://github.com/jj-vcs/jj) >= 0.42.0 in PATH (Homebrew installs it automatically)
 
 ## Quick Start
 
@@ -54,8 +54,8 @@ Press `?` for help, `q` to quit.
 | Tags | Tag View (`t`): `Enter` jump / `n` create / `d` delete. Jump supports revset expansion. |
 | Git Integration | Fetch (multi-remote selection, branch-specific fetch, tracked-only fetch) / Push (with dry-run preview, force push warnings, protected bookmark detection, multi-remote selection, push-by-change, push-by-revision, bulk options: --all/--tracked/--deleted, auto-retry for private commits and empty descriptions) |
 | Navigation | Next/Prev (`]`/`[` to move @ through history) / Reversed log order (`V`) |
-| Diff | Display mode cycle (`m`: color-words → stat → git) / Copy to clipboard (`y` full / `Y` diff-only) / Export to `.patch` file (`w`, git unified format). Compare, interdiff, and bisect are reachable via command palette (`:`) in Log View. |
-| Usability | Command palette (`:`, fuzzy-search low-frequency commands) / Current-view help (`?` shows only the current view's keys, `a` toggles all views) / Revset filtering (with count + truncation indicator) / Text search / Adaptive status bar / Dynamic context-aware hints / `--limit 200` for all queries / Startup jj version check (>= 0.41) |
+| Diff | Display mode cycle (`m`: color-words → stat → git) / Copy to clipboard (`y` full / `Y` diff-only) / Export to `.patch` file (`w`, git unified format) / Stack diff (`:` → `show-stack-diff`: all diffs from the selected change up to `@` in one view, with `◉` change boundaries). Compare, interdiff, and bisect are reachable via command palette (`:`) in Log View. |
+| Usability | Command palette (`:`, fuzzy-search low-frequency commands) / Current-view help (`?` shows only the current view's keys, `a` toggles all views) / Revset filtering (with count + truncation indicator) / Text search / Adaptive status bar / Dynamic context-aware hints / `--limit 200` for all queries / Startup jj version check (>= 0.42) |
 
 ## Revset Examples
 

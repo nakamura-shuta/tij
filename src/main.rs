@@ -60,9 +60,10 @@ fn print_help() {
 
 /// Minimum required jj version (major, minor)
 ///
-/// Bumped to 0.41 because read-only invocations rely on `--no-integrate-operation`
-/// (introduced in jj 0.41) to avoid polluting the operation log with snapshot ops.
-const MIN_JJ_VERSION: (u32, u32) = (0, 41);
+/// Bumped to 0.42 because Stack Diff relies on `jj show` accepting a revset
+/// resolving to multiple revisions (introduced in jj 0.42). Previous bump to
+/// 0.41 was for `--no-integrate-operation` (read-only invocations).
+const MIN_JJ_VERSION: (u32, u32) = (0, 42);
 
 /// Check that jj is installed and meets the minimum version requirement.
 fn check_jj_version() -> color_eyre::Result<()> {
