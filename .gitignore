@@ -48,3 +48,5 @@ CLAUDE.md
 
 #entire
 .entire/
+# Agent Trace sidecar (local AI attribution data)
+/.agent-trace/

@@ -8,6 +8,8 @@ pub const JJ_COMMAND: &str = "jj";
 /// jj subcommands
 pub mod commands {
     pub const LOG: &str = "log";
+    pub const CONFIG: &str = "config";
+    pub const CONFIG_GET: &str = "get";
     pub const STATUS: &str = "status";
     pub const SHOW: &str = "show";
     pub const DESCRIBE: &str = "describe";

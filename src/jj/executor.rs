@@ -256,6 +256,19 @@ impl JjExecutor {
         Parser::parse_status(&output)
     }
 
+    /// Run `jj config get <key>` and return the value, or None when unset
+    ///
+    /// tij stores its own settings under the `tij.*` namespace in jj's config
+    /// (verified: jj 0.42 tolerates custom tables without warnings). Any
+    /// error — including "Value not found" — maps to None so callers fall
+    /// back to defaults silently.
+    pub fn config_get(&self, key: &str) -> Option<String> {
+        self.run_readonly_str(&[commands::CONFIG, commands::CONFIG_GET, key])
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
     /// Run `jj show` for a specific change
     pub fn show_raw(&self, revision: &str) -> Result<String, JjError> {
         self.run_readonly_str(&[commands::SHOW, flags::REVISION, revision])

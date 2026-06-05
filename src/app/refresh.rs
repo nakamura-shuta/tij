@@ -110,6 +110,9 @@ impl App {
                 // update bookmarks for entries whose commit_id still matches
                 self.preview_cache.validate(&self.log_view.changes);
                 self.log_view.current_revset = revset.map(|s| s.to_string());
+                // Re-match Agent Trace badges against the new change list
+                // (no I/O — the trace file itself reloads on Ctrl+L only)
+                self.apply_trace_badges();
                 self.error_message = None;
             }
             Err(e) => {
@@ -195,6 +198,8 @@ impl App {
             View::Log => {
                 let revset = self.log_view.current_revset.clone();
                 self.refresh_log(revset.as_deref());
+                // Explicit refresh also re-reads the Agent Trace sidecar
+                self.reload_traces();
                 self.dirty.log = false;
                 self.update_preview_if_needed();
                 self.notify_info("Refreshed");

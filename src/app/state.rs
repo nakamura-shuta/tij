@@ -259,6 +259,10 @@ pub struct App {
     /// Change id captured when opening Bookmark/Tag view from Log; the default
     /// `-r` target for in-view `n` (create). `None` means `@`. (Phase 48-B2)
     pub create_target: Option<String>,
+    /// Agent Trace index (None = no trace file / unreadable — feature silent)
+    pub(crate) trace_index: Option<crate::trace::TraceIndex>,
+    /// Whether the "trace file truncated" info was already shown (once per run)
+    pub(crate) trace_truncation_notified: bool,
 }
 
 impl Default for App {
@@ -316,6 +320,8 @@ impl App {
             },
             command_history: CommandHistory::new(),
             create_target: None,
+            trace_index: None,
+            trace_truncation_notified: false,
         }
     }
 
@@ -326,10 +332,71 @@ impl App {
     pub fn new() -> Self {
         let mut app = Self::init();
         app.refresh_log(None);
+        // Agent Trace sidecar (silent no-op when absent)
+        app.reload_traces();
         // Load preview for the initially selected revision (avoid "No preview available" flash)
         app.update_preview_if_needed();
         app.resolve_pending_preview();
         app
+    }
+
+    /// Reload the Agent Trace sidecar file and refresh Log View badges.
+    ///
+    /// Called at startup and on explicit Log refresh (`Ctrl+L`). Every
+    /// failure path (no jj root, unreadable file, missing config) silently
+    /// disables the feature — trace problems must never affect tij itself.
+    ///
+    /// Public for integration tests (which drive App from outside the crate).
+    pub fn reload_traces(&mut self) {
+        use std::path::PathBuf;
+
+        let Ok(root) = self.jj.workspace_root() else {
+            self.trace_index = None;
+            self.apply_trace_badges();
+            return;
+        };
+
+        // Path override via jj config (`tij.*` namespace); relative paths
+        // resolve against the workspace root.
+        let path = match self.jj.config_get("tij.agent-trace.path") {
+            Some(p) => {
+                let p = PathBuf::from(p);
+                if p.is_absolute() {
+                    p
+                } else {
+                    PathBuf::from(&root).join(p)
+                }
+            }
+            None => PathBuf::from(&root).join(crate::trace::DEFAULT_TRACE_PATH),
+        };
+
+        match crate::trace::load(&path) {
+            Some(result) => {
+                if result.truncated && !self.trace_truncation_notified {
+                    self.trace_truncation_notified = true;
+                    self.notify_info("Agent trace file exceeds 5 MB; older records skipped");
+                }
+                self.trace_index = Some(crate::trace::TraceIndex::build(&result.records));
+            }
+            None => {
+                self.trace_index = None;
+            }
+        }
+        self.apply_trace_badges();
+    }
+
+    /// Recompute Log View AI badges from the current trace index and changes.
+    ///
+    /// Cheap (no I/O) — also called after every `refresh_log` so badges track
+    /// the latest change list.
+    pub(crate) fn apply_trace_badges(&mut self) {
+        let badges = self
+            .trace_index
+            .as_ref()
+            .filter(|index| !index.is_empty())
+            .map(|index| index.match_commits(&self.log_view.changes))
+            .unwrap_or_default();
+        self.log_view.set_ai_badges(badges);
     }
 
     /// Create a new App without running any external commands.

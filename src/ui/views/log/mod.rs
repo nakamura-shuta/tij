@@ -269,6 +269,9 @@ pub struct LogView {
     pub(crate) simplify_parents: bool,
     /// Whether the log results were truncated by --limit
     pub truncated: bool,
+    /// Agent Trace AI badges, keyed by row commit_id
+    /// (confirmed → `[AI]`, heuristic → `[AI?]`; both empty = no trace data)
+    pub ai_badges: crate::trace::AiBadgeSets,
 }
 
 pub mod empty_text {
@@ -298,6 +301,11 @@ impl LogView {
         self.changes = changes;
         self.selection_cursor = 0;
         self.selected_index = self.selectable_indices.first().copied().unwrap_or(0);
+    }
+
+    /// Set Agent Trace AI badges (recomputed by App after each log refresh)
+    pub fn set_ai_badges(&mut self, badges: crate::trace::AiBadgeSets) {
+        self.ai_badges = badges;
     }
 
     /// Get the currently selected change

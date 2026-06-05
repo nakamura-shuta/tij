@@ -36,6 +36,8 @@ pub mod log_view {
     pub const EMPTY_LABEL: Color = Color::DarkGray;
     /// Graph line color (DAG structure)
     pub const GRAPH_LINE: Color = Color::Blue;
+    /// Agent Trace AI badge color ([AI] / [AI?]; bold applied for confirmed)
+    pub const AI_BADGE: Color = Color::Magenta;
 }
 
 /// Colors for Diff View

@@ -361,6 +361,24 @@ impl LogView {
             ));
         }
 
+        // Agent Trace AI badge (before description; §7.1 of agent-trace SoW)
+        // [AI] = confirmed (vcs.type "jj"), [AI?] = heuristic (git SHA — may
+        // be anchored one change off, see SoW §6.3)
+        let commit_key = change.commit_id.as_str();
+        if self.ai_badges.confirmed.contains(commit_key) {
+            spans.push(Span::styled(
+                "[AI] ",
+                Style::default()
+                    .fg(theme::log_view::AI_BADGE)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        } else if self.ai_badges.heuristic.contains(commit_key) {
+            spans.push(Span::styled(
+                "[AI?] ",
+                Style::default().fg(theme::log_view::AI_BADGE),
+            ));
+        }
+
         // Description
         let description = change.display_description();
         if change.is_empty && description == symbols::empty::NO_DESCRIPTION {
@@ -514,6 +532,70 @@ mod tests {
             text.push_str(span.content.as_ref());
         }
         text
+    }
+
+    fn line_text(view: &LogView, change: &Change) -> String {
+        let mut text = String::new();
+        for span in view.build_change_line(change, false).spans {
+            text.push_str(span.content.as_ref());
+        }
+        text
+    }
+
+    // ── Agent Trace AI badges (agent-trace SoW §7.1) ──
+
+    #[test]
+    fn ai_badge_confirmed_renders_before_description() {
+        let mut view = LogView::new();
+        let changes = create_selectable_changes(2);
+        let mut badges = crate::trace::AiBadgeSets::default();
+        badges.confirmed.insert("commit00000".to_string());
+        view.set_changes(changes.clone());
+        view.set_ai_badges(badges);
+
+        let text = line_text(&view, &changes[0]);
+        assert!(text.contains("[AI] Commit 0"), "got: {text}");
+        // Other rows are unaffected
+        let text1 = line_text(&view, &changes[1]);
+        assert!(!text1.contains("[AI]"), "got: {text1}");
+    }
+
+    #[test]
+    fn ai_badge_heuristic_renders_with_question_mark() {
+        let mut view = LogView::new();
+        let changes = create_selectable_changes(1);
+        let mut badges = crate::trace::AiBadgeSets::default();
+        badges.heuristic.insert("commit00000".to_string());
+        view.set_changes(changes.clone());
+        view.set_ai_badges(badges);
+
+        let text = line_text(&view, &changes[0]);
+        assert!(text.contains("[AI?] Commit 0"), "got: {text}");
+    }
+
+    #[test]
+    fn no_badges_means_unchanged_line() {
+        let mut view = LogView::new();
+        let changes = create_selectable_changes(1);
+        view.set_changes(changes.clone());
+
+        let text = line_text(&view, &changes[0]);
+        assert!(!text.contains("[AI"), "got: {text}");
+    }
+
+    #[test]
+    fn confirmed_takes_precedence_over_heuristic() {
+        let mut view = LogView::new();
+        let changes = create_selectable_changes(1);
+        let mut badges = crate::trace::AiBadgeSets::default();
+        badges.confirmed.insert("commit00000".to_string());
+        badges.heuristic.insert("commit00000".to_string());
+        view.set_changes(changes.clone());
+        view.set_ai_badges(badges);
+
+        let text = line_text(&view, &changes[0]);
+        assert!(text.contains("[AI] "), "got: {text}");
+        assert!(!text.contains("[AI?]"), "got: {text}");
     }
 
     #[test]
