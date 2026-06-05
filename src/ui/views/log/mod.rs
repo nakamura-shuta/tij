@@ -198,6 +198,10 @@ pub enum LogAction {
         /// For jj command execution (safe against divergent changes)
         commit_id: String,
     },
+    /// Open stack diff (jj show <revset>, jj 0.42+) for the selected change's
+    /// stack. Carries change_id for the working copy, commit_id otherwise
+    /// (same convention as OpenDiff — unambiguous for divergent changes).
+    ShowStackDiff(String),
 }
 
 /// Identifiers for low-frequency Log commands reachable only via the palette
@@ -215,6 +219,7 @@ pub enum LogCommand {
     Arrange,
     Bisect,
     Fix,
+    ShowStackDiff,
 }
 
 /// Log View state

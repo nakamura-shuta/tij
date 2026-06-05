@@ -269,6 +269,34 @@ impl JjExecutor {
         Parser::parse_show(&output)
     }
 
+    /// Run `jj show -r <revset>` and parse as a multi-revision stack diff
+    ///
+    /// jj 0.42+ accepts a revset resolving to multiple revisions and prints
+    /// one `Commit ID:`-headed block per revision (newest first).
+    pub fn show_stack(&self, revset: &str) -> Result<DiffContent, JjError> {
+        let output = self.show_raw(revset)?;
+        Parser::parse_show_stack(&output)
+    }
+
+    /// Count revisions matched by a revset, capped at `cap + 1`
+    ///
+    /// Returns at most `cap + 1` so callers can cheaply detect "more than cap"
+    /// without enumerating a huge revset (e.g. a stack rooted near root()).
+    pub fn count_revisions_capped(&self, revset: &str, cap: usize) -> Result<usize, JjError> {
+        let limit = (cap + 1).to_string();
+        let output = self.run_readonly_str(&[
+            commands::LOG,
+            flags::REVISION,
+            revset,
+            flags::NO_GRAPH,
+            flags::TEMPLATE,
+            r#"".""#,
+            flags::LIMIT,
+            &limit,
+        ])?;
+        Ok(output.chars().filter(|&c| c == '.').count())
+    }
+
     /// Run `jj show --stat` for a specific change (histogram overview)
     pub fn show_stat(&self, revision: &str) -> Result<String, JjError> {
         self.run_readonly_str(&[commands::SHOW, flags::STAT, flags::REVISION, revision])
@@ -973,21 +1001,6 @@ impl JjExecutor {
         ])
     }
 
-    /// Run `jj git push --bookmark <name> --allow-new` for new remote bookmarks
-    ///
-    /// Same as git_push_bookmark but allows creating new remote bookmarks.
-    /// Note: --allow-new is deprecated in jj 0.37+ but still functional.
-    /// Users should configure `remotes.origin.auto-track-bookmarks` for a permanent fix.
-    pub fn git_push_bookmark_allow_new(&self, bookmark_name: &str) -> Result<String, JjError> {
-        self.run_str(&[
-            commands::GIT,
-            commands::GIT_PUSH,
-            flags::BOOKMARK_FLAG,
-            bookmark_name,
-            flags::ALLOW_NEW,
-        ])
-    }
-
     /// Run `jj git push --dry-run --bookmark <name>` to preview push
     ///
     /// Returns the dry-run output describing what would change on the remote.
@@ -1059,23 +1072,6 @@ impl JjExecutor {
             commands::GIT_PUSH,
             flags::BOOKMARK_FLAG,
             bookmark_name,
-            flags::REMOTE,
-            remote,
-        ])
-    }
-
-    /// Run `jj git push --bookmark <name> --allow-new --remote <remote>` for new remote bookmarks
-    pub fn git_push_bookmark_allow_new_to_remote(
-        &self,
-        bookmark_name: &str,
-        remote: &str,
-    ) -> Result<String, JjError> {
-        self.run_str(&[
-            commands::GIT,
-            commands::GIT_PUSH,
-            flags::BOOKMARK_FLAG,
-            bookmark_name,
-            flags::ALLOW_NEW,
             flags::REMOTE,
             remote,
         ])

@@ -230,6 +230,10 @@ impl App {
                             let revision = diff_view.revision.clone();
                             self.open_diff(&revision);
                         }
+                        DiffMode::Stack => {
+                            let revset = diff_view.revision.clone();
+                            self.open_stack_diff_revset(&revset);
+                        }
                     }
                     self.notify_info("Refreshed");
                 }

@@ -53,10 +53,11 @@ impl DiffView {
                 DiffAction::None
             }
             keys::ANNOTATE => {
-                // Blame is not available in compare/interdiff mode (no single revision context)
+                // Blame is not available without a single revision context
+                // (compare/interdiff have two revisions, stack has many)
                 if self.mode != DiffMode::Single {
                     DiffAction::ShowNotification(
-                        "Blame is not available in compare/interdiff mode".to_string(),
+                        "Blame is not available in compare/interdiff/stack mode".to_string(),
                     )
                 } else if let Some(file_name) = self.current_file_name() {
                     DiffAction::OpenBlame {

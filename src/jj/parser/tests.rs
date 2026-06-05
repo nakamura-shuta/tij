@@ -295,6 +295,243 @@ Created conflict in test.txt:
     assert!(content.lines.len() > 1);
 }
 
+// =========================================================================
+// parse_show_stack tests (multi-revision jj show, jj 0.42+)
+// =========================================================================
+
+#[test]
+fn test_parse_show_stack_two_changes() {
+    // jj show <revset> output: newest first, one block per revision
+    let output = r#"Commit ID: abc123def456
+Change ID: xqnktzmlworukplnyrropmtzylsuxxlv
+Author   : Test <test@example.com> (2026-06-05 12:00:00)
+Committer: Test <test@example.com> (2026-06-05 12:00:00)
+
+    Newest change
+
+Modified regular file src/main.rs:
+   10   10:     fn main() {
+        11: +       println!("new");
+Commit ID: 789012abcdef
+Change ID: ztrqnqttynpltxovptprnvnvlpymqmym
+Author   : Test <test@example.com> (2026-06-04 12:00:00)
+Committer: Test <test@example.com> (2026-06-04 12:00:00)
+
+    Older change
+
+Added regular file src/lib.rs:
+    1: + pub fn hello() {}
+"#;
+    let content = Parser::parse_show_stack(output).unwrap();
+
+    // Combined metadata comes from the first (newest) block
+    assert_eq!(content.commit_id, "abc123def456");
+    assert_eq!(content.author, "Test <test@example.com>");
+
+    // Description is a per-change summary (change_short + first desc line)
+    assert_eq!(
+        content.description,
+        "xqnktzml Newest change\nztrqnqtt Older change"
+    );
+
+    // One ChangeHeader per revision
+    let change_headers: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::ChangeHeader)
+        .collect();
+    assert_eq!(change_headers.len(), 2);
+    assert_eq!(change_headers[0].content, "◉ xqnktzml Newest change");
+    assert_eq!(change_headers[1].content, "◉ ztrqnqtt Older change");
+
+    // File headers from both blocks survive (existing [/] file nav works)
+    assert_eq!(content.file_count(), 2);
+
+    // First line is the newest change's boundary header
+    assert_eq!(content.lines[0].kind, DiffLineKind::ChangeHeader);
+}
+
+#[test]
+fn test_parse_show_stack_single_change_fallback() {
+    // Fallback case: revset resolved to just the selected change
+    let output = r#"Commit ID: abc123
+Change ID: xyz789uvw012
+Author   : Test <test@example.com> (2026-06-05 12:00:00)
+Committer: Test <test@example.com> (2026-06-05 12:00:00)
+
+    Only change
+
+Modified regular file src/main.rs:
+   10   10:     fn main() {
+"#;
+    let content = Parser::parse_show_stack(output).unwrap();
+
+    assert_eq!(content.commit_id, "abc123");
+    assert_eq!(content.description, "xyz789uv Only change");
+    assert_eq!(
+        content
+            .lines
+            .iter()
+            .filter(|l| l.kind == DiffLineKind::ChangeHeader)
+            .count(),
+        1
+    );
+    assert_eq!(content.file_count(), 1);
+}
+
+#[test]
+fn test_parse_show_stack_no_description() {
+    let output = r#"Commit ID: abc123
+Change ID: xyz789uvw012
+Author   : Test <test@example.com> (2026-06-05 12:00:00)
+Committer: Test <test@example.com> (2026-06-05 12:00:00)
+
+    (no description set)
+"#;
+    let content = Parser::parse_show_stack(output).unwrap();
+
+    // jj prints "(no description set)" as the description placeholder
+    assert_eq!(content.description, "xyz789uv (no description set)");
+    assert!(!content.has_changes());
+}
+
+#[test]
+fn test_parse_show_stack_empty_output() {
+    let content = Parser::parse_show_stack("").unwrap();
+    assert!(content.lines.is_empty());
+    assert_eq!(content.description, "");
+}
+
+#[test]
+fn test_parse_show_stack_stat_two_changes() {
+    // jj show <revset> --stat: header + histogram body per block
+    let output = r#"Commit ID: abc123def456
+Change ID: xqnktzmlworukplnyrropmtzylsuxxlv
+Author   : Test <test@example.com> (2026-06-05 12:00:00)
+Committer: Test <test@example.com> (2026-06-05 12:00:00)
+
+    Newest change
+
+src/main.rs | 2 +-
+1 file changed, 1 insertion(+), 1 deletion(-)
+Commit ID: 789012abcdef
+Change ID: ztrqnqttynpltxovptprnvnvlpymqmym
+Author   : Test <test@example.com> (2026-06-04 12:00:00)
+Committer: Test <test@example.com> (2026-06-04 12:00:00)
+
+    Older change
+
+src/lib.rs | 1 +
+1 file changed, 1 insertion(+), 0 deletions(-)
+"#;
+    let content = Parser::parse_show_stack_stat(output).unwrap();
+
+    assert_eq!(content.commit_id, "abc123def456");
+    assert_eq!(
+        content.description,
+        "xqnktzml Newest change\nztrqnqtt Older change"
+    );
+
+    let change_headers: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::ChangeHeader)
+        .collect();
+    assert_eq!(change_headers.len(), 2);
+    assert_eq!(change_headers[0].content, "◉ xqnktzml Newest change");
+
+    // Stat body lines survive as plain Context lines for both blocks
+    assert!(
+        content
+            .lines
+            .iter()
+            .any(|l| l.kind == DiffLineKind::Context && l.content.contains("src/main.rs"))
+    );
+    assert!(
+        content
+            .lines
+            .iter()
+            .any(|l| l.kind == DiffLineKind::Context && l.content.contains("src/lib.rs"))
+    );
+}
+
+#[test]
+fn test_parse_show_stack_git_two_changes() {
+    // jj show <revset> --git: header + git unified diff per block
+    let output = r#"Commit ID: abc123def456
+Change ID: xqnktzmlworukplnyrropmtzylsuxxlv
+Author   : Test <test@example.com> (2026-06-05 12:00:00)
+Committer: Test <test@example.com> (2026-06-05 12:00:00)
+
+    Newest change
+
+diff --git a/src/main.rs b/src/main.rs
+index 1111111111..2222222222 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,1 +1,1 @@
+-old line
++new line
+Commit ID: 789012abcdef
+Change ID: ztrqnqttynpltxovptprnvnvlpymqmym
+Author   : Test <test@example.com> (2026-06-04 12:00:00)
+Committer: Test <test@example.com> (2026-06-04 12:00:00)
+
+    Older change
+
+diff --git a/src/lib.rs b/src/lib.rs
+index 3333333333..4444444444 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -0,0 +1,1 @@
++pub fn hello() {}
+"#;
+    let content = Parser::parse_show_stack_git(output).unwrap();
+
+    assert_eq!(content.commit_id, "abc123def456");
+    assert_eq!(
+        content.description,
+        "xqnktzml Newest change\nztrqnqtt Older change"
+    );
+
+    let change_headers: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::ChangeHeader)
+        .collect();
+    assert_eq!(change_headers.len(), 2);
+
+    // FileHeaders from both blocks (git `diff --git` lines)
+    let file_headers: Vec<_> = content
+        .lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::FileHeader)
+        .collect();
+    assert_eq!(file_headers.len(), 2);
+    assert_eq!(file_headers[0].content, "src/main.rs");
+    assert_eq!(file_headers[1].content, "src/lib.rs");
+
+    // Added/Deleted lines parsed across blocks
+    assert!(
+        content
+            .lines
+            .iter()
+            .any(|l| l.kind == DiffLineKind::Added && l.content == "new line")
+    );
+    assert!(
+        content
+            .lines
+            .iter()
+            .any(|l| l.kind == DiffLineKind::Deleted && l.content == "old line")
+    );
+    assert!(
+        content
+            .lines
+            .iter()
+            .any(|l| l.kind == DiffLineKind::Added && l.content == "pub fn hello() {}")
+    );
+}
+
 #[test]
 fn test_extract_file_info() {
     let (path, op) = Parser::extract_file_info("Modified regular file src/main.rs:").unwrap();

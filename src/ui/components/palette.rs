@@ -109,6 +109,11 @@ pub fn palette_commands() -> &'static [PaletteCommand] {
             dispatch: PaletteDispatch::Command(LogCommand::Compare),
         },
         PaletteCommand {
+            name: "show-stack-diff",
+            description: "Show all diffs in stack (selected to @)",
+            dispatch: PaletteDispatch::Command(LogCommand::ShowStackDiff),
+        },
+        PaletteCommand {
             name: "tag-view",
             description: "Open Tag View",
             dispatch: PaletteDispatch::Key(keys::TAG_VIEW),
@@ -204,6 +209,19 @@ mod tests {
         let cmds = palette_commands();
         assert!(!cmds.is_empty());
         assert!(cmds.iter().any(|c| c.name == "metaedit"));
+    }
+
+    #[test]
+    fn registry_has_show_stack_diff() {
+        let cmds = palette_commands();
+        let cmd = cmds
+            .iter()
+            .find(|c| c.name == "show-stack-diff")
+            .expect("show-stack-diff registered");
+        assert!(matches!(
+            cmd.dispatch,
+            PaletteDispatch::Command(LogCommand::ShowStackDiff)
+        ));
     }
 
     #[test]

@@ -71,6 +71,16 @@ impl DiffLine {
         }
     }
 
+    /// Create a change boundary header line (stack mode)
+    pub fn change_header(content: impl Into<String>) -> Self {
+        Self {
+            kind: DiffLineKind::ChangeHeader,
+            line_numbers: None,
+            content: content.into(),
+            file_op: None,
+        }
+    }
+
     /// Create a separator line (empty line between files)
     pub fn separator() -> Self {
         Self {
@@ -124,6 +134,8 @@ impl DiffLine {
 pub enum DiffLineKind {
     /// File header (e.g., "src/main.rs")
     FileHeader,
+    /// Change boundary header in stack mode (e.g., "◉ abc12345 description")
+    ChangeHeader,
     /// Context line (unchanged)
     Context,
     /// Added line
@@ -196,6 +208,9 @@ pub enum DiffMode {
     Compare,
     /// Two-revision patch comparison (jj interdiff --from --to)
     Interdiff,
+    /// Multi-revision stack diff (jj show <revset>, jj 0.42+) —
+    /// `DiffView::revision` holds the revset string instead of a change ID
+    Stack,
 }
 
 /// Info for a revision in a compare diff

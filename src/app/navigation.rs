@@ -21,6 +21,57 @@ impl App {
         }
     }
 
+    /// Open diff view in stack mode for the stack containing `revision`
+    ///
+    /// `revision` is a change_id for the working copy, commit_id otherwise
+    /// (OpenDiff convention — see `LogAction::ShowStackDiff`).
+    ///
+    /// Conservative revset: `(<rev>::@) | <rev>` — the full stack when the
+    /// selected change is an ancestor of @ (or @ itself), otherwise just the
+    /// selected change. One jj call, no pre-checks needed.
+    pub(crate) fn open_stack_diff(&mut self, revision: &str) {
+        let revset = format!("({0}::@) | {0}", revision);
+        self.open_stack_diff_revset(&revset);
+    }
+
+    /// Maximum number of changes a stack diff will load (matches the
+    /// project-wide `--limit 200` query convention)
+    const STACK_DIFF_MAX_CHANGES: usize = 200;
+
+    /// Open diff view in stack mode for an explicit revset (also used by refresh)
+    pub(crate) fn open_stack_diff_revset(&mut self, revset: &str) {
+        // Guard: selecting an old (e.g. near-root) change would make the
+        // revset cover hundreds of revisions — check the count first.
+        match self
+            .jj
+            .count_revisions_capped(revset, Self::STACK_DIFF_MAX_CHANGES)
+        {
+            Ok(n) if n > Self::STACK_DIFF_MAX_CHANGES => {
+                self.set_error(format!(
+                    "Stack too large: more than {} changes",
+                    Self::STACK_DIFF_MAX_CHANGES
+                ));
+                return;
+            }
+            Ok(_) => {}
+            Err(e) => {
+                self.set_error(format!("Failed to load stack diff: {}", e));
+                return;
+            }
+        }
+
+        match self.jj.show_stack(revset) {
+            Ok(content) => {
+                self.diff_view = Some(DiffView::new_stack(revset.to_string(), content));
+                self.go_to_view(View::Diff);
+                self.error_message = None;
+            }
+            Err(e) => {
+                self.set_error(format!("Failed to load stack diff: {}", e));
+            }
+        }
+    }
+
     /// Open diff view for a specific change and jump to a file
     pub(crate) fn open_diff_at_file(&mut self, revision: &str, file_path: &str) {
         match self.jj.show(revision) {

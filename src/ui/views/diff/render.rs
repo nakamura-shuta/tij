@@ -71,13 +71,23 @@ impl DiffView {
             DiffDisplayFormat::ColorWords => String::new(),
             fmt => format!(" [{}]", fmt.label()),
         };
-        let mut title_spans = vec![
-            Span::raw(" Tij - Diff View ").bold(),
-            Span::raw("["),
-            Span::styled(
+        // Stack mode: `revision` holds a revset string, so show a change count
+        // instead of a (meaningless) truncated revset prefix.
+        let (title_label, title_id) = if self.mode == DiffMode::Stack {
+            (
+                " Tij - Stack Diff ",
+                format!("{} changes", self.change_count()),
+            )
+        } else {
+            (
+                " Tij - Diff View ",
                 self.revision.chars().take(8).collect::<String>(),
-                Style::default().fg(theme::log_view::CHANGE_ID),
-            ),
+            )
+        };
+        let mut title_spans = vec![
+            Span::raw(title_label).bold(),
+            Span::raw("["),
+            Span::styled(title_id, Style::default().fg(theme::log_view::CHANGE_ID)),
             Span::raw("]"),
             Span::styled(format_suffix, Style::default().fg(Color::Yellow).bold()),
         ];
@@ -329,6 +339,10 @@ impl DiffView {
             DiffLineKind::FileHeader => Line::from(Span::styled(
                 format!("── {} ──", line.content),
                 Style::default().fg(theme::diff_view::FILE_HEADER).bold(),
+            )),
+            DiffLineKind::ChangeHeader => Line::from(Span::styled(
+                line.content.clone(),
+                Style::default().fg(theme::diff_view::CHANGE_HEADER).bold(),
             )),
             DiffLineKind::Separator => Line::from(""),
             DiffLineKind::Context => {

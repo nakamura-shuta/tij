@@ -48,6 +48,8 @@ pub mod diff_view {
     pub const DELETED: Color = Color::Red;
     /// File header color (bold applied in rendering)
     pub const FILE_HEADER: Color = Color::Cyan;
+    /// Change boundary header color in stack mode (bold applied in rendering)
+    pub const CHANGE_HEADER: Color = Color::Yellow;
     /// Line number color
     pub const LINE_NUMBER: Color = Color::DarkGray;
 }

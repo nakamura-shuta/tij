@@ -285,6 +285,21 @@ impl LogView {
                 }
             }
             LogCommand::Arrange => LogAction::Arrange,
+            LogCommand::ShowStackDiff => {
+                if let Some(change) = self.selected_change() {
+                    // Same convention as OpenDiff: working copy uses change_id
+                    // (commit_id may be stale mid-snapshot), everything else
+                    // uses commit_id (unambiguous for divergent changes)
+                    let revision = if change.is_working_copy {
+                        change.change_id.to_string()
+                    } else {
+                        change.commit_id.to_string()
+                    };
+                    LogAction::ShowStackDiff(revision)
+                } else {
+                    LogAction::None
+                }
+            }
         }
     }
 

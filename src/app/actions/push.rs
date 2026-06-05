@@ -158,9 +158,9 @@ impl App {
                     }
                 }
                 Err(_) => {
-                    // dry-run failed (untracked, empty description, etc.):
+                    // dry-run failed (empty description, private commit, etc.):
                     // Fallback to dialog without preview.
-                    // execute_push() may still succeed via --allow-new retry.
+                    // execute_push() may still succeed via flag retry.
                     self.active_dialog = Some(Dialog::confirm(
                         "Push to Remote",
                         format!("Push bookmark \"{}\"?", name),
@@ -204,9 +204,10 @@ impl App {
 
     /// Execute git push for the specified bookmarks
     ///
-    /// If `jj git push --bookmark` fails for an untracked/new bookmark,
-    /// retries with `--allow-new` (deprecated in jj 0.37+ but functional).
-    /// On success via --allow-new, adds a hint about configuring auto-track.
+    /// If `jj git push --bookmark` fails for a private commit or empty
+    /// description, retries with the corresponding `--allow-*` flag.
+    /// Untracked/new bookmarks need no special handling: jj 0.38+
+    /// auto-tracks them on push (`--allow-new` was removed in jj 0.42).
     ///
     /// Uses `push_target_remote` if set (consumed via `take()` at the top
     /// to guarantee cleanup on all exit paths).
@@ -221,7 +222,6 @@ impl App {
 
         let mut successes = Vec::new();
         let mut errors = Vec::new();
-        let mut used_allow_new = false;
         let mut retry_notes: Vec<&str> = Vec::new();
 
         for name in bookmark_names {
@@ -246,17 +246,8 @@ impl App {
                 Err(e) => {
                     let err_msg = format!("{}", e);
 
-                    // Detect retry-able errors and build flag list
-                    let mut extra_flags: Vec<&str> = Vec::new();
-                    if is_untracked_bookmark_error(&err_msg) {
-                        extra_flags.push(crate::jj::constants::flags::ALLOW_NEW);
-                    }
-                    if is_private_commit_error(&err_msg) {
-                        extra_flags.push(crate::jj::constants::flags::ALLOW_PRIVATE);
-                    }
-                    if is_empty_description_error(&err_msg) {
-                        extra_flags.push(crate::jj::constants::flags::ALLOW_EMPTY_DESC);
-                    }
+                    // Detect retry-able errors (private commit / empty description)
+                    let extra_flags = detect_push_retry_flags(&err_msg);
 
                     if !extra_flags.is_empty() {
                         let retry_start = Instant::now();
@@ -275,19 +266,10 @@ impl App {
                         match retry {
                             Ok(_) => {
                                 successes.push(name.clone());
-                                if extra_flags.contains(&crate::jj::constants::flags::ALLOW_NEW) {
-                                    used_allow_new = true;
-                                }
-                                if extra_flags.contains(&crate::jj::constants::flags::ALLOW_PRIVATE)
-                                    && !retry_notes.contains(&"private commit allowed")
-                                {
-                                    retry_notes.push("private commit allowed");
-                                }
-                                if extra_flags
-                                    .contains(&crate::jj::constants::flags::ALLOW_EMPTY_DESC)
-                                    && !retry_notes.contains(&"empty description allowed")
-                                {
-                                    retry_notes.push("empty description allowed");
+                                for note in retry_notes_from_flags(&extra_flags) {
+                                    if !retry_notes.contains(&note) {
+                                        retry_notes.push(note);
+                                    }
                                 }
                                 continue;
                             }
@@ -305,7 +287,7 @@ impl App {
         // Show result (include remote name if specified)
         if !successes.is_empty() {
             let names = successes.join(", ");
-            let suffix = build_push_suffix(used_allow_new, &retry_notes);
+            let suffix = build_push_suffix(&retry_notes);
             let msg = if let Some(r) = remote.as_deref() {
                 format!("Pushed bookmark: {} to {}{}", names, r, suffix)
             } else {
@@ -405,7 +387,7 @@ impl App {
         let bookmark_name = Self::parse_push_change_bookmark(output, change_id);
         let short_id = short_id(change_id);
         let notes = retry_notes_from_flags(extra_flags);
-        let suffix = build_push_suffix(false, &notes);
+        let suffix = build_push_suffix(&notes);
         let msg = match (bookmark_name, remote) {
             (Some(name), Some(r)) => {
                 format!(
@@ -830,7 +812,7 @@ impl App {
                         Ok(_) => {
                             let sid = short_id(change_id);
                             let notes = retry_notes_from_flags(&extra_flags);
-                            let suffix = build_push_suffix(false, &notes);
+                            let suffix = build_push_suffix(&notes);
                             let msg = if let Some(r) = remote.as_deref() {
                                 format!("Pushed all bookmarks on {} to {}{}", sid, r, suffix)
                             } else {
@@ -968,20 +950,6 @@ fn format_bookmark_status(preview: &crate::jj::PushPreviewResult, name: &str) ->
     }
 }
 
-/// Check if a push error indicates an untracked/new bookmark
-///
-/// In jj 0.37+, pushing an untracked bookmark fails with errors like:
-/// - "Refusing to create new remote bookmark" (older jj versions)
-/// - Bookmark not tracked on any remote (0.37+ tracking model)
-///
-/// When detected, the caller retries with `--allow-new` (deprecated but functional).
-fn is_untracked_bookmark_error(err_msg: &str) -> bool {
-    let lower = err_msg.to_lowercase();
-    lower.contains("refusing to create new remote bookmark")
-        || lower.contains("not tracked")
-        || lower.contains("untracked")
-}
-
 /// Check if a push error indicates a private commit
 ///
 /// In jj, pushing a private commit fails with an error like:
@@ -1027,22 +995,16 @@ fn retry_notes_from_flags<'a>(extra_flags: &[&str]) -> Vec<&'a str> {
     notes
 }
 
-/// Build notification suffix from retry state
+/// Build notification suffix from retry notes
 ///
 /// Examples:
-/// - `" (used deprecated --allow-new)"` when allow_new is true
 /// - `" (private commit allowed)"` for private retry
 /// - `" (private commit allowed + empty description allowed)"` for both
-fn build_push_suffix(used_allow_new: bool, retry_notes: &[&str]) -> String {
-    let mut parts: Vec<&str> = Vec::new();
-    if used_allow_new {
-        parts.push("used deprecated --allow-new");
-    }
-    parts.extend_from_slice(retry_notes);
-    if parts.is_empty() {
+fn build_push_suffix(retry_notes: &[&str]) -> String {
+    if retry_notes.is_empty() {
         String::new()
     } else {
-        format!(" ({})", parts.join(" + "))
+        format!(" ({})", retry_notes.join(" + "))
     }
 }
 

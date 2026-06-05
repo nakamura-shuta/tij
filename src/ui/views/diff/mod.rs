@@ -165,6 +165,16 @@ impl DiffView {
         view
     }
 
+    /// Create a new DiffView in stack mode (multi-revision `jj show <revset>`)
+    ///
+    /// `revset` is stored in `revision` and reused for refresh / format cycling.
+    pub fn new_stack(revset: String, content: DiffContent) -> Self {
+        let mut view = Self::empty();
+        view.set_content(revset, content);
+        view.mode = DiffMode::Stack;
+        view
+    }
+
     /// Set the content to display
     pub fn set_content(&mut self, revision: String, content: DiffContent) {
         use crate::model::DiffLineKind;
@@ -217,6 +227,16 @@ impl DiffView {
     /// Get total file count
     pub fn file_count(&self) -> usize {
         self.file_names.len()
+    }
+
+    /// Number of changes in stack mode (count of ChangeHeader lines)
+    pub fn change_count(&self) -> usize {
+        use crate::model::DiffLineKind;
+        self.content
+            .lines
+            .iter()
+            .filter(|l| l.kind == DiffLineKind::ChangeHeader)
+            .count()
     }
 
     /// Count description lines for header height calculation
@@ -719,7 +739,7 @@ mod tests {
         assert_eq!(
             action,
             DiffAction::ShowNotification(
-                "Blame is not available in compare/interdiff mode".to_string()
+                "Blame is not available in compare/interdiff/stack mode".to_string()
             )
         );
     }

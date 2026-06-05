@@ -1487,6 +1487,8 @@ impl App {
                     })
                 }
                 DiffMode::Single => self.jj.show_raw(&revision),
+                // Stack: revision holds the revset — full show of all changes
+                DiffMode::Stack => self.jj.show_raw(&revision),
             }
         } else {
             match mode {
@@ -1501,6 +1503,8 @@ impl App {
                         .interdiff(ci.from.commit_id.as_str(), ci.to.commit_id.as_str())
                 }
                 DiffMode::Single => self.jj.diff_raw(&revision),
+                // Stack: jj diff -r <revset> sums the diffs of all revisions
+                DiffMode::Stack => self.jj.diff_raw(&revision),
             }
         };
 
@@ -1586,6 +1590,19 @@ impl App {
                     .show_git(change_id)
                     .and_then(|o| Parser::parse_show_git(&o)),
             },
+            // Stack: change_id holds the revset; same jj show commands as
+            // Single, parsed with the multi-revision stack parsers
+            DiffMode::Stack => match format {
+                DiffDisplayFormat::ColorWords => self.jj.show_stack(change_id),
+                DiffDisplayFormat::Stat => self
+                    .jj
+                    .show_stat(change_id)
+                    .and_then(|o| Parser::parse_show_stack_stat(&o)),
+                DiffDisplayFormat::Git => self
+                    .jj
+                    .show_git(change_id)
+                    .and_then(|o| Parser::parse_show_stack_git(&o)),
+            },
         }
     }
 
@@ -1662,6 +1679,12 @@ impl App {
                 let short = short_id(&revision).to_string();
                 let result = self.jj.diff_git_raw(&revision);
                 (short, result)
+            }
+            DiffMode::Stack => {
+                // jj diff --git -r <revset> produces one summed git patch
+                // for all revisions in the stack
+                let result = self.jj.diff_git_raw(&revision);
+                ("stack".to_string(), result)
             }
         };
 

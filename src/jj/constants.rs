@@ -93,8 +93,6 @@ pub mod flags {
     pub const REPO_PATH: &str = "-R";
     /// Specify bookmark for push
     pub const BOOKMARK_FLAG: &str = "--bookmark";
-    /// Allow pushing new bookmarks (deprecated in jj 0.37+, but functional)
-    pub const ALLOW_NEW: &str = "--allow-new";
     /// List all remotes for bookmark list (jj 0.37+)
     pub const ALL_REMOTES: &str = "--all-remotes";
     /// Named push for new bookmarks (jj 0.37+): --named <bookmark>=<revision>

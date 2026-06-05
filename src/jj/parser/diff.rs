@@ -118,6 +118,99 @@ impl Parser {
         Ok(content)
     }
 
+    /// Parse multi-revision `jj show <revset>` output (jj 0.42+) into a single
+    /// DiffContent (Stack mode)
+    ///
+    /// The output contains one `parse_show()`-style block per revision, each
+    /// starting with a `Commit ID: ` line (newest first). Each block is parsed
+    /// with `inner` and prefixed with a `ChangeHeader` boundary line
+    /// (`◉ <change_short> <description first line>`).
+    ///
+    /// Combined metadata: `commit_id`/`author`/`timestamp` come from the first
+    /// (newest) block; `description` becomes a per-change summary list so the
+    /// Diff View header shows a stack overview.
+    fn parse_show_stack_with(
+        output: &str,
+        inner: fn(&str) -> Result<DiffContent, JjError>,
+    ) -> Result<DiffContent, JjError> {
+        let mut combined = DiffContent::default();
+        let mut summary_lines = Vec::new();
+
+        for block in Self::split_show_blocks(output) {
+            let change_short = block
+                .lines()
+                .find_map(|l| l.strip_prefix("Change ID: "))
+                .map(|id| id.trim().chars().take(8).collect::<String>())
+                .unwrap_or_default();
+
+            let content = inner(block)?;
+
+            let desc_first = content
+                .description
+                .lines()
+                .next()
+                .unwrap_or("(no description)")
+                .to_string();
+
+            // First (newest) block provides the combined metadata
+            if combined.commit_id.as_str().is_empty() {
+                combined.commit_id = content.commit_id.clone();
+                combined.author = content.author.clone();
+                combined.timestamp = content.timestamp.clone();
+            }
+            summary_lines.push(format!("{} {}", change_short, desc_first));
+
+            // Change boundary header, then the block's diff lines
+            if !combined.lines.is_empty() {
+                combined.lines.push(DiffLine::separator());
+            }
+            combined.lines.push(DiffLine::change_header(format!(
+                "◉ {} {}",
+                change_short, desc_first
+            )));
+            combined.lines.extend(content.lines);
+        }
+
+        combined.description = summary_lines.join("\n");
+        Ok(combined)
+    }
+
+    /// Split multi-revision `jj show` output into per-revision blocks at
+    /// `Commit ID: ` boundary lines.
+    fn split_show_blocks(output: &str) -> Vec<&str> {
+        let mut starts: Vec<usize> = Vec::new();
+        let mut pos = 0;
+        for line in output.split_inclusive('\n') {
+            if line.starts_with("Commit ID: ") {
+                starts.push(pos);
+            }
+            pos += line.len();
+        }
+        // Handle output not ending with '\n' is covered: split_inclusive yields
+        // the final partial line too.
+        let mut blocks = Vec::with_capacity(starts.len());
+        for (i, &start) in starts.iter().enumerate() {
+            let end = starts.get(i + 1).copied().unwrap_or(output.len());
+            blocks.push(&output[start..end]);
+        }
+        blocks
+    }
+
+    /// Parse multi-revision `jj show <revset>` (color-words) output — Stack mode
+    pub fn parse_show_stack(output: &str) -> Result<DiffContent, JjError> {
+        Self::parse_show_stack_with(output, Self::parse_show)
+    }
+
+    /// Parse multi-revision `jj show <revset> --stat` output — Stack mode
+    pub fn parse_show_stack_stat(output: &str) -> Result<DiffContent, JjError> {
+        Self::parse_show_stack_with(output, Self::parse_show_stat)
+    }
+
+    /// Parse multi-revision `jj show <revset> --git` output — Stack mode
+    pub fn parse_show_stack_git(output: &str) -> Result<DiffContent, JjError> {
+        Self::parse_show_stack_with(output, Self::parse_show_git)
+    }
+
     /// Parse `jj diff --from --to` output into DiffContent
     ///
     /// Unlike `parse_show()`, this output has no header (no Commit ID, Author, etc.)

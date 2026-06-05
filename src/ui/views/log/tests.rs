@@ -117,6 +117,38 @@ fn palette_command_arrange_returns_arrange() {
 }
 
 #[test]
+fn palette_command_show_stack_diff_working_copy_uses_change_id() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    // First test change is the working copy (@) — change_id expected
+    // (commit_id may be stale mid-snapshot)
+    let change = v.selected_change().unwrap();
+    assert!(change.is_working_copy);
+    let expected = change.change_id.to_string();
+    let action = v.command_action(LogCommand::ShowStackDiff);
+    assert_eq!(action, LogAction::ShowStackDiff(expected));
+}
+
+#[test]
+fn palette_command_show_stack_diff_non_working_copy_uses_commit_id() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    v.selected_index = 1; // non-@ change — commit_id expected (divergent-safe)
+    let change = v.selected_change().unwrap();
+    assert!(!change.is_working_copy);
+    let expected = change.commit_id.to_string();
+    let action = v.command_action(LogCommand::ShowStackDiff);
+    assert_eq!(action, LogAction::ShowStackDiff(expected));
+}
+
+#[test]
+fn palette_command_show_stack_diff_without_selection_is_none() {
+    let mut v = LogView::new();
+    let action = v.command_action(LogCommand::ShowStackDiff);
+    assert_eq!(action, LogAction::None);
+}
+
+#[test]
 fn removed_single_keys_do_not_fire() {
     let mut v = LogView::new();
     v.set_changes(create_test_changes());

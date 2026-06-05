@@ -441,6 +441,7 @@ impl App {
 
             // Navigation
             LogAction::OpenDiff(_)
+            | LogAction::ShowStackDiff(_)
             | LogAction::ExecuteRevset(_)
             | LogAction::ClearRevset
             | LogAction::OpenBookmarkView
@@ -526,6 +527,7 @@ impl App {
     fn handle_log_navigation(&mut self, action: LogAction) {
         match action {
             LogAction::OpenDiff(change_id) => self.open_diff(&change_id),
+            LogAction::ShowStackDiff(change_id) => self.open_stack_diff(&change_id),
             LogAction::ExecuteRevset(revset) => self.refresh_log(Some(&revset)),
             LogAction::ClearRevset => self.refresh_log(None),
             LogAction::OpenBookmarkView => self.open_bookmark_view(),
