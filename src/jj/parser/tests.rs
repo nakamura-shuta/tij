@@ -177,6 +177,58 @@ Committer: Test User <test@example.com> (2024-01-30 12:00:00)
 }
 
 #[test]
+fn test_parse_show_with_bookmarks_and_tags_keeps_description() {
+    // Regression: `Bookmarks:`/`Tags:` header lines (present for bookmarked/
+    // tagged changes) used to be misread as end-of-header, dropping the
+    // description in color-words mode (stat/git were unaffected).
+    let output = r#"Commit ID: 2d31c7f1e79247270ce3822a9b6b15561ebdd2cb
+Change ID: xqnktzmlworukplnyrropmtzylsuxxlv
+Bookmarks: main main@git main@origin
+Tags     : v0.6.1
+Author   : Test <test@example.com> (2026-06-05 13:56:39)
+Committer: Test <test@example.com> (2026-06-05 14:56:53)
+
+    feat: stack diff via palette (jj 0.42 multi-revision show)
+
+    Body line of the description.
+
+Modified regular file src/main.rs:
+   10   10:     fn main() {
+"#;
+    let content = Parser::parse_show(output).unwrap();
+
+    assert_eq!(
+        content.description,
+        "feat: stack diff via palette (jj 0.42 multi-revision show)\n\nBody line of the description."
+    );
+    assert_eq!(content.file_count(), 1);
+    assert_eq!(content.lines[0].kind, DiffLineKind::FileHeader);
+}
+
+#[test]
+fn test_parse_show_stack_bookmarked_change_keeps_description() {
+    // Same regression via the stack parser (ChangeHeader label was showing
+    // "(no description)" for the bookmarked block)
+    let output = r#"Commit ID: abc123def456
+Change ID: xqnktzmlworukplnyrropmtzylsuxxlv
+Bookmarks: main
+Author   : Test <test@example.com> (2026-06-05 12:00:00)
+Committer: Test <test@example.com> (2026-06-05 12:00:00)
+
+    Bookmarked change
+"#;
+    let content = Parser::parse_show_stack(output).unwrap();
+
+    assert_eq!(content.description, "xqnktzml Bookmarked change");
+    let header = content
+        .lines
+        .iter()
+        .find(|l| l.kind == DiffLineKind::ChangeHeader)
+        .unwrap();
+    assert_eq!(header.content, "◉ xqnktzml Bookmarked change");
+}
+
+#[test]
 fn test_parse_show_empty_no_changes() {
     let output = r#"Commit ID: abc123
 Change ID: xyz789

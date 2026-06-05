@@ -20,101 +20,13 @@ impl Parser {
     ///    10   10:     fn main() {
     /// ```
     pub fn parse_show(output: &str) -> Result<DiffContent, JjError> {
-        let mut content = DiffContent::default();
-        let mut description_lines = Vec::new();
-        let mut file_count = 0;
-        let mut header_done = false;
-        let mut in_diff_section = false;
-        let mut current_file_op = FileOperation::Modified;
-
-        for line in output.lines() {
-            // Parse header fields (before diff section)
-            if !header_done {
-                if let Some(commit_id) = line.strip_prefix("Commit ID: ") {
-                    content.commit_id = CommitId::new(commit_id.trim().to_string());
-                    continue;
-                }
-
-                if let Some(author_line) = line.strip_prefix("Author   : ") {
-                    if let Some((author, timestamp)) = Self::parse_author_line(author_line) {
-                        content.author = author;
-                        content.timestamp = timestamp;
-                    }
-                    continue;
-                }
-
-                // Skip Change ID and Committer lines
-                if line.starts_with("Change ID: ") || line.starts_with("Committer: ") {
-                    continue;
-                }
-
-                // Empty line in header section
-                if line.is_empty() {
-                    if !description_lines.is_empty() {
-                        // Could be paragraph break within multi-line description
-                        description_lines.push(String::new());
-                    }
-                    // If no description yet, skip (gap between header fields and description)
-                    continue;
-                }
-
-                // Description lines are indented with 4 spaces
-                if line.starts_with("    ") {
-                    description_lines.push(line.trim_start().to_string());
-                    continue;
-                }
-
-                // Non-empty, non-indented, non-header line = end of header
-                // (e.g. "Modified regular file ...")
-                // Trim trailing empty lines and save description
-                while description_lines.last().is_some_and(|l| l.is_empty()) {
-                    description_lines.pop();
-                }
-                if !description_lines.is_empty() {
-                    content.description = description_lines.join("\n");
-                    description_lines.clear();
-                }
-                header_done = true;
-                // Fall through to file header detection below
-            }
-
-            // File header detection - marks start of diff section
-            if let Some((path, file_op)) = Self::extract_file_info(line) {
-                // If we haven't saved description yet, do it now
-                if !description_lines.is_empty() {
-                    content.description = description_lines.join("\n");
-                    description_lines.clear();
-                }
-                header_done = true;
-                in_diff_section = true;
-                current_file_op = file_op;
-
-                // Add separator before file (except first file)
-                if file_count > 0 {
-                    content.lines.push(DiffLine::separator());
-                }
-                content
-                    .lines
-                    .push(DiffLine::file_header_with_op(path, file_op));
-                file_count += 1;
-                continue;
-            }
-
-            // Diff line parsing (only after we're in diff section)
-            if in_diff_section && let Some(diff_line) = Self::parse_diff_line(line, current_file_op)
-            {
-                content.lines.push(diff_line);
-            }
-        }
-
-        // Handle description if no file headers followed it
-        if !description_lines.is_empty() {
-            while description_lines.last().is_some_and(|l| l.is_empty()) {
-                description_lines.pop();
-            }
-            content.description = description_lines.join("\n");
-        }
-
+        // Header (Commit ID, Author, Bookmarks, Tags, description, …) is
+        // parsed by the shared helper — this keeps the skip-list of header
+        // fields in ONE place (a previous duplicate here missed Bookmarks/
+        // Tags lines, losing the description for bookmarked changes).
+        let (mut content, body_start) = Self::parse_show_header(output);
+        let body_content = Self::parse_diff_body(&output[body_start..]);
+        content.lines = body_content.lines;
         Ok(content)
     }
 
