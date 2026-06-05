@@ -146,6 +146,21 @@ pub enum DiffLineKind {
     Separator,
 }
 
+/// Extract the new path from a jj rename header like `prefix{old => new}`
+///
+/// jj show renders renamed files as `src/{old.rs => new.rs}` in the file
+/// header, while other sources (Status View, Agent Trace records) carry the
+/// plain new path `src/new.rs`. Returns the reconstructed new path, or None
+/// when `name` is not a rename pattern.
+pub fn extract_new_path_from_rename(name: &str) -> Option<String> {
+    let brace_start = name.find('{')?;
+    let brace_end = name.find('}')?;
+    let prefix = &name[..brace_start];
+    let inner = &name[brace_start + 1..brace_end];
+    let (_, new_part) = inner.split_once(" => ")?;
+    Some(format!("{}{}", prefix, new_part))
+}
+
 /// File operation type (from jj diff output header lines)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileOperation {

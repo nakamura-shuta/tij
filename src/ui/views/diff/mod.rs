@@ -421,7 +421,7 @@ impl DiffView {
 
         // Try matching renamed files: "prefix{old => new}" should match "prefix/new"
         for (idx, name) in self.file_names.iter().enumerate() {
-            if let Some(new_path) = Self::extract_new_path_from_rename(name)
+            if let Some(new_path) = crate::model::extract_new_path_from_rename(name)
                 && new_path == file_path
                 && let Some(&pos) = self.file_header_positions.get(idx)
             {
@@ -430,18 +430,6 @@ impl DiffView {
                 return;
             }
         }
-    }
-
-    /// Extract the new path from a rename pattern like "prefix{old => new}"
-    ///
-    /// Returns the reconstructed new path: "prefix/new"
-    fn extract_new_path_from_rename(name: &str) -> Option<String> {
-        let brace_start = name.find('{')?;
-        let brace_end = name.find('}')?;
-        let prefix = &name[..brace_start];
-        let inner = &name[brace_start + 1..brace_end];
-        let (_, new_part) = inner.split_once(" => ")?;
-        Some(format!("{}{}", prefix, new_part))
     }
 }
 
@@ -707,24 +695,27 @@ mod tests {
     fn test_extract_new_path_from_rename() {
         // Standard rename with prefix
         assert_eq!(
-            DiffView::extract_new_path_from_rename("src/{old.rs => new.rs}"),
+            crate::model::extract_new_path_from_rename("src/{old.rs => new.rs}"),
             Some("src/new.rs".to_string())
         );
 
         // Rename without prefix
         assert_eq!(
-            DiffView::extract_new_path_from_rename("{old.rs => new.rs}"),
+            crate::model::extract_new_path_from_rename("{old.rs => new.rs}"),
             Some("new.rs".to_string())
         );
 
         // Deep path rename
         assert_eq!(
-            DiffView::extract_new_path_from_rename("src/components/{Button.tsx => button.tsx}"),
+            crate::model::extract_new_path_from_rename("src/components/{Button.tsx => button.tsx}"),
             Some("src/components/button.tsx".to_string())
         );
 
         // Not a rename pattern
-        assert_eq!(DiffView::extract_new_path_from_rename("src/main.rs"), None);
+        assert_eq!(
+            crate::model::extract_new_path_from_rename("src/main.rs"),
+            None
+        );
     }
 
     #[test]

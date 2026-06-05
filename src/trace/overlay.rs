@@ -12,13 +12,16 @@
 
 use std::collections::HashMap;
 
-use crate::model::{DiffContent, DiffLineKind};
+use crate::model::{DiffContent, DiffLineKind, extract_new_path_from_rename};
 
 /// Compute one mark per diff line: `true` when the line's NEW line number
 /// falls inside an AI range for the file it belongs to.
 ///
 /// - File context comes from `FileHeader` lines (their content is the path,
-///   matching the workspace-relative paths in trace records).
+///   matching the workspace-relative paths in trace records). Renamed files
+///   appear as `prefix{old => new}` in headers while trace records carry the
+///   plain new path — the header is normalized before lookup (same rule as
+///   `DiffView::jump_to_file`).
 /// - Only `Context`/`Added` lines can match — `Deleted` lines have no new
 ///   line number (they don't exist at the recorded revision).
 pub fn compute_ai_line_marks(
@@ -32,7 +35,11 @@ pub fn compute_ai_line_marks(
         .iter()
         .map(|line| match line.kind {
             DiffLineKind::FileHeader => {
-                current_ranges = ranges_by_file.get(&line.content);
+                current_ranges = ranges_by_file.get(&line.content).or_else(|| {
+                    // Rename header: `src/{old.rs => new.rs}` → `src/new.rs`
+                    extract_new_path_from_rename(&line.content)
+                        .and_then(|new_path| ranges_by_file.get(&new_path))
+                });
                 false
             }
             DiffLineKind::Context | DiffLineKind::Added => {
@@ -148,6 +155,35 @@ mod tests {
 
         let marks = compute_ai_line_marks(&content, &ranges);
         assert_eq!(marks, vec![false, false]);
+    }
+
+    #[test]
+    fn rename_header_matches_trace_new_path() {
+        // jj show renders renames as `prefix{old => new}` while trace records
+        // carry the plain new path — normalization must bridge the two.
+        let content = content_with(vec![
+            DiffLine::file_header_with_op("src/{old.rs => new.rs}", FileOperation::Modified),
+            ctx(1, "fn main() {"),
+            added(2, "    moved line"),
+        ]);
+        let ranges = HashMap::from([("src/new.rs".to_string(), vec![(1, 5)])]);
+
+        let marks = compute_ai_line_marks(&content, &ranges);
+        assert_eq!(marks, vec![false, true, true]);
+    }
+
+    #[test]
+    fn rename_header_exact_match_takes_precedence() {
+        // If a (pathological) trace stored the raw rename string, exact match
+        // still wins before normalization
+        let content = content_with(vec![
+            DiffLine::file_header_with_op("src/{old.rs => new.rs}", FileOperation::Modified),
+            ctx(1, "x"),
+        ]);
+        let ranges = HashMap::from([("src/{old.rs => new.rs}".to_string(), vec![(1, 5)])]);
+
+        let marks = compute_ai_line_marks(&content, &ranges);
+        assert_eq!(marks, vec![false, true]);
     }
 
     #[test]
