@@ -47,28 +47,33 @@ pub fn load(path: &Path) -> Option<LoadResult> {
     if truncated {
         file.seek(SeekFrom::Start(len - MAX_TRACE_BYTES)).ok()?;
     }
-    let mut text = String::new();
-    // Non-UTF-8 content: read_to_string fails → treat as unreadable
-    file.read_to_string(&mut text).ok()?;
+    // Read as BYTES: a tail-read may start mid-way through a multi-byte UTF-8
+    // character, which would make read_to_string fail and silently disable
+    // the whole feature even though valid records follow. The partial first
+    // line is dropped byte-wise below, and lossy decoding keeps any other
+    // stray invalid bytes from rejecting the readable remainder (P1).
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).ok()?;
 
-    let body = if truncated {
-        skip_partial_first_line(&text)
+    let body_bytes = if truncated {
+        skip_partial_first_line(&bytes)
     } else {
-        text.as_str()
+        bytes.as_slice()
     };
+    let text = String::from_utf8_lossy(body_bytes);
 
     Some(LoadResult {
-        records: parse_jsonl(body),
+        records: parse_jsonl(&text),
         truncated,
     })
 }
 
 /// Drop everything up to and including the first newline (a tail-read starts
-/// mid-line; the partial first line is not valid JSON).
-fn skip_partial_first_line(text: &str) -> &str {
-    match text.find('\n') {
-        Some(pos) => &text[pos + 1..],
-        None => "",
+/// mid-line — possibly mid-character — so this must operate on bytes).
+fn skip_partial_first_line(bytes: &[u8]) -> &[u8] {
+    match bytes.iter().position(|&b| b == b'\n') {
+        Some(pos) => &bytes[pos + 1..],
+        None => &[],
     }
 }
 
@@ -276,8 +281,41 @@ mod tests {
 
     #[test]
     fn skip_partial_first_line_drops_to_newline() {
-        assert_eq!(skip_partial_first_line("partial\nrest\n"), "rest\n");
-        assert_eq!(skip_partial_first_line("no newline"), "");
+        assert_eq!(skip_partial_first_line(b"partial\nrest\n"), b"rest\n");
+        assert_eq!(skip_partial_first_line(b"no newline"), b"");
+        // Mid-multibyte-character start must not panic (byte-wise scan)
+        let e_acute = "é".as_bytes(); // [0xC3, 0xA9]
+        let input = [&e_acute[1..], b"\nrest"].concat();
+        assert_eq!(skip_partial_first_line(&input), b"rest");
+    }
+
+    #[test]
+    fn truncated_tail_starting_mid_multibyte_char_still_loads() {
+        use std::io::Write;
+
+        // Build a file of MAX_TRACE_BYTES + 1 bytes where the tail-read seek
+        // position (len - MAX) lands on byte 1 — the middle of the leading
+        // 'é' (2 bytes). The old read_to_string-based loader returned None
+        // here, disabling the feature despite a valid record in the tail.
+        let tail = format!("\n{}\n", FULL_RECORD);
+        let max = MAX_TRACE_BYTES as usize;
+        let head_len = max - tail.len() + 1;
+        let mut head = "é".repeat(head_len / 2);
+        if head_len % 2 == 1 {
+            head.push('a');
+        }
+        assert_eq!(head.len(), head_len);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("traces.jsonl");
+        let mut f = File::create(&path).unwrap();
+        f.write_all(head.as_bytes()).unwrap();
+        f.write_all(tail.as_bytes()).unwrap();
+        drop(f);
+
+        let result = load(&path).expect("mid-char tail must not disable loading");
+        assert!(result.truncated);
+        assert_eq!(result.records.len(), 1);
     }
 
     #[test]
