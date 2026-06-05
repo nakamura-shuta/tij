@@ -58,6 +58,31 @@ Press `?` for help, `q` to quit.
 | Diff | Display mode cycle (`m`: color-words → stat → git) / Copy to clipboard (`y` full / `Y` diff-only) / Export to `.patch` file (`w`, git unified format) / Stack diff (`:` → `show-stack-diff`: all diffs from the selected change up to `@` in one view, with `◉` change boundaries). Compare, interdiff, and bisect are reachable via command palette (`:`) in Log View. |
 | Usability | Command palette (`:`, fuzzy-search low-frequency commands) / Current-view help (`?` shows only the current view's keys, `a` toggles all views) / Revset filtering (with count + truncation indicator) / Text search / Adaptive status bar / Dynamic context-aware hints / `--limit 200` for all queries / Startup jj version check (>= 0.42) |
 
+## AI Attribution (Agent Trace)
+
+Tij reads [Agent Trace](https://github.com/cursor/agent-trace) sidecar files —
+an open spec for recording which code was written by AI agents — and surfaces
+the attribution in three places:
+
+| Where | What you see |
+|-------|--------------|
+| Log View | `[AI]` badge on changes with AI contributions (`[AI?]` when the trace is anchored via git SHA, which may point one change off in jj repos) |
+| `:` → `show-traces` | Trace records on the selected change: time / tool / model / files, with Enter copying the conversation URL |
+| Diff View | `▎` gutter on AI-contributed line ranges (color-words format; approximate by design) |
+
+### Quick start
+
+1. Have an agent host write traces — e.g. hook [the reference implementation](https://github.com/cursor/agent-trace/tree/main/reference) into Claude Code / Cursor, or write a small jj-aware hook that records `vcs.type: "jj"` with the change ID of `@` (recommended: change IDs survive rebases, so badges show as confirmed `[AI]`)
+2. **Gitignore the sidecar** (`/.agent-trace/`) — otherwise every trace append dirties the working copy
+3. Open tij: badged changes appear immediately; `Ctrl+L` reloads after new traces
+
+No trace file? The feature stays completely silent — zero UI change.
+
+```bash
+# Optional: store the sidecar elsewhere (repo or user scope)
+jj config set --repo tij.agent-trace.path "path/to/traces.jsonl"
+```
+
 ## Revset Examples
 
 Press `r` to filter commits:
