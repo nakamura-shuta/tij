@@ -176,12 +176,14 @@ impl TraceRecord {
         self.code_files().count()
     }
 
-    /// Every distinct model_id in the record (conversation- and range-level),
-    /// in first-seen order. Unlike `primary_model_id` (first only), this is for
-    /// aggregation (A1 `by_model`) where one record may use several models.
+    /// Every distinct model_id in the record's CODE files (conversation- and
+    /// range-level), in first-seen order. Pseudo-files (`.shell-history` /
+    /// `.sessions`) are excluded — A1 `by_model` is a code-attribution tally,
+    /// so it goes through `code_files()` like the other aggregates. Unlike
+    /// `primary_model_id` (first only), this enumerates all models on a record.
     pub fn model_ids(&self) -> Vec<&str> {
         let mut out: Vec<&str> = Vec::new();
-        for conv in self.files.iter().flat_map(|f| &f.conversations) {
+        for conv in self.code_files().flat_map(|f| &f.conversations) {
             let conv_model = conv
                 .contributor
                 .as_ref()
@@ -389,5 +391,30 @@ mod tests {
                 ("pr".to_string(), "prurl".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn model_ids_excludes_pseudo_files() {
+        // code file uses opus; a .shell-history pseudo-file carries gpt —
+        // only opus must be reported (A1 by_model is code attribution).
+        let mut r = record(Some(ContributorKind::Ai), vec![range(1, 2, None)]);
+        r.files[0].conversations[0]
+            .contributor
+            .as_mut()
+            .unwrap()
+            .model_id = Some("opus".to_string());
+        r.files.push(TraceFile {
+            path: ".shell-history".to_string(),
+            conversations: vec![TraceConversation {
+                url: None,
+                contributor: Some(TraceContributor {
+                    kind: ContributorKind::Ai,
+                    model_id: Some("gpt".to_string()),
+                }),
+                ranges: vec![],
+                related: vec![],
+            }],
+        });
+        assert_eq!(r.model_ids(), vec!["opus"], "pseudo-file model excluded");
     }
 }
