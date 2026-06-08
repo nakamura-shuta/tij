@@ -62,13 +62,14 @@ Press `?` for help, `q` to quit.
 
 Tij reads [Agent Trace](https://github.com/cursor/agent-trace) sidecar files —
 an open spec for recording which code was written by AI agents — and surfaces
-the attribution in three places:
+the attribution in four places:
 
 | Where | What you see |
 |-------|--------------|
 | Log View | `[AI]` badge on changes with AI contributions (`[AI?]` when the trace is anchored via git SHA, which may point one change off in jj repos) |
 | `:` → `show-traces` | Trace records on the selected change: time / tool / model / files, with Enter copying the conversation URL |
 | Diff View | `▎` gutter on AI-contributed line ranges (color-words format; approximate by design) |
+| Blame View (`a`) | `[AI]` / `[AI?]` column on each hunk-head line whose originating change has AI contributions (change-level, so a human-written line in an AI change is also marked — use the Diff gutter for line-precise attribution) |
 
 ### Quick start
 

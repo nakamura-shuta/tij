@@ -340,6 +340,62 @@ mod tests {
         assert!(!app.diff_view.as_ref().unwrap().has_ai_overlay());
     }
 
+    // ── Phase 4a: Blame AI badges ──
+
+    fn blame_view_with_lines() -> crate::ui::views::BlameView {
+        use crate::model::{AnnotationContent, AnnotationLine, ChangeId, CommitId};
+        let mut content = AnnotationContent::new("greet.py".to_string());
+        // line 1 anchored to the AI change, line 2 to an unrelated change
+        content.lines.push(AnnotationLine {
+            change_id: ChangeId::new("xqnktzml".to_string()),
+            commit_id: CommitId::new("2d31c7f1".to_string()),
+            author: "nakamura".to_string(),
+            timestamp: "2026-06-05 14:20".to_string(),
+            line_number: 1,
+            content: "def greet(name):".to_string(),
+            first_in_hunk: true,
+        });
+        content.lines.push(AnnotationLine {
+            change_id: ChangeId::new("lrptplro".to_string()),
+            commit_id: CommitId::new("b06e4c8c".to_string()),
+            author: "nakamura".to_string(),
+            timestamp: "2026-06-05 14:30".to_string(),
+            line_number: 9,
+            content: "def shout(name):".to_string(),
+            first_in_hunk: true,
+        });
+        let mut bv = crate::ui::views::BlameView::new();
+        bv.set_content(content, None);
+        bv
+    }
+
+    #[test]
+    fn blame_badges_mark_only_ai_anchored_lines() {
+        let mut app = App::new_for_test();
+        app.trace_index = Some(TraceIndex::build(&[record_with_range(1, 6)]));
+        app.blame_view = Some(blame_view_with_lines());
+
+        app.apply_blame_ai_badges();
+
+        let badges = &app.blame_view.as_ref().unwrap().ai_badges();
+        assert!(
+            badges.confirmed.contains("2d31c7f1"),
+            "AI change line badged"
+        );
+        assert!(
+            !badges.confirmed.contains("b06e4c8c"),
+            "other change not badged"
+        );
+    }
+
+    #[test]
+    fn blame_badges_empty_without_index() {
+        let mut app = App::new_for_test();
+        app.blame_view = Some(blame_view_with_lines());
+        app.apply_blame_ai_badges();
+        assert!(app.blame_view.as_ref().unwrap().ai_badges().is_empty());
+    }
+
     #[test]
     fn set_content_clears_overlay_marks() {
         let mut app = App::new_for_test();

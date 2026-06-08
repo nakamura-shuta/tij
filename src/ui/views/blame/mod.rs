@@ -32,6 +32,9 @@ pub struct BlameView {
     scroll_offset: usize,
     /// Revision used for annotation (None = working copy)
     revision: Option<String>,
+    /// Agent Trace AI badges keyed by line commit_id (Phase 4a).
+    /// Empty = no overlay (the AI column is not rendered at all).
+    ai_badges: crate::trace::AiBadgeSets,
 }
 
 impl Default for BlameView {
@@ -48,6 +51,7 @@ impl BlameView {
             selected_index: 0,
             scroll_offset: 0,
             revision: None,
+            ai_badges: crate::trace::AiBadgeSets::default(),
         }
     }
 
@@ -57,6 +61,28 @@ impl BlameView {
         self.selected_index = 0;
         self.scroll_offset = 0;
         self.revision = revision;
+        // Badges index into the old content; cleared until App recomputes
+        self.ai_badges = crate::trace::AiBadgeSets::default();
+    }
+
+    /// Set Agent Trace AI badges (Phase 4a; recomputed by App on open_blame)
+    pub fn set_ai_badges(&mut self, badges: crate::trace::AiBadgeSets) {
+        self.ai_badges = badges;
+    }
+
+    /// Current Agent Trace AI badges (for tests / introspection)
+    pub fn ai_badges(&self) -> &crate::trace::AiBadgeSets {
+        &self.ai_badges
+    }
+
+    /// (change_id, commit_id) pairs for every annotation line — for App to
+    /// build the badge sets without reaching into `content`.
+    pub fn line_revisions(&self) -> Vec<(&str, &str)> {
+        self.content
+            .lines
+            .iter()
+            .map(|l| (l.change_id.as_str(), l.commit_id.as_str()))
+            .collect()
     }
 
     /// Get the revision used for this blame view
@@ -151,6 +177,29 @@ mod tests {
         let view = BlameView::new();
         assert!(view.is_empty());
         assert_eq!(view.line_count(), 0);
+    }
+
+    #[test]
+    fn line_revisions_pairs_change_and_commit() {
+        let mut view = BlameView::new();
+        view.set_content(make_test_content(), None);
+        let revs = view.line_revisions();
+        assert_eq!(revs.len(), 10);
+        assert_eq!(revs[0], ("change01", "commit01"));
+        assert_eq!(revs[9], ("change10", "commit10"));
+    }
+
+    #[test]
+    fn set_content_clears_ai_badges() {
+        let mut view = BlameView::new();
+        let mut badges = crate::trace::AiBadgeSets::default();
+        badges.confirmed.insert("commit01".to_string());
+        view.set_ai_badges(badges);
+        assert!(!view.ai_badges.is_empty());
+
+        // New annotation content invalidates badges (they index old lines)
+        view.set_content(make_test_content(), None);
+        assert!(view.ai_badges.is_empty());
     }
 
     #[test]

@@ -100,6 +100,7 @@ impl App {
                 let mut blame_view = BlameView::new();
                 blame_view.set_content(content, revision.map(|s| s.to_string()));
                 self.blame_view = Some(blame_view);
+                self.apply_blame_ai_badges();
                 self.go_to_view(View::Blame);
                 self.error_message = None;
             }
@@ -107,6 +108,29 @@ impl App {
                 self.set_error(format!("Failed to load blame: {}", e));
             }
         }
+    }
+
+    /// Compute Agent Trace AI badges for the current Blame View (Phase 4a).
+    ///
+    /// Change-unit only: each blame line's (change_id, commit_id) is matched
+    /// against the existing `trace_index` (no sidecar I/O). Empty index or no
+    /// match → empty badge set → the AI column is not rendered at all (P5).
+    pub(crate) fn apply_blame_ai_badges(&mut self) {
+        let Some(index) = self.trace_index.as_ref() else {
+            if let Some(bv) = self.blame_view.as_mut() {
+                bv.set_ai_badges(crate::trace::AiBadgeSets::default());
+            }
+            return;
+        };
+        let Some(blame_view) = self.blame_view.as_ref() else {
+            return;
+        };
+        let lines = blame_view.line_revisions();
+        let badges = index.match_blame_lines(&lines);
+        self.blame_view
+            .as_mut()
+            .expect("checked above")
+            .set_ai_badges(badges);
     }
 
     /// Open compare diff view between two revisions

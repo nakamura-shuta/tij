@@ -79,6 +79,29 @@ impl TraceIndex {
         self.anchored.is_empty()
     }
 
+    /// Classify a single (change_id, commit_id) pair into the badge sets
+    /// (prefix match, §6.2). Shared by `match_commits` and `match_blame_lines`
+    /// so the jj-confirmed / git-heuristic rule lives in one place. Keyed by
+    /// `commit_id` (unique per row even for divergent changes).
+    fn classify_into(&self, change_id: &str, commit_id: &str, sets: &mut AiBadgeSets) {
+        if change_id.is_empty() || commit_id.is_empty() {
+            return;
+        }
+        if self
+            .anchored
+            .iter()
+            .any(|a| a.vcs_type == TraceVcsType::Jj && a.revision.starts_with(change_id))
+        {
+            sets.confirmed.insert(commit_id.to_string());
+        } else if self
+            .anchored
+            .iter()
+            .any(|a| a.vcs_type == TraceVcsType::Git && a.revision.starts_with(commit_id))
+        {
+            sets.heuristic.insert(commit_id.to_string());
+        }
+    }
+
     /// Match log rows against the index (prefix match, §6.2).
     ///
     /// Returned sets are keyed by the row's `commit_id` string — unique per
@@ -89,25 +112,25 @@ impl TraceIndex {
             if change.is_graph_only {
                 continue;
             }
-            let change_id = change.change_id.as_str();
-            let commit_id = change.commit_id.as_str();
-            if change_id.is_empty() || commit_id.is_empty() {
-                continue;
-            }
+            self.classify_into(
+                change.change_id.as_str(),
+                change.commit_id.as_str(),
+                &mut sets,
+            );
+        }
+        sets
+    }
 
-            if self
-                .anchored
-                .iter()
-                .any(|a| a.vcs_type == TraceVcsType::Jj && a.revision.starts_with(change_id))
-            {
-                sets.confirmed.insert(commit_id.to_string());
-            } else if self
-                .anchored
-                .iter()
-                .any(|a| a.vcs_type == TraceVcsType::Git && a.revision.starts_with(commit_id))
-            {
-                sets.heuristic.insert(commit_id.to_string());
-            }
+    /// Match blame lines against the index (Phase 4a — change-unit badges).
+    ///
+    /// Each item is a `(change_id, commit_id)` pair (the short IDs a blame
+    /// line carries). Uses the same prefix rule as [`Self::match_commits`];
+    /// returned sets are keyed by `commit_id`. Duplicate IDs across lines
+    /// collapse naturally (HashSet).
+    pub fn match_blame_lines(&self, lines: &[(&str, &str)]) -> AiBadgeSets {
+        let mut sets = AiBadgeSets::default();
+        for &(change_id, commit_id) in lines {
+            self.classify_into(change_id, commit_id, &mut sets);
         }
         sets
     }
@@ -277,6 +300,36 @@ mod tests {
         r.vcs = None;
         let index = TraceIndex::build(&[r]);
         assert!(index.is_empty());
+    }
+
+    #[test]
+    fn match_blame_lines_classifies_jj_and_git() {
+        let index = TraceIndex::build(&[
+            record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv"),
+            record(
+                TraceVcsType::Git,
+                "a6b2ed5ac3b509694c746a4763b97995f395172b",
+            ),
+        ]);
+        // line A → jj change, line B → git commit, line C → unmatched
+        let lines = [
+            ("xqnktzml", "2d31c7f1"),
+            ("rlxnnrwv", "a6b2ed5a"),
+            ("zzzzzzzz", "00000000"),
+        ];
+        let sets = index.match_blame_lines(&lines);
+        assert!(sets.confirmed.contains("2d31c7f1"));
+        assert!(sets.heuristic.contains("a6b2ed5a"));
+        assert!(!sets.confirmed.contains("00000000"));
+        assert!(!sets.heuristic.contains("00000000"));
+    }
+
+    #[test]
+    fn match_blame_lines_skips_empty_ids() {
+        let index =
+            TraceIndex::build(&[record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv")]);
+        let sets = index.match_blame_lines(&[("", ""), ("xqnktzml", "")]);
+        assert!(sets.is_empty());
     }
 
     #[test]
