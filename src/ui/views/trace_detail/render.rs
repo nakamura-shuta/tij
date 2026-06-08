@@ -175,8 +175,8 @@ impl TraceDetailView {
             Span::raw(model),
         ])));
 
-        // Ranges per file
-        for file in &record.files {
+        // Ranges per code file (pseudo-files excluded — not code attribution)
+        for file in record.code_files() {
             let ranges: Vec<String> = file
                 .conversations
                 .iter()

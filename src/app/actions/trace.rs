@@ -189,6 +189,26 @@ mod tests {
         assert!(app.error_message.is_none());
     }
 
+    #[test]
+    fn trace_detail_hints_drop_copy_when_no_url() {
+        use crate::ui::views::TraceDetailView;
+        let mut app = App::new_for_test();
+
+        // With a URL → hints include [y] Copy URL
+        app.trace_detail_view = Some(TraceDetailView::new(
+            "x".to_string(),
+            vec![record_with(Some("u1"), None)],
+        ));
+        assert!(app.trace_detail_hints().iter().any(|h| h.key == "y"));
+
+        // Without a URL → [y] Copy URL is dropped (G4)
+        app.trace_detail_view = Some(TraceDetailView::new(
+            "x".to_string(),
+            vec![record_with(None, None)],
+        ));
+        assert!(!app.trace_detail_hints().iter().any(|h| h.key == "y"));
+    }
+
     // ── Phase 3: Diff View AI overlay ──
 
     fn record_with_range(start: usize, end: usize) -> TraceRecord {

@@ -14,7 +14,8 @@ use crate::ui::views::{
 
 impl App {
     /// Views where jj undo/redo is meaningful (mutating views). Read-only views
-    /// (Diff/Blame/Evolog/CommandHistory/Help) are excluded (Phase 48-D, G4).
+    /// (Diff/Blame/Evolog/CommandHistory/TraceDetail/Help) are excluded
+    /// (Phase 48-D, G4).
     pub(crate) fn view_allows_undo(view: View) -> bool {
         matches!(
             view,
@@ -1545,6 +1546,7 @@ mod tests {
             View::Blame,
             View::Evolog,
             View::CommandHistory,
+            View::TraceDetail,
             View::Help,
         ] {
             assert!(!App::view_allows_undo(v), "{v:?} must NOT allow undo/redo");

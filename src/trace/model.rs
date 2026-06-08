@@ -91,7 +91,23 @@ pub struct TraceRange {
 /// (shell history, session start/end) — excluded from attribution.
 const PSEUDO_FILES: [&str; 2] = [".shell-history", ".sessions"];
 
+impl TraceFile {
+    /// Whether this file is a reference-implementation pseudo-file
+    /// (`.shell-history` / `.sessions`) rather than real source code.
+    pub fn is_pseudo(&self) -> bool {
+        PSEUDO_FILES.contains(&self.path.as_str())
+    }
+}
+
 impl TraceRecord {
+    /// Iterator over the record's real code files (pseudo-files excluded).
+    /// The single place that defines "what counts as code" — used by AI
+    /// detection, file counts, contributor breakdown, and range display so
+    /// pseudo-file ranges never leak into code attribution.
+    pub fn code_files(&self) -> impl Iterator<Item = &TraceFile> {
+        self.files.iter().filter(|f| !f.is_pseudo())
+    }
+
     /// Whether this record represents an AI contribution to code (§5.3)
     ///
     /// True when:
@@ -103,17 +119,12 @@ impl TraceRecord {
     /// Records touching only pseudo-files (`.shell-history` / `.sessions`)
     /// are never AI contributions to code.
     pub fn has_ai_contribution(&self) -> bool {
-        let code_files: Vec<&TraceFile> = self
-            .files
-            .iter()
-            .filter(|f| !PSEUDO_FILES.contains(&f.path.as_str()))
-            .collect();
-        if code_files.is_empty() {
+        if self.code_files().next().is_none() {
             return false;
         }
 
         let mut saw_contributor = false;
-        for file in &code_files {
+        for file in self.code_files() {
             for conv in &file.conversations {
                 if let Some(c) = &conv.contributor {
                     saw_contributor = true;
@@ -162,10 +173,7 @@ impl TraceRecord {
 
     /// Number of code files in the record (pseudo-files excluded)
     pub fn code_file_count(&self) -> usize {
-        self.files
-            .iter()
-            .filter(|f| !PSEUDO_FILES.contains(&f.path.as_str()))
-            .count()
+        self.code_files().count()
     }
 
     /// All URLs in the record as `(label, url)` (A3 — Trace Detail).
@@ -190,11 +198,13 @@ impl TraceRecord {
     /// (A6). Effective contributor follows the Phase 3 rule: range override →
     /// conversation contributor → (tool present ? ai : unknown). Ranges only —
     /// conversations with no ranges don't contribute counts (they have no
-    /// lines to attribute). Returns (ai, mixed, human, unknown).
+    /// lines to attribute). Pseudo-files (`.shell-history` / `.sessions`) are
+    /// excluded — they are not code attribution. Returns (ai, mixed, human,
+    /// unknown).
     pub fn contributor_counts(&self) -> ContributorCounts {
         let tool_fallback = self.tool_name.is_some();
         let mut counts = ContributorCounts::default();
-        for file in &self.files {
+        for file in self.code_files() {
             for conv in &file.conversations {
                 for range in &conv.ranges {
                     let effective = range.contributor.as_ref().or(conv.contributor.as_ref());
@@ -283,6 +293,28 @@ mod tests {
                 }],
             }],
         }
+    }
+
+    #[test]
+    fn contributor_counts_and_file_count_exclude_pseudo_files() {
+        // A record touching real code AND .shell-history: the pseudo-file's
+        // ranges must not inflate the contributor counts or the file count.
+        let mut r = record(Some(ContributorKind::Ai), vec![range(1, 5, None)]);
+        r.files.push(TraceFile {
+            path: ".shell-history".to_string(),
+            conversations: vec![TraceConversation {
+                url: None,
+                contributor: Some(TraceContributor {
+                    kind: ContributorKind::Ai,
+                    model_id: None,
+                }),
+                ranges: vec![range(1, 99, None)],
+                related: vec![],
+            }],
+        });
+        // only the code file's single range counts
+        assert_eq!(r.contributor_counts().ai, 1);
+        assert_eq!(r.code_file_count(), 1);
     }
 
     #[test]

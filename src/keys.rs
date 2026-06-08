@@ -1731,9 +1731,7 @@ pub const BLAME_VIEW_HINTS: &[KeyHint] = &[
     },
 ];
 
-/// Trace Detail view status bar hints (Agent Trace A6+A3).
-/// `[y] Copy URL` is always listed; when there is no selectable URL the View
-/// itself returns a "No URL" notice (G4: the hint stays simple).
+/// Trace Detail view status bar hints — used when the view has selectable URLs.
 pub const TRACE_DETAIL_VIEW_HINTS: &[KeyHint] = &[
     HINT_HELP,
     HINT_NAV,
@@ -1742,6 +1740,19 @@ pub const TRACE_DETAIL_VIEW_HINTS: &[KeyHint] = &[
         label: "Copy URL",
         color: Color::Green,
     },
+    KeyHint {
+        key: "q",
+        label: "Back",
+        color: Color::Red,
+    },
+];
+
+/// Trace Detail view status bar hints when there is no copyable URL.
+/// Drops `[y] Copy URL` so the hint only shows actions that actually work
+/// (G4: "show only operations that do something").
+pub const TRACE_DETAIL_VIEW_HINTS_NO_URL: &[KeyHint] = &[
+    HINT_HELP,
+    HINT_NAV,
     KeyHint {
         key: "q",
         label: "Back",

@@ -96,7 +96,7 @@ impl App {
             View::Evolog => status_hints_height(keys::EVOLOG_VIEW_HINTS, width),
             View::Diff => 1,
             View::Blame => status_hints_height(keys::BLAME_VIEW_HINTS, width),
-            View::TraceDetail => status_hints_height(keys::TRACE_DETAIL_VIEW_HINTS, width),
+            View::TraceDetail => status_hints_height(self.trace_detail_hints(), width),
             View::Help => 0,
         }
     }
@@ -437,13 +437,23 @@ impl App {
         render_status_hints(frame, &hints);
     }
 
+    /// Status bar hints for the Trace Detail View — drops `[y] Copy URL` when
+    /// there is nothing to copy (G4: only show working actions).
+    pub(crate) fn trace_detail_hints(&self) -> &'static [keys::KeyHint] {
+        match &self.trace_detail_view {
+            Some(v) if v.has_urls() => keys::TRACE_DETAIL_VIEW_HINTS,
+            _ => keys::TRACE_DETAIL_VIEW_HINTS_NO_URL,
+        }
+    }
+
     fn render_trace_detail_view(
         &self,
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
         let area = frame.area();
-        let sb_height = status_hints_height(keys::TRACE_DETAIL_VIEW_HINTS, area.width);
+        let hints = self.trace_detail_hints();
+        let sb_height = status_hints_height(hints, area.width);
         let main_area = Rect {
             x: area.x,
             y: area.y,
@@ -461,7 +471,7 @@ impl App {
                 "No traces loaded - Press q to go back",
             );
         }
-        render_status_hints(frame, keys::TRACE_DETAIL_VIEW_HINTS);
+        render_status_hints(frame, hints);
     }
 
     fn render_help_view(&self, frame: &mut Frame) {
