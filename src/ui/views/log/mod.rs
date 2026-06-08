@@ -209,6 +209,8 @@ pub enum LogAction {
         change_id: String,
         commit_id: String,
     },
+    /// Toggle the "AI changes only" filter (Agent Trace A2)
+    ToggleAiFilter,
 }
 
 /// Identifiers for low-frequency Log commands reachable only via the palette
@@ -228,6 +230,7 @@ pub enum LogCommand {
     Fix,
     ShowStackDiff,
     ShowTraces,
+    ToggleAiFilter,
 }
 
 /// Log View state
@@ -251,10 +254,18 @@ pub struct LogView {
     pub(crate) last_search_query: Option<String>,
     /// Revision (commit_id) being edited (for DescribeInput/BookmarkInput mode)
     pub editing_revision: Option<String>,
-    /// Indices of selectable changes (not graph-only)
+    /// Indices of selectable changes (not graph-only, and AI-matched while the
+    /// AI filter is on). Drives navigation and selection.
     selectable_indices: Vec<usize>,
     /// Current position in selectable_indices
     selection_cursor: usize,
+    /// Agent Trace "AI changes only" filter (A2). When on, non-AI and
+    /// graph-only rows are hidden.
+    pub(crate) ai_filter: bool,
+    /// Absolute `changes` indices to DRAW, in order. Filter off → every row
+    /// (incl. graph); filter on → AI-matched non-graph rows only. The single
+    /// source of truth shared by render / search / title-count.
+    visible_indices: Vec<usize>,
     /// Source for rebase (set when entering RebaseSelect mode)
     pub(crate) rebase_source: Option<RebaseSource>,
     /// Current rebase mode (set during RebaseModeSelect)
@@ -295,29 +306,104 @@ impl LogView {
 
     /// Set the changes to display
     ///
-    /// Builds the selectable indices list (excluding graph-only lines)
-    /// and resets selection to the first selectable change.
+    /// Rebuilds the visible/selectable sets (honoring the AI filter) and
+    /// resets selection to the first selectable change.
     pub fn set_changes(&mut self, changes: Vec<Change>) {
-        // Build selectable indices (non graph-only lines)
-        self.selectable_indices = changes
+        self.changes = changes;
+        self.selection_cursor = 0;
+        self.rebuild_visible();
+    }
+
+    /// Set Agent Trace AI badges (recomputed by App after each log refresh).
+    ///
+    /// Rebuilds the visible/selectable sets too: badges are applied AFTER
+    /// `set_changes` on `Ctrl+L` (refresh.rs → apply_trace_badges), so the AI
+    /// filter must re-evaluate against the new badges here (A2).
+    pub fn set_ai_badges(&mut self, badges: crate::trace::AiBadgeSets) {
+        self.ai_badges = badges;
+        self.rebuild_visible();
+    }
+
+    /// Whether a change carries an AI badge (confirmed or heuristic).
+    fn is_ai_change(&self, change: &Change) -> bool {
+        let cid = change.commit_id.as_str();
+        self.ai_badges.confirmed.contains(cid) || self.ai_badges.heuristic.contains(cid)
+    }
+
+    /// Recompute `visible_indices` and `selectable_indices` from `changes`,
+    /// `ai_filter`, and `ai_badges`; re-pin the selection to a visible row.
+    ///
+    /// Invariant: when `selectable_indices` is non-empty, `selected_index`
+    /// points at a selectable (and, under the filter, AI-matched) row. When it
+    /// is empty, `selected_index` is left as-is — callers must guard via
+    /// `selected_change()` / the visible-empty checks (no sentinel value).
+    fn rebuild_visible(&mut self) {
+        self.selectable_indices = self
+            .changes
             .iter()
             .enumerate()
-            .filter(|(_, c)| !c.is_graph_only)
+            .filter(|(_, c)| !c.is_graph_only && (!self.ai_filter || self.is_ai_change(c)))
             .map(|(i, _)| i)
             .collect();
 
-        self.changes = changes;
-        self.selection_cursor = 0;
-        self.selected_index = self.selectable_indices.first().copied().unwrap_or(0);
+        self.visible_indices = if self.ai_filter {
+            // Filtered: graph lines hidden too → visible == selectable
+            self.selectable_indices.clone()
+        } else {
+            // Unfiltered: draw every row (graph included) = legacy behavior
+            (0..self.changes.len()).collect()
+        };
+
+        if self.selectable_indices.is_empty() {
+            self.selection_cursor = 0;
+            // selected_index left as-is; guarded by selected_change()
+        } else {
+            self.selection_cursor = self.selection_cursor.min(self.selectable_indices.len() - 1);
+            self.selected_index = self.selectable_indices[self.selection_cursor];
+        }
     }
 
-    /// Set Agent Trace AI badges (recomputed by App after each log refresh)
-    pub fn set_ai_badges(&mut self, badges: crate::trace::AiBadgeSets) {
-        self.ai_badges = badges;
+    /// Toggle the AI-only filter. Returns the number of visible (selectable)
+    /// changes after toggling — the caller decides whether to keep it on.
+    pub fn toggle_ai_filter(&mut self) {
+        self.ai_filter = !self.ai_filter;
+        self.scroll_offset = 0;
+        self.rebuild_visible();
     }
 
-    /// Get the currently selected change
+    /// Force the AI filter off (used by the empty-guard when there's nothing
+    /// to show). Idempotent.
+    pub fn set_ai_filter_off(&mut self) {
+        if self.ai_filter {
+            self.ai_filter = false;
+            self.rebuild_visible();
+        }
+    }
+
+    /// True while the filter is on but nothing matches (empty AI view).
+    pub fn ai_filter_empty(&self) -> bool {
+        self.ai_filter && self.selectable_indices.is_empty()
+    }
+
+    /// Number of selectable (visible, AI-matched while filtered) changes.
+    pub fn visible_change_count(&self) -> usize {
+        self.selectable_indices.len()
+    }
+
+    /// Absolute `changes` indices to draw, in order (render/scroll source).
+    pub(crate) fn visible_indices(&self) -> &[usize] {
+        &self.visible_indices
+    }
+
+    /// Get the currently selected change.
+    ///
+    /// Returns `None` while the AI filter is on and the selection is not a
+    /// visible (AI-matched) row — including the empty case — so change-started
+    /// actions never operate on a hidden `changes[..]` entry (A2).
     pub fn selected_change(&self) -> Option<&Change> {
+        if self.ai_filter && !self.selectable_indices.contains(&self.selected_index) {
+            return None;
+        }
         self.changes.get(self.selected_index)
     }
 

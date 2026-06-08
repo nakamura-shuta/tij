@@ -63,25 +63,31 @@ impl LogView {
             self.render_empty_state(frame, area, block);
             return;
         }
+        // AI filter on but nothing matches → AI-specific empty state (A2)
+        if self.ai_filter_empty() {
+            self.render_ai_empty_state(frame, area, block);
+            return;
+        }
 
         let inner_height = area.height.saturating_sub(2) as usize; // borders
         if inner_height == 0 {
             return;
         }
 
-        // Calculate scroll offset to keep selection visible
-        let scroll_offset = self.calculate_scroll_offset(inner_height);
+        // Scroll over VISIBLE rows (position within visible_indices), so a
+        // sparse AI-filtered view scrolls naturally (A2).
+        let visible = self.visible_indices();
+        let scroll_pos = self.calculate_scroll_offset(inner_height);
 
-        // Build lines - each change is one line (graph prefix from jj)
+        // Build lines from the visible rows only
         let mut lines: Vec<Line> = Vec::new();
-        for (idx, change) in self.changes.iter().enumerate().skip(scroll_offset) {
+        for &idx in visible.iter().skip(scroll_pos) {
             if lines.len() >= inner_height {
                 break;
             }
-
+            let change = &self.changes[idx];
             let is_selected = idx == self.selected_index && !change.is_graph_only;
-            let line = self.build_change_line(change, is_selected);
-            lines.push(line);
+            lines.push(self.build_change_line(change, is_selected));
         }
 
         let paragraph = Paragraph::new(lines).block(block);
@@ -244,24 +250,36 @@ impl LogView {
             String::new()
         };
 
+        // AI filter marker (A2). Separate chunk after revset/truncation so it
+        // reads as "filter applied to the loaded set", with the AI-visible
+        // count (not the loaded total).
+        let ai_suffix = if self.ai_filter {
+            format!(" [AI] ({})", self.visible_change_count())
+        } else {
+            String::new()
+        };
+
         let title_text = match (&self.current_revset, &self.last_search_query) {
             (Some(revset), Some(query)) => {
                 format!(
-                    " Tij - Log View [{}{}] [Search: {}] ",
-                    revset, count_suffix, query
+                    " Tij - Log View [{}{}]{} [Search: {}] ",
+                    revset, count_suffix, ai_suffix, query
                 )
             }
             (Some(revset), None) => {
-                format!(" Tij - Log View [{}{}] ", revset, count_suffix)
+                format!(" Tij - Log View [{}{}]{} ", revset, count_suffix, ai_suffix)
             }
             (None, Some(query)) => {
-                format!(" Tij - Log View{} [Search: {}] ", count_suffix, query)
+                format!(
+                    " Tij - Log View{}{} [Search: {}] ",
+                    count_suffix, ai_suffix, query
+                )
             }
             (None, None) => {
-                if count_suffix.is_empty() {
+                if count_suffix.is_empty() && ai_suffix.is_empty() {
                     " Tij - Log View ".to_string()
                 } else {
-                    format!(" Tij - Log View{} ", count_suffix)
+                    format!(" Tij - Log View{}{} ", count_suffix, ai_suffix)
                 }
             }
         };
@@ -280,20 +298,43 @@ impl LogView {
         frame.render_widget(paragraph, area);
     }
 
-    fn calculate_scroll_offset(&self, visible_changes: usize) -> usize {
-        if visible_changes == 0 {
+    /// Empty state shown when the AI filter is on but nothing matches (A2).
+    /// The filter stays on; the hint tells the user how to clear it.
+    fn render_ai_empty_state(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        block: ratatui::widgets::Block<'static>,
+    ) {
+        let paragraph = components::empty_state(
+            "No AI-attributed changes",
+            Some("Filter on — ':' filter-ai to clear, or 'r' to change revset"),
+        )
+        .block(block);
+        frame.render_widget(paragraph, area);
+    }
+
+    /// Scroll offset as a POSITION within `visible_indices` (the first visible
+    /// row to draw). Uses the selected row's visible position so a sparse
+    /// AI-filtered list scrolls correctly (A2). Falls back to position 0 when
+    /// the selection is not currently visible.
+    fn calculate_scroll_offset(&self, viewport_rows: usize) -> usize {
+        if viewport_rows == 0 {
             return 0;
         }
+        let visible = self.visible_indices();
+        // Position of the selected absolute index within the visible rows.
+        let sel_pos = visible
+            .iter()
+            .position(|&i| i == self.selected_index)
+            .unwrap_or(0);
 
-        let mut offset = self.scroll_offset;
-
-        // Ensure selected item is visible
-        if self.selected_index < offset {
-            offset = self.selected_index;
-        } else if self.selected_index >= offset + visible_changes {
-            offset = self.selected_index - visible_changes + 1;
+        let mut offset = self.scroll_offset.min(visible.len().saturating_sub(1));
+        if sel_pos < offset {
+            offset = sel_pos;
+        } else if sel_pos >= offset + viewport_rows {
+            offset = sel_pos - viewport_rows + 1;
         }
-
         offset
     }
 
@@ -605,6 +646,39 @@ mod tests {
         view.set_changes(create_selectable_changes(5));
 
         assert_eq!(title_text(&view), " Tij - Log View [ancestors(@, 5) (5)] ");
+    }
+
+    #[test]
+    fn test_build_title_ai_filter_marker_and_count() {
+        let mut view = LogView::new();
+        view.set_changes(create_selectable_changes(5));
+        // badge 2 of them, then filter on
+        let mut b = crate::trace::AiBadgeSets::default();
+        b.confirmed.insert("commit00000".to_string());
+        b.confirmed.insert("commit00002".to_string());
+        view.set_ai_badges(b);
+        view.toggle_ai_filter();
+
+        assert_eq!(title_text(&view), " Tij - Log View [AI] (2) ");
+    }
+
+    #[test]
+    fn test_build_title_ai_filter_with_truncated_revset() {
+        let mut view = LogView::new();
+        view.current_revset = Some("all()".to_string());
+        let limit = constants::DEFAULT_LOG_LIMIT.parse::<usize>().unwrap();
+        view.set_changes(create_selectable_changes(limit));
+        view.truncated = true;
+        let mut b = crate::trace::AiBadgeSets::default();
+        b.confirmed.insert("commit00000".to_string());
+        view.set_ai_badges(b);
+        view.toggle_ai_filter();
+
+        // truncation (N+) on the loaded set, then the AI-visible count
+        assert_eq!(
+            title_text(&view),
+            format!(" Tij - Log View [all() ({}+)] [AI] (1) ", limit)
+        );
     }
 
     #[test]

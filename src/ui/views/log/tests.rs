@@ -2601,3 +2601,94 @@ fn test_metaedit_key_no_selection() {
     let action = view.command_action(LogCommand::Metaedit);
     assert_eq!(action, LogAction::None);
 }
+
+// ── Agent Trace A2: AI change filter ──
+
+fn badges_for(commit_ids: &[&str]) -> crate::trace::AiBadgeSets {
+    let mut b = crate::trace::AiBadgeSets::default();
+    for c in commit_ids {
+        b.confirmed.insert(c.to_string());
+    }
+    b
+}
+
+#[test]
+fn ai_filter_shows_only_badged_changes() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    // badge only the second change (commit uvw43210)
+    v.set_ai_badges(badges_for(&["uvw43210"]));
+
+    v.toggle_ai_filter();
+    assert_eq!(v.visible_change_count(), 1);
+    assert_eq!(
+        v.selected_change().map(|c| c.commit_id.to_string()),
+        Some("uvw43210".to_string())
+    );
+    // off → back to all selectable (3 non-graph rows)
+    v.toggle_ai_filter();
+    assert_eq!(v.visible_change_count(), 3);
+}
+
+#[test]
+fn ai_filter_empty_when_no_badges() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    v.toggle_ai_filter(); // on, but no badges
+    assert!(v.ai_filter_empty());
+    assert!(v.selected_change().is_none(), "no visible selection");
+}
+
+#[test]
+fn ai_badges_reapply_rebuilds_visible_under_filter() {
+    // Regression: Ctrl+L applies badges AFTER set_changes; the filter must
+    // re-evaluate on set_ai_badges.
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    v.toggle_ai_filter();
+    assert!(v.ai_filter_empty());
+    // badges arrive later (refresh path) → visible recomputed
+    v.set_ai_badges(badges_for(&["def67890", "uvw43210"]));
+    assert!(!v.ai_filter_empty());
+    assert_eq!(v.visible_change_count(), 2);
+}
+
+#[test]
+fn search_only_lands_on_visible_rows_under_filter() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    v.set_ai_badges(badges_for(&["uvw43210"])); // only 2nd change is AI
+    v.toggle_ai_filter();
+
+    // "First commit" lives only on the hidden (non-AI) change → no hit
+    v.last_search_query = Some("First".to_string());
+    assert!(!v.search_next(), "hidden row must not be found");
+
+    // "Initial" is on the visible AI change → hit, selection stays visible
+    v.last_search_query = Some("Initial".to_string());
+    assert!(v.search_next());
+    assert_eq!(
+        v.selected_change().map(|c| c.commit_id.to_string()),
+        Some("uvw43210".to_string())
+    );
+}
+
+#[test]
+fn search_safe_when_visible_empty() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    v.toggle_ai_filter(); // on, no badges → 0 visible
+    v.last_search_query = Some("commit".to_string());
+    // must not panic on selected_index + 1 arithmetic, returns false
+    assert!(!v.search_next());
+    assert!(!v.search_prev());
+}
+
+#[test]
+fn command_action_toggle_ai_filter() {
+    let mut v = LogView::new();
+    assert_eq!(
+        v.command_action(LogCommand::ToggleAiFilter),
+        LogAction::ToggleAiFilter
+    );
+}

@@ -310,6 +310,7 @@ impl LogView {
                     LogAction::None
                 }
             }
+            LogCommand::ToggleAiFilter => LogAction::ToggleAiFilter,
         }
     }
 
@@ -890,47 +891,52 @@ impl LogView {
         let Some(ref query) = self.last_search_query else {
             return false;
         };
-        if self.changes.is_empty() {
+        let query_lower = query.to_lowercase();
+
+        // Candidate absolute indices = the visible set (AI-filtered while on).
+        // Searching over visible rows only means a hit is always a row the
+        // user can actually see/select (A2). Position-based ordering avoids
+        // any `selected_index + 1` wrap when the selection is at/near 0.
+        let candidates: Vec<usize> = self.search_candidates();
+        if candidates.is_empty() {
             return false;
         }
 
-        let query_lower = query.to_lowercase();
+        // Current position of the selection among candidates (0 if not found).
+        let cur = candidates
+            .iter()
+            .position(|&i| i == self.selected_index)
+            .unwrap_or(0);
+        let len = candidates.len();
 
-        let found = match kind {
-            SearchKind::First => self.find_match_in(0..self.changes.len(), &query_lower),
-            SearchKind::Next => {
-                let start = self.selected_index + 1;
-                let forward = start..self.changes.len();
-                let wrap = 0..self.selected_index;
-                self.find_match_in(forward, &query_lower)
-                    .or_else(|| self.find_match_in(wrap, &query_lower))
-            }
-            SearchKind::Prev => {
-                let backward = (0..self.selected_index).rev();
-                let wrap = (self.selected_index + 1..self.changes.len()).rev();
-                self.find_match_in(backward, &query_lower)
-                    .or_else(|| self.find_match_in(wrap, &query_lower))
-            }
+        // Build the search order (positions into `candidates`).
+        let order: Vec<usize> = match kind {
+            SearchKind::First => (0..len).collect(),
+            SearchKind::Next => (1..=len).map(|d| (cur + d) % len).collect(),
+            SearchKind::Prev => (1..=len).map(|d| (cur + len - d) % len).collect(),
         };
 
-        if let Some(index) = found {
-            self.selected_index = index;
-            // Also update selection_cursor so card mode stays in sync
-            if let Some(cursor) = self.selectable_indices.iter().position(|&i| i == index) {
-                self.selection_cursor = cursor;
+        for pos in order {
+            let idx = candidates[pos];
+            if self.change_matches(&self.changes[idx], &query_lower) {
+                self.selected_index = idx;
+                if let Some(cursor) = self.selectable_indices.iter().position(|&i| i == idx) {
+                    self.selection_cursor = cursor;
+                }
+                return true;
             }
-            return true;
         }
-
         false
     }
 
-    fn find_match_in<I>(&self, indices: I, query_lower: &str) -> Option<usize>
-    where
-        I: IntoIterator<Item = usize>,
-    {
-        indices
-            .into_iter()
-            .find(|&i| self.change_matches(&self.changes[i], query_lower))
+    /// Absolute change indices that search may land on: the visible rows
+    /// (which are AI-filtered while the filter is on, else every row).
+    fn search_candidates(&self) -> Vec<usize> {
+        if self.ai_filter {
+            // While filtered, `visible_indices` == the AI-matched rows
+            self.visible_indices().to_vec()
+        } else {
+            (0..self.changes.len()).collect()
+        }
     }
 }

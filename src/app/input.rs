@@ -529,7 +529,33 @@ impl App {
             LogAction::NextChange | LogAction::PrevChange | LogAction::ToggleReversed => {
                 self.handle_log_misc(action);
             }
+
+            // Agent Trace AI filter (A2)
+            LogAction::ToggleAiFilter => self.toggle_ai_filter(),
         }
+    }
+
+    /// Toggle the Log View "AI changes only" filter (Agent Trace A2).
+    ///
+    /// Empty-guard: if turning the filter ON would show nothing (no AI badges
+    /// in view), don't enable it — show an info notice instead so the user
+    /// isn't left on a blank screen.
+    fn toggle_ai_filter(&mut self) {
+        let turning_on = !self.log_view.ai_filter;
+        self.log_view.toggle_ai_filter();
+        if turning_on {
+            if self.log_view.ai_filter_empty() {
+                // Revert: nothing to show
+                self.log_view.set_ai_filter_off();
+                self.notify_info("No AI-attributed changes in view");
+            } else {
+                let n = self.log_view.visible_change_count();
+                self.notify_info(format!("AI filter: on ({} changes)", n));
+            }
+        } else {
+            self.notify_info("AI filter: off");
+        }
+        self.update_preview_if_needed();
     }
 
     fn handle_log_navigation(&mut self, action: LogAction) {
