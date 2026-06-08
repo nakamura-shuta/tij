@@ -95,6 +95,7 @@ pub(crate) fn section_title_for(view: crate::app::View) -> &'static str {
         View::Blame => "Blame View",
         View::Resolve => "Resolve View",
         View::Evolog => "Evolog View",
+        View::TraceDetail => "Agent Traces View",
         View::Help => "Help",
     }
 }

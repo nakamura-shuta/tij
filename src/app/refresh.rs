@@ -289,6 +289,11 @@ impl App {
             View::CommandHistory => {
                 // Command history is in-memory data, no external refresh needed
             }
+            View::TraceDetail => {
+                // Trace Detail holds a snapshot taken at open time; the trace
+                // sidecar reloads only on Log's Ctrl+L. Re-open from Log to
+                // refresh. No-op here.
+            }
             View::Help => {
                 // Help is static content, no refresh needed, no notification
             }

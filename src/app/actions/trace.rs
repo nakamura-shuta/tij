@@ -1,50 +1,58 @@
-//! Agent Trace actions (Phase 2: trace detail dialog + conversation URL copy)
+//! Agent Trace actions
+//!
+//! - Phase 3: Diff View AI range overlay (`apply_ai_diff_overlay`)
+//! - A6+A3: Trace Detail View (`open_trace_detail` / `handle_trace_detail_action`)
 
 use crate::app::helpers::revision::short_id;
-use crate::app::state::App;
-use crate::trace::TraceRecord;
-use crate::ui::components::{Dialog, DialogCallback, SelectItem};
+use crate::app::state::{App, View};
+use crate::ui::views::{TraceDetailAction, TraceDetailView};
 
 impl App {
-    /// Open a select dialog listing the Agent Trace records anchored to the
-    /// given change (palette: `show-traces`).
+    /// Open the Trace Detail View for the Agent Trace records anchored to the
+    /// given change (palette: `show-traces`). Replaces the Phase 2 Select
+    /// dialog — the richer multi-section display outgrew "list + single action".
     ///
-    /// Enter copies the record's conversation URL to the clipboard. Records
-    /// without a URL are listed too (selecting them shows an info notice) so
-    /// the dialog reflects everything tij knows about the change.
-    pub(crate) fn open_trace_dialog(&mut self, change_id: &str, commit_id: &str) {
+    /// No trace / no matching record → info notice, View not opened (P5).
+    pub(crate) fn open_trace_detail(&mut self, change_id: &str, commit_id: &str) {
         let sid = short_id(change_id);
 
         let Some(index) = self.trace_index.as_ref() else {
             self.notify_info("No agent trace data (no .agent-trace/traces.jsonl)");
             return;
         };
-        let records = index.records_for(change_id, commit_id);
+        let records: Vec<_> = index
+            .records_for(change_id, commit_id)
+            .into_iter()
+            .cloned()
+            .collect();
         if records.is_empty() {
             self.notify_info(format!("No agent traces on {}", sid));
             return;
         }
 
-        let items: Vec<SelectItem> = records
-            .iter()
-            .map(|r| SelectItem {
-                label: trace_item_label(r),
-                value: r.primary_url().unwrap_or_default().to_string(),
-                selected: false,
-            })
-            .collect();
+        self.trace_detail_view = Some(TraceDetailView::new(sid.to_string(), records));
+        self.go_to_view(View::TraceDetail);
+        self.error_message = None;
+    }
 
-        self.active_dialog = Some(Dialog::select_single(
-            "Agent Traces",
-            format!(
-                "{} trace record(s) on {} — Enter: copy conversation URL",
-                items.len(),
-                sid
-            ),
-            items,
-            None,
-            DialogCallback::TraceCopyUrl,
-        ));
+    /// Dispatch a Trace Detail View action.
+    pub(crate) fn handle_trace_detail_action(&mut self, action: TraceDetailAction) {
+        match action {
+            TraceDetailAction::None => {}
+            TraceDetailAction::Back => {
+                self.trace_detail_view = None;
+                self.go_to_view(View::Log);
+            }
+            TraceDetailAction::CopyUrl(url) => {
+                match crate::app::clipboard::copy_to_clipboard(&url) {
+                    Ok(()) => self.notify_success(format!("Copied URL: {}", url)),
+                    Err(e) => self.set_error(e),
+                }
+            }
+            TraceDetailAction::NoUrl => {
+                self.notify_info("No URL to copy");
+            }
+        }
     }
 
     /// Apply the Agent Trace AI overlay to the current Diff View (Phase 3).
@@ -97,59 +105,16 @@ impl App {
         let marks = crate::trace::compute_ai_line_marks(&diff_view.content, &ranges);
         diff_view.set_ai_line_marks(marks);
     }
-
-    /// Handle the confirmed trace dialog: copy the selected conversation URL.
-    pub(crate) fn handle_trace_dialog(&mut self, values: Vec<String>) {
-        let url = values.into_iter().find(|v| !v.is_empty());
-        match url {
-            Some(url) => match crate::app::clipboard::copy_to_clipboard(&url) {
-                Ok(()) => self.notify_success(format!("Copied conversation URL: {}", url)),
-                Err(e) => self.set_error(e),
-            },
-            None => self.notify_info("This trace record has no conversation URL"),
-        }
-    }
-}
-
-/// One-line label for a trace record in the select dialog:
-/// `2026-06-05 14:20  claude-code (anthropic/claude-opus-4-8) — 2 file(s)`
-/// with ` [no URL]` appended when there is nothing to copy.
-fn trace_item_label(record: &TraceRecord) -> String {
-    let time = format_trace_timestamp(&record.timestamp);
-    let tool = record.tool_name.as_deref().unwrap_or("unknown");
-    let model = record
-        .primary_model_id()
-        .map(|m| format!(" ({})", m))
-        .unwrap_or_default();
-    let files = record.code_file_count();
-    let url_marker = if record.primary_url().is_none() {
-        " [no URL]"
-    } else {
-        ""
-    };
-    format!(
-        "{}  {}{} — {} file(s){}",
-        time, tool, model, files, url_marker
-    )
-}
-
-/// Render an RFC 3339 timestamp as `YYYY-MM-DD HH:MM` (best-effort; unknown
-/// formats pass through unchanged).
-fn format_trace_timestamp(ts: &str) -> String {
-    if ts.len() >= 16 && ts.as_bytes().get(10) == Some(&b'T') {
-        format!("{} {}", &ts[..10], &ts[11..16])
-    } else {
-        ts.to_string()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::trace::{
-        ContributorKind, TraceContributor, TraceConversation, TraceFile, TraceIndex, TraceVcs,
-        TraceVcsType,
+        ContributorKind, TraceContributor, TraceConversation, TraceFile, TraceIndex, TraceRecord,
+        TraceVcs, TraceVcsType,
     };
+    use crate::ui::views::TraceDetailAction;
 
     fn record_with(url: Option<&str>, model: Option<&str>) -> TraceRecord {
         TraceRecord {
@@ -169,76 +134,57 @@ mod tests {
                         model_id: model.map(str::to_string),
                     }),
                     ranges: vec![],
+                    related: vec![],
                 }],
             }],
         }
     }
 
     #[test]
-    fn label_includes_time_tool_model_and_files() {
-        let r = record_with(
-            Some("https://x.test/s/1"),
-            Some("anthropic/claude-opus-4-8"),
-        );
-        let label = trace_item_label(&r);
-        assert_eq!(
-            label,
-            "2026-06-05 14:20  claude-code (anthropic/claude-opus-4-8) — 1 file(s)"
-        );
-    }
-
-    #[test]
-    fn label_marks_missing_url() {
-        let r = record_with(None, None);
-        let label = trace_item_label(&r);
-        assert!(label.ends_with("[no URL]"), "got: {label}");
-        assert!(!label.contains("()"), "empty model parens: {label}");
-    }
-
-    #[test]
-    fn timestamp_formats_rfc3339_and_passes_through_unknown() {
-        assert_eq!(
-            format_trace_timestamp("2026-06-05T14:20:00Z"),
-            "2026-06-05 14:20"
-        );
-        assert_eq!(format_trace_timestamp("yesterday"), "yesterday");
-        assert_eq!(format_trace_timestamp(""), "");
-    }
-
-    #[test]
-    fn dialog_opens_with_matching_records() {
+    fn open_trace_detail_opens_view_with_matching_records() {
         let mut app = App::new_for_test();
         app.trace_index = Some(TraceIndex::build(&[record_with(
             Some("https://x.test/s/1"),
             None,
         )]));
 
-        app.open_trace_dialog("xqnktzml", "2d31c7f1");
-        assert!(app.active_dialog.is_some(), "dialog should open");
+        app.open_trace_detail("xqnktzml", "2d31c7f1");
+        assert_eq!(app.current_view, View::TraceDetail);
+        assert!(app.trace_detail_view.is_some());
     }
 
     #[test]
-    fn no_records_shows_notification_not_dialog() {
+    fn no_records_shows_notification_not_view() {
         let mut app = App::new_for_test();
         app.trace_index = Some(TraceIndex::build(&[]));
 
-        app.open_trace_dialog("zzzzzzzz", "00000000");
-        assert!(app.active_dialog.is_none());
+        app.open_trace_detail("zzzzzzzz", "00000000");
+        assert_ne!(app.current_view, View::TraceDetail);
+        assert!(app.trace_detail_view.is_none());
         assert!(app.notification.is_some());
     }
 
     #[test]
-    fn no_index_shows_notification_not_dialog() {
+    fn no_index_shows_notification_not_view() {
         let mut app = App::new_for_test();
-        app.open_trace_dialog("xqnktzml", "2d31c7f1");
-        assert!(app.active_dialog.is_none());
+        app.open_trace_detail("xqnktzml", "2d31c7f1");
+        assert_ne!(app.current_view, View::TraceDetail);
         assert!(app.notification.is_some());
     }
 
     #[test]
-    fn handle_trace_dialog_without_url_notifies() {
+    fn trace_detail_copy_url_action_succeeds() {
         let mut app = App::new_for_test();
-        app.handle_trace_dialog(vec![String::new()]);
+        app.handle_trace_detail_action(TraceDetailAction::CopyUrl("https://x/1".to_string()));
+        // clipboard may be unavailable in CI; either success or a set error,
+        // but never a panic and never an info-NoUrl
+        assert!(app.notification.is_some() || app.error_message.is_some());
+    }
+
+    #[test]
+    fn trace_detail_no_url_action_notifies() {
+        let mut app = App::new_for_test();
+        app.handle_trace_detail_action(TraceDetailAction::NoUrl);
         assert!(app.notification.is_some());
         assert!(app.error_message.is_none());
     }

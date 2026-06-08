@@ -50,6 +50,16 @@ pub struct TraceConversation {
     pub url: Option<String>,
     pub contributor: Option<TraceContributor>,
     pub ranges: Vec<TraceRange>,
+    /// Related resources (session / prompt / pull-request …) — spec `related[]`
+    pub related: Vec<TraceRelated>,
+}
+
+/// A related resource attached to a conversation (spec `related[]` entry)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceRelated {
+    /// spec field `type` (renamed: `type` is a Rust keyword)
+    pub rel_type: String,
+    pub url: String,
 }
 
 /// Who wrote a range (conversation-level default, range-level override)
@@ -156,5 +166,166 @@ impl TraceRecord {
             .iter()
             .filter(|f| !PSEUDO_FILES.contains(&f.path.as_str()))
             .count()
+    }
+
+    /// All URLs in the record as `(label, url)` (A3 — Trace Detail).
+    ///
+    /// Order: each conversation's `url` (label "conversation") first, then its
+    /// `related[]` entries (label = the related `type`). Across files and
+    /// conversations in document order. Empty when the record has no URLs.
+    pub fn all_urls(&self) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for conv in self.files.iter().flat_map(|f| &f.conversations) {
+            if let Some(url) = &conv.url {
+                out.push(("conversation".to_string(), url.clone()));
+            }
+            for rel in &conv.related {
+                out.push((rel.rel_type.clone(), rel.url.clone()));
+            }
+        }
+        out
+    }
+
+    /// Per-kind counts of effective contributors over the record's ranges
+    /// (A6). Effective contributor follows the Phase 3 rule: range override →
+    /// conversation contributor → (tool present ? ai : unknown). Ranges only —
+    /// conversations with no ranges don't contribute counts (they have no
+    /// lines to attribute). Returns (ai, mixed, human, unknown).
+    pub fn contributor_counts(&self) -> ContributorCounts {
+        let tool_fallback = self.tool_name.is_some();
+        let mut counts = ContributorCounts::default();
+        for file in &self.files {
+            for conv in &file.conversations {
+                for range in &conv.ranges {
+                    let effective = range.contributor.as_ref().or(conv.contributor.as_ref());
+                    let kind = match effective {
+                        Some(c) => c.kind,
+                        None if tool_fallback => ContributorKind::Ai,
+                        None => ContributorKind::Unknown,
+                    };
+                    match kind {
+                        ContributorKind::Ai => counts.ai += 1,
+                        ContributorKind::Mixed => counts.mixed += 1,
+                        ContributorKind::Human => counts.human += 1,
+                        ContributorKind::Unknown => counts.unknown += 1,
+                    }
+                }
+            }
+        }
+        counts
+    }
+}
+
+/// Per-kind effective-contributor counts over a record's ranges (A6)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ContributorCounts {
+    pub ai: usize,
+    pub mixed: usize,
+    pub human: usize,
+    pub unknown: usize,
+}
+
+impl ContributorCounts {
+    /// Compact display like `ai×5  human×1` (omits zero kinds; empty → "—")
+    pub fn summary(&self) -> String {
+        let mut parts = Vec::new();
+        if self.ai > 0 {
+            parts.push(format!("ai×{}", self.ai));
+        }
+        if self.mixed > 0 {
+            parts.push(format!("mixed×{}", self.mixed));
+        }
+        if self.human > 0 {
+            parts.push(format!("human×{}", self.human));
+        }
+        if self.unknown > 0 {
+            parts.push(format!("unknown×{}", self.unknown));
+        }
+        if parts.is_empty() {
+            "—".to_string()
+        } else {
+            parts.join("  ")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn range(start: usize, end: usize, kind: Option<ContributorKind>) -> TraceRange {
+        TraceRange {
+            start_line: start,
+            end_line: end,
+            contributor: kind.map(|k| TraceContributor {
+                kind: k,
+                model_id: None,
+            }),
+        }
+    }
+
+    fn record(conv_kind: Option<ContributorKind>, ranges: Vec<TraceRange>) -> TraceRecord {
+        TraceRecord {
+            timestamp: "t".to_string(),
+            vcs: None,
+            tool_name: Some("claude-code".to_string()),
+            tool_version: None,
+            files: vec![TraceFile {
+                path: "a.rs".to_string(),
+                conversations: vec![TraceConversation {
+                    url: None,
+                    contributor: conv_kind.map(|k| TraceContributor {
+                        kind: k,
+                        model_id: None,
+                    }),
+                    ranges,
+                    related: vec![],
+                }],
+            }],
+        }
+    }
+
+    #[test]
+    fn contributor_counts_use_effective_rule() {
+        // conversation = ai; range 2 overrides to human → ai×1 human×1
+        let r = record(
+            Some(ContributorKind::Ai),
+            vec![range(1, 5, None), range(6, 9, Some(ContributorKind::Human))],
+        );
+        let c = r.contributor_counts();
+        assert_eq!((c.ai, c.human, c.mixed, c.unknown), (1, 1, 0, 0));
+        assert_eq!(c.summary(), "ai×1  human×1");
+    }
+
+    #[test]
+    fn contributor_counts_tool_fallback_when_no_contributor() {
+        // no contributor anywhere, tool present → ranges count as ai (§5.3)
+        let r = record(None, vec![range(1, 3, None), range(4, 6, None)]);
+        assert_eq!(r.contributor_counts().ai, 2);
+    }
+
+    #[test]
+    fn contributor_counts_ignore_conversations_without_ranges() {
+        // a conversation with no ranges contributes nothing (no lines)
+        let r = record(Some(ContributorKind::Ai), vec![]);
+        assert_eq!(r.contributor_counts(), ContributorCounts::default());
+        assert_eq!(r.contributor_counts().summary(), "—");
+    }
+
+    #[test]
+    fn all_urls_orders_conversation_then_related() {
+        let mut r = record(Some(ContributorKind::Ai), vec![range(1, 2, None)]);
+        r.files[0].conversations[0].url = Some("conv".to_string());
+        r.files[0].conversations[0].related = vec![TraceRelated {
+            rel_type: "pr".to_string(),
+            url: "prurl".to_string(),
+        }];
+        assert_eq!(
+            r.all_urls(),
+            vec![
+                ("conversation".to_string(), "conv".to_string()),
+                ("pr".to_string(), "prurl".to_string()),
+            ]
+        );
     }
 }

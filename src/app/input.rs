@@ -347,6 +347,12 @@ impl App {
                 let action = self.command_history_view.handle_key(key, total);
                 self.handle_command_history_action(action);
             }
+            View::TraceDetail => {
+                if let Some(ref mut view) = self.trace_detail_view {
+                    let action = view.handle_key(key);
+                    self.handle_trace_detail_action(action);
+                }
+            }
             View::Help => {
                 if self.help_search_input {
                     // Search input mode: capture text
@@ -532,7 +538,7 @@ impl App {
             LogAction::ShowTraces {
                 change_id,
                 commit_id,
-            } => self.open_trace_dialog(&change_id, &commit_id),
+            } => self.open_trace_detail(&change_id, &commit_id),
             LogAction::ExecuteRevset(revset) => self.refresh_log(Some(&revset)),
             LogAction::ClearRevset => self.refresh_log(None),
             LogAction::OpenBookmarkView => self.open_bookmark_view(),

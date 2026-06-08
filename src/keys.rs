@@ -1587,6 +1587,22 @@ pub const EVOLOG_KEYS: &[KeyBindEntry] = &[KeyBindEntry {
     description: "Show this revision's diff",
 }];
 
+/// Trace Detail view key bindings for help display (Agent Trace A6+A3).
+pub const TRACE_DETAIL_KEYS: &[KeyBindEntry] = &[
+    KeyBindEntry {
+        key: "j/k",
+        description: "Select URL",
+    },
+    KeyBindEntry {
+        key: "y",
+        description: "Copy selected URL",
+    },
+    KeyBindEntry {
+        key: "q",
+        description: "Back",
+    },
+];
+
 /// Controls available inside the Help panel itself.
 pub const HELP_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
@@ -1661,6 +1677,7 @@ pub fn keys_for_view(view: View) -> &'static [KeyBindEntry] {
         View::Blame => BLAME_KEYS,
         View::Resolve => RESOLVE_KEYS,
         View::Evolog => EVOLOG_KEYS,
+        View::TraceDetail => TRACE_DETAIL_KEYS,
         View::Help => HELP_KEYS,
     }
 }
@@ -1706,6 +1723,24 @@ pub const BLAME_VIEW_HINTS: &[KeyHint] = &[
         key: "^L",
         label: "Refresh",
         color: Color::Blue,
+    },
+    KeyHint {
+        key: "q",
+        label: "Back",
+        color: Color::Red,
+    },
+];
+
+/// Trace Detail view status bar hints (Agent Trace A6+A3).
+/// `[y] Copy URL` is always listed; when there is no selectable URL the View
+/// itself returns a "No URL" notice (G4: the hint stays simple).
+pub const TRACE_DETAIL_VIEW_HINTS: &[KeyHint] = &[
+    HINT_HELP,
+    HINT_NAV,
+    KeyHint {
+        key: "y",
+        label: "Copy URL",
+        color: Color::Green,
     },
     KeyHint {
         key: "q",

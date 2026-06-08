@@ -25,7 +25,7 @@ mod overlay;
 pub use index::{AiBadgeSets, TraceIndex};
 pub use loader::{DEFAULT_TRACE_PATH, LoadResult, load};
 pub use model::{
-    ContributorKind, TraceContributor, TraceConversation, TraceFile, TraceRange, TraceRecord,
-    TraceVcs, TraceVcsType,
+    ContributorCounts, ContributorKind, TraceContributor, TraceConversation, TraceFile, TraceRange,
+    TraceRecord, TraceRelated, TraceVcs, TraceVcsType,
 };
 pub use overlay::compute_ai_line_marks;

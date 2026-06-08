@@ -39,6 +39,7 @@ impl App {
             View::Workspace => self.render_workspace_view(frame, notification.as_ref()),
             View::Evolog => self.render_evolog_view(frame, notification.as_ref()),
             View::CommandHistory => self.render_command_history_view(frame, notification.as_ref()),
+            View::TraceDetail => self.render_trace_detail_view(frame, notification.as_ref()),
             View::Help => self.render_help_view(frame),
         }
 
@@ -95,6 +96,7 @@ impl App {
             View::Evolog => status_hints_height(keys::EVOLOG_VIEW_HINTS, width),
             View::Diff => 1,
             View::Blame => status_hints_height(keys::BLAME_VIEW_HINTS, width),
+            View::TraceDetail => status_hints_height(keys::TRACE_DETAIL_VIEW_HINTS, width),
             View::Help => 0,
         }
     }
@@ -433,6 +435,33 @@ impl App {
         self.command_history_view
             .render(frame, main_area, &self.command_history, notification);
         render_status_hints(frame, &hints);
+    }
+
+    fn render_trace_detail_view(
+        &self,
+        frame: &mut Frame,
+        notification: Option<&crate::model::Notification>,
+    ) {
+        let area = frame.area();
+        let sb_height = status_hints_height(keys::TRACE_DETAIL_VIEW_HINTS, area.width);
+        let main_area = Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: area.height.saturating_sub(sb_height),
+        };
+
+        if let Some(ref view) = self.trace_detail_view {
+            view.render(frame, main_area, notification);
+        } else {
+            render_placeholder(
+                frame,
+                " Tij - Agent Traces ",
+                Color::Magenta,
+                "No traces loaded - Press q to go back",
+            );
+        }
+        render_status_hints(frame, keys::TRACE_DETAIL_VIEW_HINTS);
     }
 
     fn render_help_view(&self, frame: &mut Frame) {

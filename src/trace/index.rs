@@ -225,6 +225,7 @@ mod tests {
                         model_id: None,
                     }),
                     ranges: vec![],
+                    related: vec![],
                 }],
             }],
         }
