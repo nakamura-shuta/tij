@@ -34,6 +34,67 @@ impl AiBadgeSets {
     }
 }
 
+/// Per-change AI confidence (mirrors the badge: confirmed → `[AI]`,
+/// heuristic → `[AI?]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AiConfidence {
+    Confirmed,
+    Heuristic,
+}
+
+/// Aggregated AI attribution over a set of changes (A1). Reused by A8/A7.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TraceSummary {
+    /// Changes considered (graph-only excluded)
+    pub total: usize,
+    /// Changes with any AI attribution (`ai_confirmed + ai_heuristic`)
+    pub ai_total: usize,
+    /// jj-anchored AI changes (`[AI]`)
+    pub ai_confirmed: usize,
+    /// git-anchored AI changes (`[AI?]`)
+    pub ai_heuristic: usize,
+    /// model_id → number of AI changes carrying that model (tally, may exceed
+    /// `ai_total` when a change uses multiple models)
+    pub by_model: std::collections::BTreeMap<String, usize>,
+}
+
+impl TraceSummary {
+    /// AI percentage of the total, 0 when there are no changes.
+    pub fn ai_percent(&self) -> u32 {
+        if self.total == 0 {
+            0
+        } else {
+            ((self.ai_total as f64 / self.total as f64) * 100.0).round() as u32
+        }
+    }
+
+    /// One-line summary (A1 display):
+    /// `AI 12/40 (30%) · [AI] 9 [AI?] 3 · models: opus ×8, gpt ×3`
+    pub fn one_line(&self) -> String {
+        let models = if self.by_model.is_empty() {
+            "—".to_string()
+        } else {
+            // count desc, then name asc
+            let mut entries: Vec<(&String, &usize)> = self.by_model.iter().collect();
+            entries.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+            entries
+                .iter()
+                .map(|(name, n)| format!("{} ×{}", name, n))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        format!(
+            "AI {}/{} ({}%) · [AI] {} [AI?] {} · models: {}",
+            self.ai_total,
+            self.total,
+            self.ai_percent(),
+            self.ai_confirmed,
+            self.ai_heuristic,
+            models
+        )
+    }
+}
+
 /// One AI-contributing record with a usable VCS anchor
 #[derive(Debug, Clone)]
 struct AnchoredRecord {
@@ -119,6 +180,72 @@ impl TraceIndex {
             );
         }
         sets
+    }
+
+    /// Per-change AI confidence (None = no AI trace) — the single-change form
+    /// of `classify_into`, reused by `summarize`.
+    fn confidence_of(&self, change_id: &str, commit_id: &str) -> Option<AiConfidence> {
+        if change_id.is_empty() || commit_id.is_empty() {
+            return None;
+        }
+        if self
+            .anchored
+            .iter()
+            .any(|a| a.vcs_type == TraceVcsType::Jj && a.revision.starts_with(change_id))
+        {
+            Some(AiConfidence::Confirmed)
+        } else if self
+            .anchored
+            .iter()
+            .any(|a| a.vcs_type == TraceVcsType::Git && a.revision.starts_with(commit_id))
+        {
+            Some(AiConfidence::Heuristic)
+        } else {
+            None
+        }
+    }
+
+    /// Aggregate AI attribution over a set of log changes (A1 — the base that
+    /// A8 report / A7 orphan-detection reuse).
+    ///
+    /// Counting unit is the change. `ai_confirmed + ai_heuristic == ai_total`
+    /// (confirmed wins, no double count). `by_model` counts, per model_id, how
+    /// many AI changes carry a record with that model — a change with two
+    /// models counts once per model (a tally of model usage, NOT a breakdown
+    /// of `ai_total`). Pseudo-file-only records never reach here (the index
+    /// only keeps AI-contributing records). The caller decides the change set
+    /// (e.g. all loaded changes — filter-independent).
+    pub fn summarize(&self, changes: &[Change]) -> TraceSummary {
+        let mut s = TraceSummary::default();
+        for change in changes {
+            if change.is_graph_only {
+                continue;
+            }
+            s.total += 1;
+            let cid = change.change_id.as_str();
+            let coid = change.commit_id.as_str();
+            match self.confidence_of(cid, coid) {
+                Some(AiConfidence::Confirmed) => {
+                    s.ai_total += 1;
+                    s.ai_confirmed += 1;
+                }
+                Some(AiConfidence::Heuristic) => {
+                    s.ai_total += 1;
+                    s.ai_heuristic += 1;
+                }
+                None => continue,
+            }
+            // Tally distinct models contributed to this AI change.
+            let mut seen = std::collections::BTreeSet::new();
+            for record in self.records_for(cid, coid) {
+                if let Some(model) = record.primary_model_id()
+                    && seen.insert(model.to_string())
+                {
+                    *s.by_model.entry(model.to_string()).or_insert(0) += 1;
+                }
+            }
+        }
+        s
     }
 
     /// Match blame lines against the index (Phase 4a — change-unit badges).
@@ -246,6 +373,90 @@ mod tests {
             has_conflict: false,
             working_copy_names: vec![],
         }
+    }
+
+    fn record_model(vcs_type: TraceVcsType, revision: &str, model: &str) -> TraceRecord {
+        let mut r = record(vcs_type, revision);
+        r.files[0].conversations[0]
+            .contributor
+            .as_mut()
+            .unwrap()
+            .model_id = Some(model.to_string());
+        r
+    }
+
+    #[test]
+    fn summarize_counts_confidence_and_models() {
+        let index = TraceIndex::build(&[
+            record_model(TraceVcsType::Jj, "aaaaaaaa1111", "opus"),
+            record_model(TraceVcsType::Jj, "bbbbbbbb2222", "opus"),
+            record_model(
+                TraceVcsType::Git,
+                "cccccccc3333333333333333333333333333cccc",
+                "gpt",
+            ),
+        ]);
+        let changes = [
+            change("aaaaaaaa", "dead0001"), // jj → [AI] opus
+            change("bbbbbbbb", "dead0002"), // jj → [AI] opus
+            change("zzzzzzzz", "cccccccc3333333333333333333333333333cccc"), // git → [AI?] gpt
+            change("nomatch1", "nomatch1"), // no AI
+        ];
+        let s = index.summarize(&changes);
+        assert_eq!(s.total, 4);
+        assert_eq!(s.ai_total, 3);
+        assert_eq!(s.ai_confirmed, 2);
+        assert_eq!(s.ai_heuristic, 1);
+        assert_eq!(s.ai_confirmed + s.ai_heuristic, s.ai_total);
+        assert_eq!(s.by_model.get("opus"), Some(&2));
+        assert_eq!(s.by_model.get("gpt"), Some(&1));
+        assert_eq!(s.ai_percent(), 75);
+    }
+
+    #[test]
+    fn summarize_skips_graph_only_and_handles_empty() {
+        let index = TraceIndex::build(&[record(TraceVcsType::Jj, "aaaaaaaa1111")]);
+        let mut graph = change("zzzz", "zzzz");
+        graph.is_graph_only = true;
+        let changes = [change("aaaaaaaa", "d1"), graph];
+        let s = index.summarize(&changes);
+        assert_eq!(s.total, 1, "graph-only excluded");
+        assert_eq!(s.ai_total, 1);
+
+        // empty change set → 0/0, 0%
+        let empty = index.summarize(&[]);
+        assert_eq!(empty.total, 0);
+        assert_eq!(empty.ai_percent(), 0);
+    }
+
+    #[test]
+    fn summarize_one_line_format() {
+        let index = TraceIndex::build(&[record_model(TraceVcsType::Jj, "aaaaaaaa1111", "opus")]);
+        let s = index.summarize(&[change("aaaaaaaa", "d1"), change("nomatch", "nomatch")]);
+        assert_eq!(
+            s.one_line(),
+            "AI 1/2 (50%) · [AI] 1 [AI?] 0 · models: opus ×1"
+        );
+
+        // no AI → models: —
+        let none = index.summarize(&[change("nomatch", "nomatch")]);
+        assert_eq!(none.one_line(), "AI 0/1 (0%) · [AI] 0 [AI?] 0 · models: —");
+    }
+
+    #[test]
+    fn summarize_model_tally_dedups_within_change() {
+        // a change with two records of the SAME model counts that model once
+        let index = TraceIndex::build(&[
+            record_model(TraceVcsType::Jj, "aaaaaaaa1111", "opus"),
+            record_model(TraceVcsType::Jj, "aaaaaaaa1111", "opus"),
+        ]);
+        let s = index.summarize(&[change("aaaaaaaa", "d1")]);
+        assert_eq!(s.ai_total, 1);
+        assert_eq!(
+            s.by_model.get("opus"),
+            Some(&1),
+            "same model once per change"
+        );
     }
 
     #[test]

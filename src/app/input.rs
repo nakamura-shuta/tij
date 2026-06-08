@@ -532,6 +532,9 @@ impl App {
 
             // Agent Trace AI filter (A2)
             LogAction::ToggleAiFilter => self.toggle_ai_filter(),
+
+            // Agent Trace AI summary (A1)
+            LogAction::ShowAiSummary => self.show_ai_summary(),
         }
     }
 

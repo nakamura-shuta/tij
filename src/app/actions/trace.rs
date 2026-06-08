@@ -35,6 +35,20 @@ impl App {
         self.error_message = None;
     }
 
+    /// Show the AI contribution summary for the loaded changes (A1).
+    ///
+    /// Filter-independent: always summarizes the full loaded change set
+    /// (`--limit 200` range), not the AI-filtered view — the AI ratio is a
+    /// property of the loaded set, not of the current display filter.
+    pub(crate) fn show_ai_summary(&mut self) {
+        let summary = self
+            .trace_index
+            .as_ref()
+            .map(|index| index.summarize(&self.log_view.changes))
+            .unwrap_or_default();
+        self.notify_info(summary.one_line());
+    }
+
     /// Dispatch a Trace Detail View action.
     pub(crate) fn handle_trace_detail_action(&mut self, action: TraceDetailAction) {
         match action {
@@ -179,6 +193,48 @@ mod tests {
         // clipboard may be unavailable in CI; either success or a set error,
         // but never a panic and never an info-NoUrl
         assert!(app.notification.is_some() || app.error_message.is_some());
+    }
+
+    #[test]
+    fn ai_summary_notifies_with_ratio() {
+        use crate::model::{Change, ChangeId, CommitId};
+        let mut app = App::new_for_test();
+        // record_with builds a jj-anchored AI record on xqnktzml…
+        app.trace_index = Some(TraceIndex::build(&[record_with(None, None)]));
+        app.log_view.set_changes(vec![Change {
+            change_id: ChangeId::new("xqnktzml".to_string()),
+            commit_id: CommitId::new("2d31c7f1".to_string()),
+            author: String::new(),
+            timestamp: String::new(),
+            description: String::new(),
+            is_working_copy: false,
+            is_empty: false,
+            bookmarks: vec![],
+            graph_prefix: String::new(),
+            is_graph_only: false,
+            has_conflict: false,
+            working_copy_names: vec![],
+        }]);
+
+        app.show_ai_summary();
+        let msg = app
+            .notification
+            .as_ref()
+            .map(|n| n.message.clone())
+            .unwrap_or_default();
+        assert!(msg.starts_with("AI 1/1 (100%)"), "got: {msg}");
+    }
+
+    #[test]
+    fn ai_summary_without_index_reports_zero() {
+        let mut app = App::new_for_test();
+        app.show_ai_summary();
+        let msg = app
+            .notification
+            .as_ref()
+            .map(|n| n.message.clone())
+            .unwrap_or_default();
+        assert!(msg.starts_with("AI 0/0"), "got: {msg}");
     }
 
     #[test]

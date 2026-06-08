@@ -124,6 +124,11 @@ pub fn palette_commands() -> &'static [PaletteCommand] {
             dispatch: PaletteDispatch::Command(LogCommand::ToggleAiFilter),
         },
         PaletteCommand {
+            name: "ai-summary",
+            description: "AI contribution summary for loaded changes",
+            dispatch: PaletteDispatch::Command(LogCommand::AiSummary),
+        },
+        PaletteCommand {
             name: "tag-view",
             description: "Open Tag View",
             dispatch: PaletteDispatch::Key(keys::TAG_VIEW),
@@ -219,6 +224,19 @@ mod tests {
         let cmds = palette_commands();
         assert!(!cmds.is_empty());
         assert!(cmds.iter().any(|c| c.name == "metaedit"));
+    }
+
+    #[test]
+    fn registry_has_ai_summary() {
+        let cmds = palette_commands();
+        let cmd = cmds
+            .iter()
+            .find(|c| c.name == "ai-summary")
+            .expect("ai-summary registered");
+        assert!(matches!(
+            cmd.dispatch,
+            PaletteDispatch::Command(LogCommand::AiSummary)
+        ));
     }
 
     #[test]

@@ -211,6 +211,8 @@ pub enum LogAction {
     },
     /// Toggle the "AI changes only" filter (Agent Trace A2)
     ToggleAiFilter,
+    /// Show the AI contribution summary for the loaded changes (Agent Trace A1)
+    ShowAiSummary,
 }
 
 /// Identifiers for low-frequency Log commands reachable only via the palette
@@ -231,6 +233,7 @@ pub enum LogCommand {
     ShowStackDiff,
     ShowTraces,
     ToggleAiFilter,
+    AiSummary,
 }
 
 /// Log View state

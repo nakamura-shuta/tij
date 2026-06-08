@@ -2692,3 +2692,12 @@ fn command_action_toggle_ai_filter() {
         LogAction::ToggleAiFilter
     );
 }
+
+#[test]
+fn command_action_ai_summary() {
+    let mut v = LogView::new();
+    assert_eq!(
+        v.command_action(LogCommand::AiSummary),
+        LogAction::ShowAiSummary
+    );
+}

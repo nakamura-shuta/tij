@@ -311,6 +311,7 @@ impl LogView {
                 }
             }
             LogCommand::ToggleAiFilter => LogAction::ToggleAiFilter,
+            LogCommand::AiSummary => LogAction::ShowAiSummary,
         }
     }
 

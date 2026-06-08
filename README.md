@@ -68,6 +68,7 @@ the attribution in four places:
 |-------|--------------|
 | Log View | `[AI]` badge on changes with AI contributions (`[AI?]` when the trace is anchored via git SHA, which may point one change off in jj repos) |
 | `:` → `filter-ai` | Toggle the Log View to show only AI-attributed changes (post-filter over the loaded set; title shows `[AI] (N)`) |
+| `:` → `ai-summary` | One-line AI contribution summary over the loaded changes: `AI 12/40 (30%) · [AI] 9 [AI?] 3 · models: …` |
 | `:` → `show-traces` | Trace Detail View for the selected change: per record, time / tool+version / contributor breakdown / per-file ranges, and every URL (conversation + `related[]`); `j/k` to scroll, `y` to copy the URL on the cursor row |
 | Diff View | `▎` gutter on AI-contributed line ranges (color-words format; approximate by design) |
 | Blame View (`a`) | `[AI]` / `[AI?]` column on each hunk-head line whose originating change has AI contributions (change-level, so a human-written line in an AI change is also marked — use the Diff gutter for line-precise attribution) |
