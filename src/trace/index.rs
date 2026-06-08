@@ -397,7 +397,15 @@ impl TraceIndex {
                 }
             }
             if entry.url.is_none() {
-                entry.url = anchor.record.primary_url().map(|u| u.to_string());
+                // all_urls() (not primary_url) so a record carrying only a
+                // related[] URL — no conversation url — still surfaces one,
+                // matching the report's "representative URL = all_urls first".
+                entry.url = anchor
+                    .record
+                    .all_urls()
+                    .into_iter()
+                    .map(|(_, url)| url)
+                    .next();
             }
         }
         out
@@ -925,6 +933,27 @@ mod tests {
             orphans[0].files,
             vec!["src/main.rs".to_string()],
             "pseudo-files excluded from orphan files"
+        );
+    }
+
+    #[test]
+    fn orphaned_anchors_url_from_related_only() {
+        use crate::trace::model::TraceRelated;
+        // Record whose conversation has NO url, only a related[] entry.
+        let mut r = record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv");
+        r.files[0].conversations[0].url = None;
+        r.files[0].conversations[0].related = vec![TraceRelated {
+            rel_type: "pull-request".to_string(),
+            url: "pr-url".to_string(),
+        }];
+        let index = TraceIndex::build(&[r]);
+
+        let orphans = index.orphaned_anchors(&[change("zzzzzzzz", "00000000")]);
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(
+            orphans[0].url.as_deref(),
+            Some("pr-url"),
+            "related-only orphan still surfaces a URL (all_urls, not primary_url)"
         );
     }
 
