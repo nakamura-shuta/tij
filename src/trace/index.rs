@@ -235,13 +235,15 @@ impl TraceIndex {
                 }
                 None => continue,
             }
-            // Tally distinct models contributed to this AI change.
+            // Tally every distinct model on this AI change (a change with two
+            // models counts once per model — model_ids() enumerates all of
+            // them, deduped across the change's records).
             let mut seen = std::collections::BTreeSet::new();
             for record in self.records_for(cid, coid) {
-                if let Some(model) = record.primary_model_id()
-                    && seen.insert(model.to_string())
-                {
-                    *s.by_model.entry(model.to_string()).or_insert(0) += 1;
+                for model in record.model_ids() {
+                    if seen.insert(model.to_string()) {
+                        *s.by_model.entry(model.to_string()).or_insert(0) += 1;
+                    }
                 }
             }
         }
@@ -456,6 +458,50 @@ mod tests {
             s.by_model.get("opus"),
             Some(&1),
             "same model once per change"
+        );
+    }
+
+    #[test]
+    fn summarize_change_with_two_models_counts_each() {
+        // one change, two records with DIFFERENT models → each model +1
+        // (ai_total stays 1; by_model sum may exceed ai_total — usage tally)
+        let index = TraceIndex::build(&[
+            record_model(TraceVcsType::Jj, "aaaaaaaa1111", "opus"),
+            record_model(TraceVcsType::Jj, "aaaaaaaa1111", "gpt"),
+        ]);
+        let s = index.summarize(&[change("aaaaaaaa", "d1")]);
+        assert_eq!(s.ai_total, 1);
+        assert_eq!(s.by_model.get("opus"), Some(&1));
+        assert_eq!(s.by_model.get("gpt"), Some(&1));
+    }
+
+    #[test]
+    fn summarize_collects_multiple_models_in_one_record() {
+        // a SINGLE record with two conversations of different models →
+        // model_ids() enumerates both (primary_model_id would miss the 2nd)
+        use crate::trace::model::{ContributorKind, TraceContributor, TraceConversation};
+        let mut r = record(TraceVcsType::Jj, "aaaaaaaa1111");
+        r.files[0].conversations[0]
+            .contributor
+            .as_mut()
+            .unwrap()
+            .model_id = Some("opus".to_string());
+        r.files[0].conversations.push(TraceConversation {
+            url: None,
+            contributor: Some(TraceContributor {
+                kind: ContributorKind::Ai,
+                model_id: Some("gpt".to_string()),
+            }),
+            ranges: vec![],
+            related: vec![],
+        });
+        let index = TraceIndex::build(&[r]);
+        let s = index.summarize(&[change("aaaaaaaa", "d1")]);
+        assert_eq!(s.by_model.get("opus"), Some(&1));
+        assert_eq!(
+            s.by_model.get("gpt"),
+            Some(&1),
+            "2nd conversation's model counted"
         );
     }
 

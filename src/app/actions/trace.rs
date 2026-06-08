@@ -41,11 +41,18 @@ impl App {
     /// (`--limit 200` range), not the AI-filtered view — the AI ratio is a
     /// property of the loaded set, not of the current display filter.
     pub(crate) fn show_ai_summary(&mut self) {
-        let summary = self
-            .trace_index
-            .as_ref()
-            .map(|index| index.summarize(&self.log_view.changes))
-            .unwrap_or_default();
+        // No trace index → summarize against an empty index so `total` still
+        // counts the loaded changes (AI 0/N, not AI 0/0). The denominator is
+        // always the loaded change set.
+        let empty;
+        let index = match self.trace_index.as_ref() {
+            Some(i) => i,
+            None => {
+                empty = crate::trace::TraceIndex::default();
+                &empty
+            }
+        };
+        let summary = index.summarize(&self.log_view.changes);
         self.notify_info(summary.one_line());
     }
 
@@ -226,15 +233,32 @@ mod tests {
     }
 
     #[test]
-    fn ai_summary_without_index_reports_zero() {
+    fn ai_summary_without_index_counts_loaded_total() {
+        use crate::model::{Change, ChangeId, CommitId};
         let mut app = App::new_for_test();
+        // No trace_index, but two loaded changes → AI 0/2 (denominator counts)
+        let mk = |c: &str, h: &str| Change {
+            change_id: ChangeId::new(c.to_string()),
+            commit_id: CommitId::new(h.to_string()),
+            author: String::new(),
+            timestamp: String::new(),
+            description: String::new(),
+            is_working_copy: false,
+            is_empty: false,
+            bookmarks: vec![],
+            graph_prefix: String::new(),
+            is_graph_only: false,
+            has_conflict: false,
+            working_copy_names: vec![],
+        };
+        app.log_view.set_changes(vec![mk("a", "1"), mk("b", "2")]);
         app.show_ai_summary();
         let msg = app
             .notification
             .as_ref()
             .map(|n| n.message.clone())
             .unwrap_or_default();
-        assert!(msg.starts_with("AI 0/0"), "got: {msg}");
+        assert!(msg.starts_with("AI 0/2 (0%)"), "got: {msg}");
     }
 
     #[test]

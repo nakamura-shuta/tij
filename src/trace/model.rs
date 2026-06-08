@@ -176,6 +176,36 @@ impl TraceRecord {
         self.code_files().count()
     }
 
+    /// Every distinct model_id in the record (conversation- and range-level),
+    /// in first-seen order. Unlike `primary_model_id` (first only), this is for
+    /// aggregation (A1 `by_model`) where one record may use several models.
+    pub fn model_ids(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        for conv in self.files.iter().flat_map(|f| &f.conversations) {
+            let conv_model = conv
+                .contributor
+                .as_ref()
+                .and_then(|c| c.model_id.as_deref());
+            if let Some(m) = conv_model
+                && !out.contains(&m)
+            {
+                out.push(m);
+            }
+            for range in &conv.ranges {
+                let rm = range
+                    .contributor
+                    .as_ref()
+                    .and_then(|c| c.model_id.as_deref());
+                if let Some(m) = rm
+                    && !out.contains(&m)
+                {
+                    out.push(m);
+                }
+            }
+        }
+        out
+    }
+
     /// All URLs in the record as `(label, url)` (A3 — Trace Detail).
     ///
     /// Order: each conversation's `url` (label "conversation") first, then its
