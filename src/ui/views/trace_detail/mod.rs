@@ -1,10 +1,13 @@
 //! Trace Detail View (A6 + A3)
 //!
 //! Rich, read-only view of the Agent Trace records anchored to one change:
-//! timestamp / tool+version / contributor breakdown / per-file ranges, and a
-//! flattened list of URLs (conversation + `related[]`). Only URL rows are
-//! selectable; `y` copies the selected URL. Replaces the Phase 2 Select
-//! dialog (which fit "list + single action" but not this multi-section view).
+//! timestamp / tool+version / contributor breakdown / per-file ranges, and the
+//! URLs (conversation + `related[]`). Replaces the Phase 2 Select dialog (which
+//! fit "list + single action" but not this multi-section view).
+//!
+//! Navigation is a single row cursor over ALL body rows (row-based scroll), so
+//! every detail line is reachable with `j/k`. `y` copies the URL when the
+//! cursor is on a URL row, otherwise shows a "No URL" notice.
 
 mod input;
 mod render;
@@ -20,18 +23,33 @@ pub enum TraceDetailAction {
     Back,
     /// Copy this URL to the clipboard
     CopyUrl(String),
-    /// `y` pressed with no selectable URL — show an info notice
+    /// `y` pressed on a non-URL row — show an info notice
     NoUrl,
 }
 
-/// A selectable URL row (flattened across records / conversations)
-#[derive(Debug, Clone)]
-pub struct UrlRow {
-    /// Index of the owning record (for grouping in render)
-    pub record_index: usize,
-    /// Label (`conversation` or the related `type`)
-    pub label: String,
-    pub url: String,
+/// One logical body row. The view owns these (data); `render` maps them to
+/// styled lines (presentation) and highlights the cursor row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum DetailRow {
+    /// Spacer between records
+    Blank,
+    /// `2026-06-05 14:20  claude-code 2.0`
+    Header {
+        timestamp: String,
+        tool: String,
+        version: Option<String>,
+    },
+    /// `contributor: ai×5  human×1  (model)`
+    Contributor {
+        summary: String,
+        model: Option<String>,
+    },
+    /// `src/main.rs  L1-6, L20-25`
+    Range { path: String, ranges: String },
+    /// `URLs:` (present) or `URLs: (none)`
+    UrlsHeader { present: bool },
+    /// A copyable URL row: `[label] url`
+    Url { label: String, url: String },
 }
 
 /// Trace Detail View state
@@ -39,32 +57,23 @@ pub struct UrlRow {
 pub struct TraceDetailView {
     /// Short change id shown in the title
     change_short: String,
-    /// Records anchored to the change (owned snapshot taken at open time)
-    records: Vec<TraceRecord>,
-    /// Flattened, selectable URL rows (in record/document order)
-    url_rows: Vec<UrlRow>,
-    /// Index into `url_rows` (meaningless when `url_rows` is empty)
-    selected_url: usize,
+    /// Number of records (for the header summary)
+    record_count: usize,
+    /// All logical body rows in display order
+    rows: Vec<DetailRow>,
+    /// Cursor over `rows` (row-based scroll driver)
+    cursor: usize,
 }
 
 impl TraceDetailView {
     /// Build the view from the records anchored to `change_short`.
     pub fn new(change_short: String, records: Vec<TraceRecord>) -> Self {
-        let mut url_rows = Vec::new();
-        for (record_index, record) in records.iter().enumerate() {
-            for (label, url) in record.all_urls() {
-                url_rows.push(UrlRow {
-                    record_index,
-                    label,
-                    url,
-                });
-            }
-        }
+        let rows = build_rows(&records);
         Self {
             change_short,
-            records,
-            url_rows,
-            selected_url: 0,
+            record_count: records.len(),
+            rows,
+            cursor: 0,
         }
     }
 
@@ -72,43 +81,85 @@ impl TraceDetailView {
         &self.change_short
     }
 
-    pub fn records(&self) -> &[TraceRecord] {
-        &self.records
-    }
-
-    pub fn url_rows(&self) -> &[UrlRow] {
-        &self.url_rows
-    }
-
     pub fn record_count(&self) -> usize {
-        self.records.len()
+        self.record_count
     }
 
-    /// Whether any URL is selectable
+    pub(super) fn rows(&self) -> &[DetailRow] {
+        &self.rows
+    }
+
+    pub(super) fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    /// Whether any row is a copyable URL (drives the `[y]` hint)
     pub fn has_urls(&self) -> bool {
-        !self.url_rows.is_empty()
+        self.rows.iter().any(|r| matches!(r, DetailRow::Url { .. }))
     }
 
-    pub fn selected_url_index(&self) -> usize {
-        self.selected_url
-    }
-
-    /// The currently selected URL, if any
-    pub fn selected_url(&self) -> Option<&UrlRow> {
-        self.url_rows.get(self.selected_url)
-    }
-
-    /// Move to the next selectable URL row (no-op when empty)
-    pub fn select_next(&mut self) {
-        if !self.url_rows.is_empty() {
-            self.selected_url = (self.selected_url + 1).min(self.url_rows.len() - 1);
+    /// URL under the cursor, if the cursor is on a URL row
+    pub fn current_url(&self) -> Option<&str> {
+        match self.rows.get(self.cursor) {
+            Some(DetailRow::Url { url, .. }) => Some(url),
+            _ => None,
         }
     }
 
-    /// Move to the previous selectable URL row
-    pub fn select_prev(&mut self) {
-        self.selected_url = self.selected_url.saturating_sub(1);
+    /// Move the cursor down one row (row-based scroll; clamped)
+    pub fn select_next(&mut self) {
+        if !self.rows.is_empty() {
+            self.cursor = (self.cursor + 1).min(self.rows.len() - 1);
+        }
     }
+
+    /// Move the cursor up one row
+    pub fn select_prev(&mut self) {
+        self.cursor = self.cursor.saturating_sub(1);
+    }
+}
+
+/// Flatten records into logical rows (record blocks separated by Blank).
+fn build_rows(records: &[TraceRecord]) -> Vec<DetailRow> {
+    let mut rows = Vec::new();
+    for (i, record) in records.iter().enumerate() {
+        if i > 0 {
+            rows.push(DetailRow::Blank);
+        }
+        rows.push(DetailRow::Header {
+            timestamp: record.timestamp.clone(),
+            tool: record
+                .tool_name
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
+            version: record.tool_version.clone(),
+        });
+        rows.push(DetailRow::Contributor {
+            summary: record.contributor_counts().summary(),
+            model: record.primary_model_id().map(str::to_string),
+        });
+        // Code files only (pseudo-files are not code attribution)
+        for file in record.code_files() {
+            let ranges: Vec<String> = file
+                .conversations
+                .iter()
+                .flat_map(|c| &c.ranges)
+                .map(|r| format!("L{}-{}", r.start_line, r.end_line))
+                .collect();
+            rows.push(DetailRow::Range {
+                path: file.path.clone(),
+                ranges: ranges.join(", "),
+            });
+        }
+        let urls = record.all_urls();
+        rows.push(DetailRow::UrlsHeader {
+            present: !urls.is_empty(),
+        });
+        for (label, url) in urls {
+            rows.push(DetailRow::Url { label, url });
+        }
+    }
+    rows
 }
 
 #[cfg(test)]
@@ -145,48 +196,59 @@ mod tests {
         }
     }
 
+    fn url_rows(v: &TraceDetailView) -> Vec<(&str, &str)> {
+        v.rows()
+            .iter()
+            .filter_map(|r| match r {
+                DetailRow::Url { label, url } => Some((label.as_str(), url.as_str())),
+                _ => None,
+            })
+            .collect()
+    }
+
     #[test]
     fn flattens_urls_in_order() {
         let v = TraceDetailView::new(
             "xqnktzml".to_string(),
             vec![record(Some("conv"), &[("pr", "prurl")])],
         );
-        let rows = v.url_rows();
-        assert_eq!(rows.len(), 2);
         assert_eq!(
-            (rows[0].label.as_str(), rows[0].url.as_str()),
-            ("conversation", "conv")
-        );
-        assert_eq!(
-            (rows[1].label.as_str(), rows[1].url.as_str()),
-            ("pr", "prurl")
+            url_rows(&v),
+            vec![("conversation", "conv"), ("pr", "prurl")]
         );
     }
 
     #[test]
-    fn no_urls_means_nothing_selectable() {
+    fn no_urls_means_nothing_copyable() {
         let v = TraceDetailView::new("x".to_string(), vec![record(None, &[])]);
         assert!(!v.has_urls());
-        assert!(v.selected_url().is_none());
+        // cursor starts on the header row, which is not a URL
+        assert!(v.current_url().is_none());
     }
 
     #[test]
-    fn navigation_clamps_to_url_rows() {
-        let mut v =
-            TraceDetailView::new("x".to_string(), vec![record(Some("u1"), &[("pr", "u2")])]);
-        assert_eq!(v.selected_url_index(), 0);
-        v.select_next();
-        assert_eq!(v.selected_url_index(), 1);
-        v.select_next(); // clamp
-        assert_eq!(v.selected_url_index(), 1);
-        v.select_prev();
-        v.select_prev(); // clamp
-        assert_eq!(v.selected_url_index(), 0);
+    fn cursor_moves_over_all_rows_and_clamps() {
+        let mut v = TraceDetailView::new("x".to_string(), vec![record(Some("u1"), &[])]);
+        let n = v.rows().len();
+        assert!(n >= 4, "header+contributor+range+urlsheader+url");
+        assert_eq!(v.cursor(), 0);
+        for _ in 0..(n + 5) {
+            v.select_next();
+        }
+        assert_eq!(v.cursor(), n - 1, "clamped at last row");
+        for _ in 0..(n + 5) {
+            v.select_prev();
+        }
+        assert_eq!(v.cursor(), 0, "clamped at first row");
     }
 
     #[test]
-    fn selected_url_returns_current_row() {
-        let v = TraceDetailView::new("x".to_string(), vec![record(Some("u1"), &[])]);
-        assert_eq!(v.selected_url().map(|r| r.url.as_str()), Some("u1"));
+    fn current_url_set_when_cursor_on_url_row() {
+        let mut v = TraceDetailView::new("x".to_string(), vec![record(Some("u1"), &[])]);
+        // walk the cursor down until it lands on the URL row
+        while v.current_url().is_none() && v.cursor() + 1 < v.rows().len() {
+            v.select_next();
+        }
+        assert_eq!(v.current_url(), Some("u1"));
     }
 }

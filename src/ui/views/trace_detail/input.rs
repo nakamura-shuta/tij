@@ -19,8 +19,8 @@ impl TraceDetailView {
             return TraceDetailAction::None;
         }
         match code {
-            keys::YANK => match self.selected_url() {
-                Some(row) => TraceDetailAction::CopyUrl(row.url.clone()),
+            keys::YANK => match self.current_url() {
+                Some(url) => TraceDetailAction::CopyUrl(url.to_string()),
                 None => TraceDetailAction::NoUrl,
             },
             keys::QUIT | keys::ESC => TraceDetailAction::Back,
@@ -62,9 +62,21 @@ mod tests {
         }
     }
 
+    /// Move the cursor down with `j` until it sits on a URL row.
+    fn cursor_to_first_url(v: &mut TraceDetailView) {
+        while v.current_url().is_none() {
+            let before = v.handle_key(key('j'));
+            assert_eq!(before, TraceDetailAction::None);
+            if v.current_url().is_some() {
+                break;
+            }
+        }
+    }
+
     #[test]
-    fn yank_copies_selected_url() {
+    fn yank_on_url_row_copies_it() {
         let mut v = TraceDetailView::new("x".to_string(), vec![record_with_url(Some("u1"))]);
+        cursor_to_first_url(&mut v);
         assert_eq!(
             v.handle_key(key('y')),
             TraceDetailAction::CopyUrl("u1".to_string())
@@ -72,8 +84,10 @@ mod tests {
     }
 
     #[test]
-    fn yank_without_url_returns_no_url() {
-        let mut v = TraceDetailView::new("x".to_string(), vec![record_with_url(None)]);
+    fn yank_on_non_url_row_returns_no_url() {
+        // cursor starts on the header row (not a URL)
+        let mut v = TraceDetailView::new("x".to_string(), vec![record_with_url(Some("u1"))]);
+        assert!(v.current_url().is_none());
         assert_eq!(v.handle_key(key('y')), TraceDetailAction::NoUrl);
     }
 
@@ -84,16 +98,19 @@ mod tests {
     }
 
     #[test]
-    fn jk_navigates_urls() {
+    fn jk_scrolls_over_all_rows() {
         let mut r = record_with_url(Some("u1"));
         r.files[0].conversations[0].related = vec![crate::trace::TraceRelated {
             rel_type: "pr".to_string(),
             url: "u2".to_string(),
         }];
         let mut v = TraceDetailView::new("x".to_string(), vec![r]);
+        // j reaches both URL rows (u1 then u2) as it scrolls down
+        cursor_to_first_url(&mut v);
+        assert_eq!(v.current_url(), Some("u1"));
         v.handle_key(key('j'));
-        assert_eq!(v.selected_url().map(|r| r.url.as_str()), Some("u2"));
+        assert_eq!(v.current_url(), Some("u2"));
         v.handle_key(key('k'));
-        assert_eq!(v.selected_url().map(|r| r.url.as_str()), Some("u1"));
+        assert_eq!(v.current_url(), Some("u1"));
     }
 }
