@@ -21,11 +21,13 @@ mod index;
 mod loader;
 mod model;
 mod overlay;
+mod report;
 
-pub use index::{AiBadgeSets, TraceIndex, TraceSummary};
+pub use index::{AiBadgeSets, AiConfidence, TraceIndex, TraceSummary};
 pub use loader::{DEFAULT_TRACE_PATH, LoadResult, load};
 pub use model::{
     ContributorCounts, ContributorKind, TraceContributor, TraceConversation, TraceFile, TraceRange,
     TraceRecord, TraceRelated, TraceVcs, TraceVcsType,
 };
 pub use overlay::compute_ai_line_marks;
+pub use report::build_report;

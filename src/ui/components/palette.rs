@@ -129,6 +129,11 @@ pub fn palette_commands() -> &'static [PaletteCommand] {
             dispatch: PaletteDispatch::Command(LogCommand::AiSummary),
         },
         PaletteCommand {
+            name: "ai-report",
+            description: "Write AI attribution report (agent-trace-report.md)",
+            dispatch: PaletteDispatch::Command(LogCommand::AiReport),
+        },
+        PaletteCommand {
             name: "tag-view",
             description: "Open Tag View",
             dispatch: PaletteDispatch::Key(keys::TAG_VIEW),
@@ -236,6 +241,19 @@ mod tests {
         assert!(matches!(
             cmd.dispatch,
             PaletteDispatch::Command(LogCommand::AiSummary)
+        ));
+    }
+
+    #[test]
+    fn registry_has_ai_report() {
+        let cmds = palette_commands();
+        let cmd = cmds
+            .iter()
+            .find(|c| c.name == "ai-report")
+            .expect("ai-report registered");
+        assert!(matches!(
+            cmd.dispatch,
+            PaletteDispatch::Command(LogCommand::AiReport)
         ));
     }
 

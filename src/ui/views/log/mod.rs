@@ -213,6 +213,8 @@ pub enum LogAction {
     ToggleAiFilter,
     /// Show the AI contribution summary for the loaded changes (Agent Trace A1)
     ShowAiSummary,
+    /// Write the AI attribution Markdown report for the loaded changes (A8)
+    ExportAiReport,
 }
 
 /// Identifiers for low-frequency Log commands reachable only via the palette
@@ -234,6 +236,7 @@ pub enum LogCommand {
     ShowTraces,
     ToggleAiFilter,
     AiSummary,
+    AiReport,
 }
 
 /// Log View state

@@ -35,9 +35,11 @@ impl AiBadgeSets {
 }
 
 /// Per-change AI confidence (mirrors the badge: confirmed → `[AI]`,
-/// heuristic → `[AI?]`).
+/// heuristic → `[AI?]`). Public so the A8 report can label each row with the
+/// same confidence the summary counts (single source of truth via
+/// [`TraceIndex::ai_status`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AiConfidence {
+pub enum AiConfidence {
     Confirmed,
     Heuristic,
 }
@@ -183,8 +185,10 @@ impl TraceIndex {
     }
 
     /// Per-change AI confidence (None = no AI trace) — the single-change form
-    /// of `classify_into`, reused by `summarize`.
-    fn confidence_of(&self, change_id: &str, commit_id: &str) -> Option<AiConfidence> {
+    /// of `classify_into`. The single source of truth for "is this change AI,
+    /// and how confident": both `summarize` (A1) and `build_report` (A8) call
+    /// this so the `[AI]`/`[AI?]` rule is never reimplemented.
+    pub fn ai_status(&self, change_id: &str, commit_id: &str) -> Option<AiConfidence> {
         if change_id.is_empty() || commit_id.is_empty() {
             return None;
         }
@@ -224,7 +228,7 @@ impl TraceIndex {
             s.total += 1;
             let cid = change.change_id.as_str();
             let coid = change.commit_id.as_str();
-            match self.confidence_of(cid, coid) {
+            match self.ai_status(cid, coid) {
                 Some(AiConfidence::Confirmed) => {
                     s.ai_total += 1;
                     s.ai_confirmed += 1;
@@ -303,7 +307,10 @@ impl TraceIndex {
         let mut by_file: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
         for record in self.records_for(change_id, commit_id) {
             let tool_fallback = record.tool_name.is_some();
-            for file in &record.files {
+            // code_files() excludes pseudo-files (.shell-history / .sessions),
+            // so their ranges never enter the Diff overlay or the A8 report —
+            // the same "what is code" rule A6 uses (single source of truth).
+            for file in record.code_files() {
                 for conv in &file.conversations {
                     for range in &conv.ranges {
                         let effective = range.contributor.as_ref().or(conv.contributor.as_ref());
@@ -668,6 +675,46 @@ mod tests {
 
         let ranges = index.ai_ranges_for("xqnktzml", "2d31c7f1");
         assert_eq!(ranges.get("src/main.rs"), Some(&vec![(6, 9)]));
+    }
+
+    #[test]
+    fn ai_ranges_for_excludes_pseudo_files() {
+        use crate::trace::model::{
+            ContributorKind, TraceContributor, TraceConversation, TraceFile, TraceRange,
+        };
+        // A record touching a real code file AND a .shell-history pseudo-file,
+        // both AI with ranges. Only the code file's range must surface — the
+        // pseudo-file range must not leak into the Diff overlay / A8 report.
+        let mut r = record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv");
+        r.files[0].conversations[0].ranges = vec![TraceRange {
+            start_line: 1,
+            end_line: 8,
+            contributor: None,
+        }];
+        r.files.push(TraceFile {
+            path: ".shell-history".to_string(),
+            conversations: vec![TraceConversation {
+                url: None,
+                contributor: Some(TraceContributor {
+                    kind: ContributorKind::Ai,
+                    model_id: None,
+                }),
+                ranges: vec![TraceRange {
+                    start_line: 100,
+                    end_line: 200,
+                    contributor: None,
+                }],
+                related: vec![],
+            }],
+        });
+        let index = TraceIndex::build(&[r]);
+
+        let ranges = index.ai_ranges_for("xqnktzml", "2d31c7f1");
+        assert_eq!(ranges.get("src/main.rs"), Some(&vec![(1, 8)]));
+        assert!(
+            !ranges.contains_key(".shell-history"),
+            "pseudo-file ranges must not enter ai_ranges_for"
+        );
     }
 
     #[test]

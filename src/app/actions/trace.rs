@@ -56,6 +56,46 @@ impl App {
         self.notify_info(summary.one_line());
     }
 
+    /// Write the AI attribution Markdown report to `<workspace
+    /// root>/agent-trace-report.md` (palette: `ai-report`, A8).
+    ///
+    /// Like A1, the denominator is the full loaded change set (filter-
+    /// independent) and a missing trace still produces a valid `AI 0/N`
+    /// report. Report generation is the pure `trace::build_report`; this
+    /// method only resolves the path, supplies the timestamp, and writes —
+    /// any failure degrades to a notification, never affecting tij (P6).
+    pub(crate) fn export_ai_report(&mut self) {
+        let root = match self.jj.workspace_root() {
+            Ok(r) => r,
+            Err(e) => {
+                self.set_error(format!("Cannot resolve workspace root: {}", e));
+                return;
+            }
+        };
+
+        let empty;
+        let index = match self.trace_index.as_ref() {
+            Some(i) => i,
+            None => {
+                empty = crate::trace::TraceIndex::default();
+                &empty
+            }
+        };
+
+        let summary = index.summarize(&self.log_view.changes);
+        let now = report_timestamp();
+        let markdown = crate::trace::build_report(&self.log_view.changes, index, &now);
+
+        let path = std::path::Path::new(&root).join("agent-trace-report.md");
+        match std::fs::write(&path, &markdown) {
+            Ok(()) => self.notify_info(format!(
+                "Wrote agent-trace-report.md ({} AI changes)",
+                summary.ai_total
+            )),
+            Err(e) => self.set_error(format!("Failed to write agent-trace-report.md: {}", e)),
+        }
+    }
+
     /// Dispatch a Trace Detail View action.
     pub(crate) fn handle_trace_detail_action(&mut self, action: TraceDetailAction) {
         match action {
@@ -126,6 +166,41 @@ impl App {
         let marks = crate::trace::compute_ai_line_marks(&diff_view.content, &ranges);
         diff_view.set_ai_line_marks(marks);
     }
+}
+
+/// Current UTC time as `YYYY-MM-DD HH:MM UTC` for the report header.
+///
+/// UTC (not local) keeps it dependency-free and unambiguous — the report is a
+/// shareable artifact, so an explicit zone beats a silent local one. The
+/// `build_report` function stays clock-free; the App supplies this string.
+fn report_timestamp() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let days = secs.div_euclid(86400);
+    let day_secs = secs.rem_euclid(86400);
+    let (y, m, d) = civil_from_days(days);
+    let hh = day_secs / 3600;
+    let mm = (day_secs % 3600) / 60;
+    format!("{:04}-{:02}-{:02} {:02}:{:02} UTC", y, m, d, hh, mm)
+}
+
+/// Civil (Gregorian) date from a count of days since the Unix epoch
+/// (1970-01-01). Howard Hinnant's `civil_from_days` — exact, no leap-year
+/// special-casing bugs. Returns `(year, month [1-12], day [1-31])`.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = z - era * 146097; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
+    let m = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32; // [1, 12]
+    (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
 #[cfg(test)]

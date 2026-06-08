@@ -535,6 +535,9 @@ impl App {
 
             // Agent Trace AI summary (A1)
             LogAction::ShowAiSummary => self.show_ai_summary(),
+
+            // Agent Trace AI report (A8)
+            LogAction::ExportAiReport => self.export_ai_report(),
         }
     }
 
