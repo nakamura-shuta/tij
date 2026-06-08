@@ -23,7 +23,7 @@ mod model;
 mod overlay;
 mod report;
 
-pub use index::{AiBadgeSets, AiConfidence, TraceIndex, TraceSummary};
+pub use index::{AiBadgeSets, AiConfidence, OrphanedAnchor, TraceIndex, TraceSummary};
 pub use loader::{DEFAULT_TRACE_PATH, LoadResult, load};
 pub use model::{
     ContributorCounts, ContributorKind, TraceContributor, TraceConversation, TraceFile, TraceRange,

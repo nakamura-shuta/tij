@@ -215,6 +215,8 @@ pub enum LogAction {
     ShowAiSummary,
     /// Write the AI attribution Markdown report for the loaded changes (A8)
     ExportAiReport,
+    /// Notify the count of orphaned traces over the loaded changes (A7)
+    ShowOrphans,
 }
 
 /// Identifiers for low-frequency Log commands reachable only via the palette
@@ -237,6 +239,7 @@ pub enum LogCommand {
     ToggleAiFilter,
     AiSummary,
     AiReport,
+    AiOrphans,
 }
 
 /// Log View state

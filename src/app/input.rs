@@ -538,6 +538,9 @@ impl App {
 
             // Agent Trace AI report (A8)
             LogAction::ExportAiReport => self.export_ai_report(),
+
+            // Agent Trace orphaned-trace glance (A7)
+            LogAction::ShowOrphans => self.show_orphans(),
         }
     }
 

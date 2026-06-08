@@ -96,6 +96,46 @@ impl App {
         }
     }
 
+    /// One-line glance at orphaned traces over the loaded changes (palette:
+    /// `ai-orphans`, A7) — the trace-first companion to `ai-summary`.
+    ///
+    /// Filter-independent (full loaded set, like A1/A8). "Orphaned" means a
+    /// trace anchored to a revision matching none of the loaded changes; the
+    /// wording avoids asserting deletion (it may be out of the `--limit`
+    /// window). No trace → 0 orphans.
+    pub(crate) fn show_orphans(&mut self) {
+        use crate::trace::TraceVcsType;
+
+        let empty;
+        let index = match self.trace_index.as_ref() {
+            Some(i) => i,
+            None => {
+                empty = crate::trace::TraceIndex::default();
+                &empty
+            }
+        };
+
+        let orphans = index.orphaned_anchors(&self.log_view.changes);
+        if orphans.is_empty() {
+            self.notify_info("No orphaned traces");
+            return;
+        }
+        let jj = orphans
+            .iter()
+            .filter(|o| o.vcs_type == TraceVcsType::Jj)
+            .count();
+        let git = orphans
+            .iter()
+            .filter(|o| o.vcs_type == TraceVcsType::Git)
+            .count();
+        self.notify_info(format!(
+            "Orphaned traces: {} (jj {}, git {}) — not in loaded changes",
+            orphans.len(),
+            jj,
+            git
+        ));
+    }
+
     /// Dispatch a Trace Detail View action.
     pub(crate) fn handle_trace_detail_action(&mut self, action: TraceDetailAction) {
         match action {

@@ -106,6 +106,26 @@ struct AnchoredRecord {
     record: TraceRecord,
 }
 
+/// A trace anchor that matches none of the loaded changes (A7).
+///
+/// Aggregated per `(vcs_type, revision)` — the same anchor recorded by several
+/// records collapses to one entry (files unioned, first non-empty URL kept).
+/// "Orphaned" means only "not among the loaded changes": it may be out of the
+/// `--limit` window, rebased, or abandoned — A7 does not assert which (no jj
+/// shelling; that stays a future App-layer enhancement).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrphanedAnchor {
+    /// Jj (change ID) or Git (commit SHA) — kept so the glance notify can split
+    /// counts, and so equal revision strings of different kinds stay distinct.
+    pub vcs_type: TraceVcsType,
+    /// Full anchored revision string.
+    pub revision: String,
+    /// Code-file paths touched (pseudo-files excluded), unioned across records.
+    pub files: Vec<String>,
+    /// Representative URL (first non-empty across the anchor's records).
+    pub url: Option<String>,
+}
+
 /// Pre-filtered AI-contributing records, anchored by VCS revision
 #[derive(Debug, Clone, Default)]
 pub struct TraceIndex {
@@ -331,6 +351,80 @@ impl TraceIndex {
             }
         }
         by_file
+    }
+
+    /// Trace anchors matching none of the loaded changes (A7).
+    ///
+    /// Trace-first (the inverse of `summarize`/`ai_status`, which are
+    /// change-first): for each anchored record, if no non-graph-only change
+    /// matches it, it is orphaned. The detection set is exactly what the index
+    /// holds — AI-contributing, jj/git-anchored records with a usable revision
+    /// (human-only / pseudo-only / vcs-less / short / `other` records were
+    /// already dropped at `build` and never reach here).
+    ///
+    /// Results are aggregated by `(vcs_type, revision)` (equal revision strings
+    /// of different VCS kinds stay distinct), code-file paths unioned, first
+    /// non-empty URL kept. Log-only: no jj is consulted (the loaded set is the
+    /// sole ground truth), so "orphaned" means "not in the loaded changes",
+    /// not "deleted".
+    pub fn orphaned_anchors(&self, changes: &[Change]) -> Vec<OrphanedAnchor> {
+        // (vcs_type, revision) → position in `out`, so records sharing an
+        // anchor merge into one entry in first-seen order.
+        let mut seen: HashMap<(TraceVcsType, &str), usize> = HashMap::new();
+        let mut out: Vec<OrphanedAnchor> = Vec::new();
+
+        for anchor in &self.anchored {
+            let matched = changes.iter().any(|c| anchor_matches_change(anchor, c));
+            if matched {
+                continue;
+            }
+
+            let key = (anchor.vcs_type, anchor.revision.as_str());
+            let idx = *seen.entry(key).or_insert_with(|| {
+                out.push(OrphanedAnchor {
+                    vcs_type: anchor.vcs_type,
+                    revision: anchor.revision.clone(),
+                    files: Vec::new(),
+                    url: None,
+                });
+                out.len() - 1
+            });
+
+            let entry = &mut out[idx];
+            for file in anchor.record.code_files() {
+                if !entry.files.contains(&file.path) {
+                    entry.files.push(file.path.clone());
+                }
+            }
+            if entry.url.is_none() {
+                entry.url = anchor.record.primary_url().map(|u| u.to_string());
+            }
+        }
+        out
+    }
+}
+
+/// Whether a trace anchor matches one log change (prefix rule, §6.2).
+///
+/// jj anchors match on `change_id`, git anchors on `commit_id` — the same
+/// directional rule `records_for` / `ai_status` use, expressed anchor-first so
+/// A7 (trace-first) and the change-first callers share one definition. Graph-
+/// only rows and empty short IDs never match (an empty prefix would match
+/// everything).
+fn anchor_matches_change(anchor: &AnchoredRecord, change: &Change) -> bool {
+    if change.is_graph_only {
+        return false;
+    }
+    match anchor.vcs_type {
+        TraceVcsType::Jj => {
+            let cid = change.change_id.as_str();
+            !cid.is_empty() && anchor.revision.starts_with(cid)
+        }
+        TraceVcsType::Git => {
+            let coid = change.commit_id.as_str();
+            !coid.is_empty() && anchor.revision.starts_with(coid)
+        }
+        TraceVcsType::Other => false,
     }
 }
 
@@ -725,5 +819,121 @@ mod tests {
         c.is_graph_only = true;
         let sets = index.match_commits(&[c]);
         assert!(sets.is_empty());
+    }
+
+    // --- A7: orphaned_anchors --------------------------------------------
+
+    #[test]
+    fn orphaned_anchors_empty_when_all_match() {
+        let index =
+            TraceIndex::build(&[record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv")]);
+        // change_id is a prefix of the anchored revision → matched
+        let orphans = index.orphaned_anchors(&[change("xqnktzml", "2d31c7f1")]);
+        assert!(orphans.is_empty());
+    }
+
+    #[test]
+    fn orphaned_anchors_flags_unmatched_jj() {
+        let index =
+            TraceIndex::build(&[record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv")]);
+        // No loaded change matches the anchor
+        let orphans = index.orphaned_anchors(&[change("zzzzzzzz", "00000000")]);
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(orphans[0].vcs_type, TraceVcsType::Jj);
+        assert!(orphans[0].revision.starts_with("xqnktzml"));
+        assert_eq!(orphans[0].files, vec!["src/main.rs".to_string()]);
+    }
+
+    #[test]
+    fn orphaned_anchors_flags_unmatched_git() {
+        let index = TraceIndex::build(&[record(TraceVcsType::Git, "deadbeef00000000")]);
+        let orphans = index.orphaned_anchors(&[change("zzzzzzzz", "11111111")]);
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(orphans[0].vcs_type, TraceVcsType::Git);
+    }
+
+    #[test]
+    fn orphaned_anchors_aggregates_same_anchor() {
+        // Two records on the same (vcs, revision) but different files
+        let mut r2 = record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv");
+        r2.files[0].path = "src/other.rs".to_string();
+        let index = TraceIndex::build(&[
+            record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv"),
+            r2,
+        ]);
+
+        let orphans = index.orphaned_anchors(&[change("zzzzzzzz", "00000000")]);
+        assert_eq!(orphans.len(), 1, "same (vcs, revision) collapses to one");
+        assert_eq!(
+            orphans[0].files,
+            vec!["src/main.rs".to_string(), "src/other.rs".to_string()],
+            "files unioned across records"
+        );
+    }
+
+    #[test]
+    fn orphaned_anchors_same_revision_distinct_vcs() {
+        // Identical revision STRING but one jj, one git → two distinct anchors.
+        let shared = "abcdefgh12345678";
+        let index = TraceIndex::build(&[
+            record(TraceVcsType::Jj, shared),
+            record(TraceVcsType::Git, shared),
+        ]);
+        // A change whose ids don't match the shared string at all
+        let orphans = index.orphaned_anchors(&[change("zzzzzzzz", "00000000")]);
+        assert_eq!(
+            orphans.len(),
+            2,
+            "(vcs_type, revision) keeps kinds distinct"
+        );
+        assert!(orphans.iter().any(|o| o.vcs_type == TraceVcsType::Jj));
+        assert!(orphans.iter().any(|o| o.vcs_type == TraceVcsType::Git));
+    }
+
+    #[test]
+    fn orphaned_anchors_graph_only_change_does_not_match() {
+        let index =
+            TraceIndex::build(&[record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv")]);
+        // Even though its change_id would prefix-match, a graph-only row is not
+        // a real change → the anchor stays orphaned.
+        let mut c = change("xqnktzml", "2d31c7f1");
+        c.is_graph_only = true;
+        let orphans = index.orphaned_anchors(&[c]);
+        assert_eq!(orphans.len(), 1);
+    }
+
+    #[test]
+    fn orphaned_anchors_excludes_pseudo_files() {
+        use crate::trace::model::{TraceContributor, TraceConversation, TraceFile};
+        let mut r = record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv");
+        r.files.push(TraceFile {
+            path: ".shell-history".to_string(),
+            conversations: vec![TraceConversation {
+                url: None,
+                contributor: Some(TraceContributor {
+                    kind: super::super::model::ContributorKind::Ai,
+                    model_id: None,
+                }),
+                ranges: vec![],
+                related: vec![],
+            }],
+        });
+        let index = TraceIndex::build(&[r]);
+        let orphans = index.orphaned_anchors(&[change("zzzzzzzz", "00000000")]);
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(
+            orphans[0].files,
+            vec!["src/main.rs".to_string()],
+            "pseudo-files excluded from orphan files"
+        );
+    }
+
+    #[test]
+    fn orphaned_anchors_empty_change_ids_do_not_match() {
+        let index =
+            TraceIndex::build(&[record(TraceVcsType::Jj, "xqnktzmlworukplnyrropmtzylsuxxlv")]);
+        // An empty-id change must not spuriously match (empty prefix).
+        let orphans = index.orphaned_anchors(&[change("", "")]);
+        assert_eq!(orphans.len(), 1);
     }
 }

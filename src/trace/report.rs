@@ -74,6 +74,41 @@ pub fn build_report(changes: &[Change], index: &TraceIndex, generated_at: &str) 
         }
     }
 
+    // --- Orphaned traces (A7) ---------------------------------------------
+    // Traces anchored to a revision matching none of the loaded changes. Only
+    // shown when there are any — a clean run adds no noise.
+    let orphans = index.orphaned_anchors(changes);
+    if !orphans.is_empty() {
+        out.push('\n');
+        out.push_str("## Orphaned traces\n\n");
+        out.push_str(
+            "These traces reference a revision not among the loaded changes \
+             (out of the --limit window, rebased, or abandoned):\n\n",
+        );
+        out.push_str("| anchor | revision | files | session |\n");
+        out.push_str("|--------|----------|-------|---------|\n");
+        for o in orphans {
+            let anchor = match o.vcs_type {
+                crate::trace::TraceVcsType::Jj => "jj",
+                crate::trace::TraceVcsType::Git => "git",
+                crate::trace::TraceVcsType::Other => "other",
+            };
+            let files = if o.files.is_empty() {
+                String::new()
+            } else {
+                escape_cell(&o.files.join("; "))
+            };
+            let session = o.url.as_deref().map(escape_cell).unwrap_or_default();
+            out.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                anchor,
+                escape_cell(&o.revision),
+                files,
+                session
+            ));
+        }
+    }
+
     out
 }
 
@@ -283,6 +318,41 @@ mod tests {
         assert!(md.contains("src/main.rs L1-8"));
         assert!(md.contains("conv-url"));
         assert!(!md.contains("chore: human edit"));
+        // anchor matched a loaded change → no orphan section
+        assert!(!md.contains("## Orphaned traces"));
+    }
+
+    #[test]
+    fn report_includes_orphaned_section() {
+        // Anchor points at a revision no loaded change matches → orphaned.
+        let rec = ai_record(
+            "xqnktzmlworukplnyrropmtzylsuxxlv",
+            "src/gone.rs",
+            None,
+            Some("orphan-url"),
+        );
+        let index = TraceIndex::build(&[rec]);
+        let changes = vec![change("zzzzzzzz", "00000000", "unrelated change")];
+
+        let md = build_report(&changes, &index, "t");
+        assert!(md.contains("## Orphaned traces"));
+        assert!(
+            md.contains("| jj | xqnktzmlworukplnyrropmtzylsuxxlv | src/gone.rs | orphan-url |")
+        );
+    }
+
+    #[test]
+    fn report_no_orphaned_section_when_all_matched() {
+        let rec = ai_record(
+            "xqnktzmlworukplnyrropmtzylsuxxlv",
+            "src/main.rs",
+            None,
+            None,
+        );
+        let index = TraceIndex::build(&[rec]);
+        let changes = vec![change("xqnktzml", "2d31c7f1", "matched")];
+        let md = build_report(&changes, &index, "t");
+        assert!(!md.contains("## Orphaned traces"));
     }
 
     #[test]

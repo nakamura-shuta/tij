@@ -134,6 +134,11 @@ pub fn palette_commands() -> &'static [PaletteCommand] {
             dispatch: PaletteDispatch::Command(LogCommand::AiReport),
         },
         PaletteCommand {
+            name: "ai-orphans",
+            description: "Count traces not matching any loaded change",
+            dispatch: PaletteDispatch::Command(LogCommand::AiOrphans),
+        },
+        PaletteCommand {
             name: "tag-view",
             description: "Open Tag View",
             dispatch: PaletteDispatch::Key(keys::TAG_VIEW),
@@ -254,6 +259,19 @@ mod tests {
         assert!(matches!(
             cmd.dispatch,
             PaletteDispatch::Command(LogCommand::AiReport)
+        ));
+    }
+
+    #[test]
+    fn registry_has_ai_orphans() {
+        let cmds = palette_commands();
+        let cmd = cmds
+            .iter()
+            .find(|c| c.name == "ai-orphans")
+            .expect("ai-orphans registered");
+        assert!(matches!(
+            cmd.dispatch,
+            PaletteDispatch::Command(LogCommand::AiOrphans)
         ));
     }
 

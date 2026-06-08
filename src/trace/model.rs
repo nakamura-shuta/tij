@@ -28,7 +28,7 @@ pub struct TraceVcs {
 }
 
 /// Supported VCS kinds (hg/svn collapse into Other — unmatched in tij)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TraceVcsType {
     Git,
     Jj,
