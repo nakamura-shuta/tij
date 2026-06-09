@@ -351,17 +351,18 @@ impl DiffView {
 
     /// Jump to the next file (wraps to the first).
     ///
-    /// Stepping is by **file index**, not scroll position. Earlier this scanned
-    /// for the next header `> scroll_offset`, which disagreed with the `[N/M]`
-    /// label (driven by `current_file_index`) whenever the scroll sat partway
-    /// through a file: `]`/`[` would jump to the *current* file's own header
-    /// and look like a no-op. Re-syncing the index from the scroll first, then
-    /// stepping the index, keeps navigation and the label consistent.
+    /// Stepping is by **file index** and must NOT re-derive the index from
+    /// `scroll_offset`. When the whole diff fits on screen,
+    /// `max_scroll_offset()` is 0, so the pre-render clamp
+    /// (`set_visible_height_and_clamp`) pins `scroll_offset` back to 0 after we
+    /// jump. Deriving the index from that pinned scroll would snap it back to
+    /// file 0, making `]`/`[` dead. `current_file_index` is kept in sync by the
+    /// scroll handlers, so we just step it directly here; the `[N/M]` label
+    /// (also index-driven) then stays correct even when the scroll can't move.
     pub fn next_file(&mut self) {
         if self.file_header_positions.is_empty() {
             return;
         }
-        self.update_current_file_index();
         let last = self.file_header_positions.len() - 1;
         let next = if self.current_file_index >= last {
             0
@@ -378,7 +379,6 @@ impl DiffView {
         if self.file_header_positions.is_empty() {
             return;
         }
-        self.update_current_file_index();
         let prev = if self.current_file_index == 0 {
             self.file_header_positions.len() - 1
         } else {
@@ -569,6 +569,33 @@ mod tests {
             view.handle_key_with_height(KeyEvent::from(crossterm::event::KeyCode::Char('j')), 5);
         assert_eq!(action, DiffAction::None);
         assert_eq!(view.scroll_offset, 1);
+    }
+
+    #[test]
+    fn file_nav_works_when_diff_fits_on_screen() {
+        // Regression (v0.9.1 missed this): when the whole diff fits, the
+        // pre-render clamp pins scroll_offset to 0 (max_scroll_offset == 0).
+        // File navigation must still cycle by index — `]`/`[` must not be dead.
+        use crossterm::event::KeyCode;
+        let mut view = DiffView::new("test".to_string(), create_test_content());
+        // positions = [0, 6]; 8 lines. visible height 50 → fits → max scroll 0.
+        let h = 50;
+
+        // Render clamp runs before each key (as in the real loop).
+        view.set_visible_height_and_clamp(h);
+        view.handle_key_with_height(KeyEvent::from(KeyCode::Char(']')), h);
+        view.set_visible_height_and_clamp(h);
+        assert_eq!(view.current_file_index, 1, "] → file 2 even though it fits");
+
+        // The bug: `[` did nothing here because scroll was pinned to 0.
+        view.handle_key_with_height(KeyEvent::from(KeyCode::Char('[')), h);
+        view.set_visible_height_and_clamp(h);
+        assert_eq!(view.current_file_index, 0, "[ → back to file 1");
+
+        // And `]` again still advances.
+        view.handle_key_with_height(KeyEvent::from(KeyCode::Char(']')), h);
+        view.set_visible_height_and_clamp(h);
+        assert_eq!(view.current_file_index, 1);
     }
 
     #[test]
