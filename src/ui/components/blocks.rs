@@ -36,6 +36,13 @@ pub fn side_borders_block() -> Block<'static> {
     Block::default().borders(Borders::LEFT | Borders::RIGHT)
 }
 
+/// Create a block with left, right, and bottom borders — for the LAST section
+/// of a stacked frame so it closes off with a bottom line (matching the
+/// full-border look of single-block views above the status bar).
+pub fn side_bottom_borders_block() -> Block<'static> {
+    Block::default().borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
+}
+
 /// Create a block with top, left, and right borders (for header sections)
 pub fn header_block<'a>(title: Line<'a>) -> Block<'a> {
     titled_block(title, Borders::TOP | Borders::LEFT | Borders::RIGHT)

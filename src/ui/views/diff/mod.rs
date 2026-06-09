@@ -129,6 +129,7 @@ impl DiffView {
         area_height
             .saturating_sub(self.header_height(area_height))
             .saturating_sub(1) // context bar
+            .saturating_sub(1) // content block's bottom border
     }
 
     /// Update `visible_height` and re-clamp `scroll_offset` so it never

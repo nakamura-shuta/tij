@@ -306,12 +306,15 @@ impl DiffView {
 
     /// Render the diff content (scrollable)
     fn render_diff_content(&self, frame: &mut Frame, area: Rect) {
-        // No top/bottom borders, only left/right, so use full height
-        let inner_height = area.height as usize;
+        // Bottom border closes the frame (1 row reserved), so the visible
+        // content is one row shorter than the area. Must match
+        // `diff_content_height`, which the scroll math uses.
+        let inner_height = (area.height as usize).saturating_sub(1);
 
         if self.content.lines.is_empty() {
             // Empty state
-            let empty_msg = components::no_changes_state().block(components::side_borders_block());
+            let empty_msg =
+                components::no_changes_state().block(components::side_bottom_borders_block());
             frame.render_widget(empty_msg, area);
             return;
         }
@@ -341,7 +344,7 @@ impl DiffView {
             })
             .collect();
 
-        let diff = Paragraph::new(lines).block(components::side_borders_block());
+        let diff = Paragraph::new(lines).block(components::side_bottom_borders_block());
 
         frame.render_widget(diff, area);
     }

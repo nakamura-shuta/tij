@@ -63,7 +63,8 @@ impl TraceDetailView {
 
     fn render_body(&self, frame: &mut Frame, area: Rect) {
         let rows = self.rows();
-        let height = area.height as usize;
+        // Bottom border closes the frame (1 row), so visible height is one less.
+        let height = (area.height as usize).saturating_sub(1);
         let cursor = self.cursor();
         let start = scroll_start(rows.len(), cursor, height);
 
@@ -87,7 +88,7 @@ impl TraceDetailView {
             })
             .collect();
 
-        let para = Paragraph::new(lines).block(components::side_borders_block());
+        let para = Paragraph::new(lines).block(components::side_bottom_borders_block());
         frame.render_widget(para, area);
     }
 }
