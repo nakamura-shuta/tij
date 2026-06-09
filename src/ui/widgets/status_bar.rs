@@ -116,14 +116,12 @@ pub fn status_hints_height(hints: &[KeyHint], width: u16) -> u16 {
 // Rendering
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Calculate status bar area at bottom of screen
-fn status_bar_area(frame: &Frame, hints: &[KeyHint]) -> Option<Rect> {
+/// Calculate status bar area at the bottom of the screen for a known height.
+fn status_bar_area_h(frame: &Frame, height: u16) -> Option<Rect> {
     let area = frame.area();
     if area.height < 2 {
         return None;
     }
-
-    let height = status_hints_height(hints, area.width);
 
     // Fallback to single row if not enough space
     let actual_height = if area.height < height + 1 { 1 } else { height };
@@ -134,6 +132,66 @@ fn status_bar_area(frame: &Frame, hints: &[KeyHint]) -> Option<Rect> {
         width: area.width,
         height: actual_height,
     })
+}
+
+/// Calculate status bar area for plain (no-prefix) hint bars.
+fn status_bar_area(frame: &Frame, hints: &[KeyHint]) -> Option<Rect> {
+    status_bar_area_h(frame, status_hints_height(hints, frame.area().width))
+}
+
+/// Display width of a status-bar prefix (best-effort: char count, which is
+/// exact for the ASCII revisions/paths/indices used here).
+fn prefix_width(prefix: &[Span]) -> usize {
+    prefix.iter().map(|s| s.content.chars().count()).sum()
+}
+
+/// Width the hints add after a prefix — each hint is preceded by one space
+/// (see [`build_status_bar_with_prefix`]).
+fn prefixed_hints_width(hints: &[KeyHint]) -> usize {
+    hints.iter().map(|h| 1 + hint_width(h)).sum()
+}
+
+/// Rows a prefixed bar needs: 1 when prefix + hints fit, else 3 (two rows +
+/// spacer), mirroring [`build_content`]. Without this the bar ran off the
+/// right edge because the height ignored the prefix.
+fn prefixed_height(prefix_w: usize, hints: &[KeyHint], width: u16) -> u16 {
+    if prefix_w + prefixed_hints_width(hints) <= width as usize {
+        1
+    } else {
+        3
+    }
+}
+
+/// Build prefixed status content, wrapping hints onto a second row when the
+/// prefix + hints exceed the width so nothing overflows the right edge.
+fn build_prefixed_content(
+    prefix: Vec<Span<'static>>,
+    prefix_w: usize,
+    hints: &[KeyHint],
+    width: u16,
+) -> Vec<Line<'static>> {
+    let width = width as usize;
+    if prefix_w + prefixed_hints_width(hints) <= width {
+        return vec![build_status_bar_with_prefix(prefix, hints)];
+    }
+
+    // Fill the first row (after the prefix) with as many hints as fit.
+    let mut row_w = prefix_w;
+    let mut split = 0;
+    for (i, hint) in hints.iter().enumerate() {
+        let w = 1 + hint_width(hint);
+        if row_w + w > width {
+            break;
+        }
+        row_w += w;
+        split = i + 1;
+    }
+    let (first, second) = hints.split_at(split);
+    vec![
+        build_status_bar_with_prefix(prefix, first),
+        Line::from(""),
+        build_line(second),
+    ]
 }
 
 /// Render status bar hints at the bottom of the screen
@@ -154,42 +212,74 @@ pub fn render_status_hints(frame: &mut Frame, hints: &[KeyHint]) {
 /// Render the status bar for diff view (special: includes context prefix)
 pub fn render_diff_status_bar(frame: &mut Frame, diff_view: &DiffView) {
     let hints = crate::keys::DIFF_VIEW_HINTS;
-    let Some(status_area) = status_bar_area(frame, hints) else {
+    let prefix = diff_prefix(diff_view);
+    let prefix_w = prefix_width(&prefix);
+    let height = prefixed_height(prefix_w, hints, frame.area().width);
+    let Some(area) = status_bar_area_h(frame, height) else {
         return;
     };
 
+    let content = if area.height >= 3 {
+        build_prefixed_content(prefix, prefix_w, hints, area.width)
+    } else {
+        vec![build_status_bar_with_prefix(prefix, hints)]
+    };
+    frame.render_widget(Paragraph::new(content), area);
+}
+
+/// Render the status bar for blame view (special: includes file path prefix)
+pub fn render_blame_status_bar(frame: &mut Frame, blame_view: &BlameView) {
+    let hints = crate::keys::BLAME_VIEW_HINTS;
+    let prefix = blame_prefix(blame_view);
+    let prefix_w = prefix_width(&prefix);
+    let height = prefixed_height(prefix_w, hints, frame.area().width);
+    let Some(area) = status_bar_area_h(frame, height) else {
+        return;
+    };
+
+    let content = if area.height >= 3 {
+        build_prefixed_content(prefix, prefix_w, hints, area.width)
+    } else {
+        vec![build_status_bar_with_prefix(prefix, hints)]
+    };
+    frame.render_widget(Paragraph::new(content), area);
+}
+
+/// Status-bar prefix for the Diff view: revision tag + current file/context.
+fn diff_prefix(diff_view: &DiffView) -> Vec<Span<'static>> {
     let context = diff_view.current_context();
-    let prefix = vec![
+    vec![
         Span::styled(
             format!(" {} ", diff_view.revision),
             Style::default().fg(Color::Black).bg(Color::Yellow),
         ),
         Span::raw(" "),
         Span::styled(format!(" {} ", context), Style::default().fg(Color::Cyan)),
-    ];
-
-    let status = build_status_bar_with_prefix(prefix, hints);
-    frame.render_widget(Paragraph::new(status), status_area);
+    ]
 }
 
-/// Render the status bar for blame view (special: includes file path prefix)
-pub fn render_blame_status_bar(frame: &mut Frame, blame_view: &BlameView) {
-    let hints = crate::keys::BLAME_VIEW_HINTS;
-    let Some(status_area) = status_bar_area(frame, hints) else {
-        return;
-    };
-
-    let file_path = blame_view.file_path();
-    let prefix = vec![
+/// Status-bar prefix for the Blame view: the file path.
+fn blame_prefix(blame_view: &BlameView) -> Vec<Span<'static>> {
+    vec![
         Span::styled(
-            format!(" {} ", file_path),
+            format!(" {} ", blame_view.file_path()),
             Style::default().fg(Color::Black).bg(Color::Yellow),
         ),
         Span::raw(" "),
-    ];
+    ]
+}
 
-    let status = build_status_bar_with_prefix(prefix, hints);
-    frame.render_widget(Paragraph::new(status), status_area);
+/// Rows the Diff status bar needs at `width` (prefix-aware). The layout must
+/// reserve this so the bar can wrap instead of overflowing.
+pub fn diff_status_height(diff_view: &DiffView, width: u16) -> u16 {
+    let prefix = diff_prefix(diff_view);
+    prefixed_height(prefix_width(&prefix), crate::keys::DIFF_VIEW_HINTS, width)
+}
+
+/// Rows the Blame status bar needs at `width` (prefix-aware).
+pub fn blame_status_height(blame_view: &BlameView, width: u16) -> u16 {
+    let prefix = blame_prefix(blame_view);
+    prefixed_height(prefix_width(&prefix), crate::keys::BLAME_VIEW_HINTS, width)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -199,6 +289,62 @@ pub fn render_blame_status_bar(frame: &mut Frame, blame_view: &BlameView) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn hints3() -> &'static [KeyHint] {
+        &[
+            KeyHint {
+                key: "j",
+                label: "Down",
+                color: Color::Cyan,
+            },
+            KeyHint {
+                key: "k",
+                label: "Up",
+                color: Color::Cyan,
+            },
+            KeyHint {
+                key: "q",
+                label: "Back",
+                color: Color::Red,
+            },
+        ]
+    }
+
+    #[test]
+    fn prefixed_height_one_row_when_it_fits() {
+        // Wide terminal: prefix + hints fit on one line.
+        assert_eq!(prefixed_height(10, hints3(), 200), 1);
+    }
+
+    #[test]
+    fn prefixed_height_three_rows_when_prefix_overflows() {
+        // Hints alone fit, but a long prefix pushes total past the width →
+        // must wrap (3 rows), not overflow the right edge.
+        let hints = hints3();
+        let hints_w = prefixed_hints_width(hints);
+        let width = (hints_w + 5) as u16; // hints fit alone...
+        assert_eq!(status_hints_height(hints, width), 1);
+        // ...but with a 40-col prefix the bar no longer fits on one row.
+        assert_eq!(prefixed_height(40, hints, width), 3);
+    }
+
+    #[test]
+    fn build_prefixed_content_wraps_to_three_lines() {
+        let hints = hints3();
+        let prefix = vec![Span::raw("X".repeat(40))];
+        let width = (prefixed_hints_width(hints) + 5) as u16;
+        let lines = build_prefixed_content(prefix, 40, hints, width);
+        assert_eq!(lines.len(), 3, "prefix + hints wrap: row, spacer, row");
+        assert_eq!(lines[1].width(), 0, "middle line is the spacer");
+    }
+
+    #[test]
+    fn build_prefixed_content_single_line_when_fits() {
+        let hints = hints3();
+        let prefix = vec![Span::raw(" rev ")];
+        let lines = build_prefixed_content(prefix, 5, hints, 200);
+        assert_eq!(lines.len(), 1);
+    }
 
     #[test]
     fn test_hint_to_span() {

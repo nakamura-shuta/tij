@@ -94,8 +94,14 @@ impl App {
                 status_hints_height(&hints, width)
             }
             View::Evolog => status_hints_height(keys::EVOLOG_VIEW_HINTS, width),
-            View::Diff => 1,
-            View::Blame => status_hints_height(keys::BLAME_VIEW_HINTS, width),
+            View::Diff => self
+                .diff_view
+                .as_ref()
+                .map_or(1, |dv| crate::ui::widgets::diff_status_height(dv, width)),
+            View::Blame => self
+                .blame_view
+                .as_ref()
+                .map_or(1, |bv| crate::ui::widgets::blame_status_height(bv, width)),
             View::TraceDetail => status_hints_height(self.trace_detail_hints(), width),
             View::Help => 0,
         }
