@@ -349,48 +349,43 @@ impl DiffView {
         self.update_current_file_index();
     }
 
-    /// Jump to the next file
+    /// Jump to the next file (wraps to the first).
+    ///
+    /// Stepping is by **file index**, not scroll position. Earlier this scanned
+    /// for the next header `> scroll_offset`, which disagreed with the `[N/M]`
+    /// label (driven by `current_file_index`) whenever the scroll sat partway
+    /// through a file: `]`/`[` would jump to the *current* file's own header
+    /// and look like a no-op. Re-syncing the index from the scroll first, then
+    /// stepping the index, keeps navigation and the label consistent.
     pub fn next_file(&mut self) {
         if self.file_header_positions.is_empty() {
             return;
         }
-
-        // Find the next file header position after current scroll
-        for (i, &pos) in self.file_header_positions.iter().enumerate() {
-            if pos > self.scroll_offset {
-                self.scroll_offset = pos;
-                self.current_file_index = i;
-                return;
-            }
-        }
-
-        // Wrap around to first file
-        if let Some(&first_pos) = self.file_header_positions.first() {
-            self.scroll_offset = first_pos;
-            self.current_file_index = 0;
-        }
+        self.update_current_file_index();
+        let last = self.file_header_positions.len() - 1;
+        let next = if self.current_file_index >= last {
+            0
+        } else {
+            self.current_file_index + 1
+        };
+        self.current_file_index = next;
+        self.scroll_offset = self.file_header_positions[next];
     }
 
-    /// Jump to the previous file
+    /// Jump to the previous file (wraps to the last). Index-based; see
+    /// [`Self::next_file`] for why scroll-position scanning was dropped.
     pub fn prev_file(&mut self) {
         if self.file_header_positions.is_empty() {
             return;
         }
-
-        // Find the previous file header position before current scroll
-        for (i, &pos) in self.file_header_positions.iter().enumerate().rev() {
-            if pos < self.scroll_offset {
-                self.scroll_offset = pos;
-                self.current_file_index = i;
-                return;
-            }
-        }
-
-        // Wrap around to last file
-        if let Some(&last_pos) = self.file_header_positions.last() {
-            self.scroll_offset = last_pos;
-            self.current_file_index = self.file_header_positions.len() - 1;
-        }
+        self.update_current_file_index();
+        let prev = if self.current_file_index == 0 {
+            self.file_header_positions.len() - 1
+        } else {
+            self.current_file_index - 1
+        };
+        self.current_file_index = prev;
+        self.scroll_offset = self.file_header_positions[prev];
     }
 
     /// Update current_file_index based on scroll position
@@ -574,6 +569,31 @@ mod tests {
             view.handle_key_with_height(KeyEvent::from(crossterm::event::KeyCode::Char('j')), 5);
         assert_eq!(action, DiffAction::None);
         assert_eq!(view.scroll_offset, 1);
+    }
+
+    #[test]
+    fn prev_file_from_inside_file_goes_to_previous_file() {
+        // Regression: when the scroll sits partway through a file (not exactly
+        // on its header), `[` must move to the PREVIOUS file, not snap to the
+        // current file's own header (which looked like "no reaction").
+        // positions = [0 (src/main.rs), 6 (src/lib.rs)], 8 lines total.
+        let mut view = DiffView::new("test".to_string(), create_test_content());
+
+        // Sit partway through the last file (src/lib.rs header at line 6,
+        // scroll at line 7 = inside its body).
+        view.scroll_offset = 7;
+        view.update_current_file_index();
+        assert_eq!(view.current_file_index, 1, "now inside src/lib.rs");
+
+        // `[` → previous file (src/main.rs), not src/lib.rs's own header.
+        view.prev_file();
+        assert_eq!(view.current_file_index, 0);
+        assert_eq!(view.scroll_offset, 0);
+
+        // `]` → back to src/lib.rs.
+        view.next_file();
+        assert_eq!(view.current_file_index, 1);
+        assert_eq!(view.scroll_offset, 6);
     }
 
     #[test]
