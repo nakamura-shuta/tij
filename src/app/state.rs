@@ -184,8 +184,11 @@ pub struct App {
     pub running: bool,
     /// Current view
     pub current_view: View,
-    /// Previous view (for back navigation)
-    pub(crate) previous_view: Option<View>,
+    /// Breadcrumb of ancestor views (root-first) used for back navigation.
+    /// `current_view` is NOT included. `Esc`/back pops this; opening a child
+    /// view pushes the current one. A single pointer can't represent nested
+    /// paths (Log→Status→Diff→Blame) — it looped on `Esc` — so this is a stack.
+    pub(crate) view_stack: Vec<View>,
     /// Log view state
     pub log_view: LogView,
     /// Diff view state (created on demand)
@@ -282,7 +285,7 @@ impl App {
         Self {
             running: true,
             current_view: View::Log,
-            previous_view: None,
+            view_stack: Vec::new(),
             log_view: LogView::new(),
             diff_view: None,
             blame_view: None,
@@ -438,75 +441,100 @@ impl App {
     /// Refreshes view data only when the corresponding dirty flag is set.
     /// This avoids unnecessary jj subprocess spawns on Tab switching.
     pub(crate) fn go_to_view(&mut self, view: View) {
-        if self.current_view != view {
-            // Close the command palette on view transition (Phase 46-C)
-            self.palette_active = false;
-            self.palette_input.clear();
-            self.palette_selected = 0;
-            // Cancel pending preview when leaving Log view
-            if self.current_view == View::Log {
-                self.preview_pending_id = None;
-            }
+        if self.current_view == view {
+            return;
+        }
+        // Maintain the breadcrumb. If `view` is already an ancestor on the
+        // stack (e.g. Tab→Log, or a sideways hop back to a view we came
+        // through), unwind to it instead of pushing a duplicate — this keeps
+        // the stack a true path and prevents `Esc` loops / unbounded growth
+        // from Tab cycling. Otherwise we're drilling into a child: push the
+        // view we're leaving.
+        if let Some(pos) = self.view_stack.iter().position(|&v| v == view) {
+            self.view_stack.truncate(pos);
+        } else {
+            self.view_stack.push(self.current_view);
+        }
+        self.enter_view(view);
+    }
 
-            // Invariant: `create_target` is captured only on Log→{Bookmark,Tag}.
-            // It is cleared on every other transition — including Bookmark→Tag,
-            // Tag→Bookmark, or any exit from those views — so a stale change-id
-            // from a prior Log selection can never survive unexpected view hops.
-            // (Phase 48-B2; defensive rewrite Phase 48-M2)
-            if matches!(view, View::Bookmark | View::Tag) {
-                // Entering a create-capable view: capture only when coming from Log.
-                self.create_target = if self.current_view == View::Log {
-                    self.log_view
-                        .selected_change()
-                        .map(|c| c.change_id.to_string())
-                } else {
-                    None
-                };
+    /// Apply a view transition (palette close, create-target invariant, dirty
+    /// refresh) WITHOUT touching the breadcrumb. Shared by `go_to_view`
+    /// (forward) and `go_back` (pop) so both run the same enter-side logic.
+    fn enter_view(&mut self, view: View) {
+        // Close the command palette on view transition (Phase 46-C)
+        self.palette_active = false;
+        self.palette_input.clear();
+        self.palette_selected = 0;
+        // Cancel pending preview when leaving Log view
+        if self.current_view == View::Log {
+            self.preview_pending_id = None;
+        }
+
+        // Invariant: `create_target` is captured only on Log→{Bookmark,Tag}.
+        // It is cleared on every other transition — including Bookmark→Tag,
+        // Tag→Bookmark, or any exit from those views — so a stale change-id
+        // from a prior Log selection can never survive unexpected view hops.
+        // (Phase 48-B2; defensive rewrite Phase 48-M2)
+        if matches!(view, View::Bookmark | View::Tag) {
+            // Entering a create-capable view: capture only when coming from Log.
+            self.create_target = if self.current_view == View::Log {
+                self.log_view
+                    .selected_change()
+                    .map(|c| c.change_id.to_string())
             } else {
-                // Leaving to a non-create view: clear any stale target.
-                self.create_target = None;
-            }
+                None
+            };
+        } else {
+            // Leaving to a non-create view: clear any stale target.
+            self.create_target = None;
+        }
 
-            self.previous_view = Some(self.current_view);
-            self.current_view = view;
+        self.current_view = view;
 
-            // Refresh data only when dirty, reset state when entering certain views
-            match view {
-                View::Log if self.dirty.log => {
-                    let revset = self.log_view.current_revset.clone();
-                    self.refresh_log(revset.as_deref());
-                    self.dirty.log = false;
-                }
-                View::Status if self.dirty.status => {
-                    self.refresh_status();
-                    self.dirty.status = false;
-                }
-                View::Operation if self.dirty.op_log => {
-                    self.refresh_operation_log();
-                    self.dirty.op_log = false;
-                }
-                View::Bookmark if self.dirty.bookmarks => {
-                    self.refresh_bookmark_view();
-                    self.dirty.bookmarks = false;
-                }
-                View::Help => {
-                    self.help_scroll = 0;
-                    self.help_search_query = None;
-                    self.help_search_input = false;
-                    self.help_show_all = false;
-                    self.help_input_buffer.clear();
-                }
-                _ => {}
+        // Refresh data only when dirty, reset state when entering certain views
+        match view {
+            View::Log if self.dirty.log => {
+                let revset = self.log_view.current_revset.clone();
+                self.refresh_log(revset.as_deref());
+                self.dirty.log = false;
             }
+            View::Status if self.dirty.status => {
+                self.refresh_status();
+                self.dirty.status = false;
+            }
+            View::Operation if self.dirty.op_log => {
+                self.refresh_operation_log();
+                self.dirty.op_log = false;
+            }
+            View::Bookmark if self.dirty.bookmarks => {
+                self.refresh_bookmark_view();
+                self.dirty.bookmarks = false;
+            }
+            View::Help => {
+                self.help_scroll = 0;
+                self.help_search_query = None;
+                self.help_search_input = false;
+                self.help_show_all = false;
+                self.help_input_buffer.clear();
+            }
+            _ => {}
         }
     }
 
-    /// Go back to previous view
-    ///
-    /// Routes through `go_to_view()` to ensure dirty flags are checked.
+    /// The view `Esc`/back would return to (top of the breadcrumb), if any.
+    /// Also the origin view the Help screen documents.
+    pub(crate) fn previous_view(&self) -> Option<View> {
+        self.view_stack.last().copied()
+    }
+
+    /// Go back to the previous view by popping the breadcrumb (defaults to
+    /// Log when empty). Runs the same enter-side logic as `go_to_view` but
+    /// does NOT push — so nested paths unwind one level at a time instead of
+    /// ping-ponging between the last two views.
     pub(crate) fn go_back(&mut self) {
-        let target = self.previous_view.take().unwrap_or(View::Log);
-        self.go_to_view(target);
+        let target = self.view_stack.pop().unwrap_or(View::Log);
+        self.enter_view(target);
     }
 
     /// Set running to false to quit the application.
@@ -606,30 +634,76 @@ mod tests {
     }
 
     // =========================================================================
-    // go_back routes through go_to_view
+    // view-stack back navigation
     // =========================================================================
 
     #[test]
-    fn go_back_sets_previous_view() {
+    fn go_back_pops_the_breadcrumb() {
         let mut app = App::new_for_test();
-        // Simulate: Log → Help (so previous = Log)
+        // Log → Help: Log is now the breadcrumb top.
         app.go_to_view(View::Help);
         assert_eq!(app.current_view, View::Help);
-        assert_eq!(app.previous_view, Some(View::Log));
+        assert_eq!(app.previous_view(), Some(View::Log));
 
-        // go_back: Help → Log (via go_to_view, so previous = Help)
+        // go_back: Help → Log, breadcrumb now empty (back from Log quits).
         app.go_back();
         assert_eq!(app.current_view, View::Log);
-        assert_eq!(app.previous_view, Some(View::Help));
+        assert_eq!(app.previous_view(), None);
     }
 
     #[test]
-    fn go_back_defaults_to_log_when_no_previous() {
+    fn go_back_defaults_to_log_when_stack_empty() {
         let mut app = App::new_for_test();
         app.current_view = View::Diff;
-        app.previous_view = None;
+        app.view_stack.clear();
         app.go_back();
         assert_eq!(app.current_view, View::Log);
+    }
+
+    #[test]
+    fn nested_back_unwinds_one_level_no_loop() {
+        // Regression: Log → Diff → Blame. Esc must go Blame→Diff→Log, NOT
+        // ping-pong between Diff and Blame (the single-pointer bug).
+        let mut app = App::new_for_test();
+        app.go_to_view(View::Diff);
+        app.go_to_view(View::Blame);
+        assert_eq!(app.view_stack, vec![View::Log, View::Diff]);
+
+        app.go_back();
+        assert_eq!(app.current_view, View::Diff, "Blame → Diff");
+        app.go_back();
+        assert_eq!(
+            app.current_view,
+            View::Log,
+            "Diff → Log (not back to Blame)"
+        );
+    }
+
+    #[test]
+    fn nested_back_through_status_reaches_true_parent() {
+        // Log → Status → Diff → Blame unwinds through every real parent.
+        let mut app = App::new_for_test();
+        app.go_to_view(View::Status);
+        app.go_to_view(View::Diff);
+        app.go_to_view(View::Blame);
+
+        app.go_back();
+        assert_eq!(app.current_view, View::Diff);
+        app.go_back();
+        assert_eq!(app.current_view, View::Status, "Diff → Status, not Log");
+        app.go_back();
+        assert_eq!(app.current_view, View::Log);
+    }
+
+    #[test]
+    fn revisiting_ancestor_unwinds_instead_of_growing() {
+        // Tab back to an ancestor (Diff→Log) must truncate the breadcrumb,
+        // not push a duplicate that would make Esc bounce.
+        let mut app = App::new_for_test();
+        app.go_to_view(View::Diff); // stack [Log]
+        app.go_to_view(View::Log); // Log is an ancestor → unwind
+        assert_eq!(app.current_view, View::Log);
+        assert!(app.view_stack.is_empty(), "breadcrumb unwound to root");
     }
 
     // =========================================================================

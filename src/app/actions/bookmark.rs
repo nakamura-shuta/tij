@@ -378,7 +378,7 @@ impl App {
             let short_id = short_id(change_id);
             self.notify_success(format!("Jumped to {} in log", short_id));
             self.pending_jump_change_id = None;
-            self.previous_view = None;
+            self.view_stack.clear();
             self.current_view = View::Log;
             return;
         }
@@ -405,7 +405,7 @@ impl App {
                     "Jumped to {} (revset expanded, r+Enter to reset)",
                     short_id
                 ));
-                self.previous_view = None;
+                self.view_stack.clear();
                 self.current_view = View::Log;
             } else {
                 self.notify_warning("Change not found in repository");

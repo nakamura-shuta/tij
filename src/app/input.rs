@@ -372,7 +372,7 @@ impl App {
                                 // Jump to first match
                                 let indices = crate::ui::widgets::matching_line_indices(
                                     &query,
-                                    self.previous_view,
+                                    self.previous_view(),
                                     self.help_show_all,
                                 );
                                 if let Some(&first) = indices.first() {
@@ -409,7 +409,7 @@ impl App {
                         if let Some(ref query) = self.help_search_query {
                             let indices = crate::ui::widgets::matching_line_indices(
                                 query,
-                                self.previous_view,
+                                self.previous_view(),
                                 self.help_show_all,
                             );
                             if let Some(next) = indices.iter().find(|&&i| i > self.help_scroll) {
@@ -424,7 +424,7 @@ impl App {
                     {
                         let indices = crate::ui::widgets::matching_line_indices(
                             query,
-                            self.previous_view,
+                            self.previous_view(),
                             self.help_show_all,
                         );
                         if let Some(prev) = indices.iter().rev().find(|&&i| i < self.help_scroll) {
@@ -1252,7 +1252,7 @@ mod tests {
     #[test]
     fn help_normal_mode_esc_goes_back() {
         let mut app = App::new_for_test();
-        app.go_to_view(View::Help); // sets previous_view to Log
+        app.go_to_view(View::Help); // pushes Log onto the breadcrumb
         assert!(!app.help_search_input);
 
         press(&mut app, KeyCode::Esc);
