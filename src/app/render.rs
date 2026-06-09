@@ -231,12 +231,16 @@ impl App {
         if let Some(ref mut diff_view) = self.diff_view {
             let area = frame.area();
 
-            // Reserve space for status bar at bottom
+            // Reserve space for the status bar at the bottom. The diff/blame
+            // bars are prefix-aware and may wrap to multiple rows, so reserve
+            // the actual height (not a hardcoded 1) — otherwise the content's
+            // bottom border overlaps the wrapped status bar.
+            let sb_height = crate::ui::widgets::diff_status_height(diff_view, area.width);
             let main_area = Rect {
                 x: area.x,
                 y: area.y,
                 width: area.width,
-                height: area.height.saturating_sub(1),
+                height: area.height.saturating_sub(sb_height),
             };
 
             // Mirror DiffView's layout so scroll bounds stay accurate as the
@@ -536,7 +540,9 @@ impl App {
     ) {
         if let Some(ref blame_view) = self.blame_view {
             let area = frame.area();
-            let sb_height = status_hints_height(keys::BLAME_VIEW_HINTS, area.width);
+            // Prefix-aware (file path can push the bar to wrap) — mirrors the
+            // height render_blame_status_bar actually uses.
+            let sb_height = crate::ui::widgets::blame_status_height(blame_view, area.width);
 
             // Reserve space for status bar at bottom
             let main_area = Rect {
