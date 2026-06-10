@@ -127,7 +127,7 @@ jobs:
           echo "sha256=${sha}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout homebrew-tij
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: nakamura-shuta/homebrew-tij
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
