@@ -314,6 +314,7 @@ impl LogView {
             LogCommand::AiSummary => LogAction::ShowAiSummary,
             LogCommand::AiReport => LogAction::ExportAiReport,
             LogCommand::AiOrphans => LogAction::ShowOrphans,
+            LogCommand::ToggleCommandEcho => LogAction::ToggleCommandEcho,
         }
     }
 

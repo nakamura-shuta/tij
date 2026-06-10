@@ -542,6 +542,16 @@ impl App {
 
             // Agent Trace orphaned-trace glance (A7)
             LogAction::ShowOrphans => self.show_orphans(),
+
+            // Command echo bar toggle (command transparency P2)
+            LogAction::ToggleCommandEcho => {
+                self.command_echo_enabled = !self.command_echo_enabled;
+                self.notify_info(if self.command_echo_enabled {
+                    "Command echo: on (last jj command above the status bar)"
+                } else {
+                    "Command echo: off"
+                });
+            }
         }
     }
 

@@ -139,6 +139,11 @@ pub fn palette_commands() -> &'static [PaletteCommand] {
             dispatch: PaletteDispatch::Command(LogCommand::AiOrphans),
         },
         PaletteCommand {
+            name: "toggle-command-echo",
+            description: "Show last jj command above the status bar",
+            dispatch: PaletteDispatch::Command(LogCommand::ToggleCommandEcho),
+        },
+        PaletteCommand {
             name: "tag-view",
             description: "Open Tag View",
             dispatch: PaletteDispatch::Key(keys::TAG_VIEW),
@@ -272,6 +277,19 @@ mod tests {
         assert!(matches!(
             cmd.dispatch,
             PaletteDispatch::Command(LogCommand::AiOrphans)
+        ));
+    }
+
+    #[test]
+    fn registry_has_toggle_command_echo() {
+        let cmds = palette_commands();
+        let cmd = cmds
+            .iter()
+            .find(|c| c.name == "toggle-command-echo")
+            .expect("toggle-command-echo registered");
+        assert!(matches!(
+            cmd.dispatch,
+            PaletteDispatch::Command(LogCommand::ToggleCommandEcho)
         ));
     }
 

@@ -231,6 +231,10 @@ pub struct App {
     pub(crate) pending_jump_change_id: Option<String>,
     /// Preview pane enabled (p key toggle) — represents user intent
     pub preview_enabled: bool,
+    /// Command echo bar enabled (palette `toggle-command-echo`): shows the
+    /// last executed jj command on a line above the status bar. Default off —
+    /// it costs one screen row (command transparency P2).
+    pub command_echo_enabled: bool,
     /// Preview auto-disabled due to small terminal (render-time flag, does not override user intent)
     pub(crate) preview_auto_disabled: bool,
     /// LRU preview cache (change_id → DiffContent + commit_id + bookmarks)
@@ -307,6 +311,7 @@ impl App {
             pending_forget_bookmark: None,
             pending_jump_change_id: None,
             preview_enabled: true,
+            command_echo_enabled: false,
             preview_auto_disabled: false,
             preview_cache: PreviewCache::new(),
             preview_pending_id: None,

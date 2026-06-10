@@ -215,6 +215,8 @@ pub enum LogAction {
     ShowAiSummary,
     /// Write the AI attribution Markdown report for the loaded changes (A8)
     ExportAiReport,
+    /// Toggle the command echo bar (command transparency P2)
+    ToggleCommandEcho,
     /// Notify the count of orphaned traces over the loaded changes (A7)
     ShowOrphans,
 }
@@ -240,6 +242,7 @@ pub enum LogCommand {
     AiSummary,
     AiReport,
     AiOrphans,
+    ToggleCommandEcho,
 }
 
 /// Log View state

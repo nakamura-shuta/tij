@@ -43,10 +43,19 @@ impl App {
             View::Help => self.render_help_view(frame),
         }
 
+        // Command echo bar (transparency P2): the last jj command, on the
+        // row between the view content and the status bar. Views received a
+        // one-row-shorter area via `view_area`, so this row is free.
+        if self.command_echo_enabled {
+            self.render_command_echo(frame);
+        }
+
         // Render error banner above status bar (errors are always shown prominently)
         if let Some(ref error) = self.error_message {
             let status_bar_height = self.get_current_status_bar_height(frame.area().width);
-            render_error_banner(frame, error, status_bar_height);
+            // With the echo bar on, the banner sits above it, not over it.
+            let echo = if self.command_echo_enabled { 1 } else { 0 };
+            render_error_banner(frame, error, status_bar_height + echo);
         }
 
         // Render dialog on top of everything
@@ -62,6 +71,60 @@ impl App {
                 self.palette_selected,
             );
         }
+    }
+
+    /// The area a view may draw into: the full frame, minus one row when the
+    /// command echo bar is enabled. The single place that decides how much
+    /// screen the views get — views must use this instead of `frame.area()`.
+    fn view_area(&self, frame: &Frame) -> Rect {
+        let full = frame.area();
+        if self.command_echo_enabled {
+            Rect {
+                height: full.height.saturating_sub(1),
+                ..full
+            }
+        } else {
+            full
+        }
+    }
+
+    /// Draw the last executed jj command on the row directly above the
+    /// status bar (the row `view_area` freed up).
+    fn render_command_echo(&self, frame: &mut Frame) {
+        use ratatui::style::{Color, Style};
+        use ratatui::text::Span;
+        use ratatui::widgets::Paragraph;
+
+        let full = frame.area();
+        let sb_height = self.get_current_status_bar_height(full.width);
+        if full.height <= sb_height + 1 {
+            return; // terminal too small for the echo row
+        }
+        let echo_area = Rect {
+            x: full.x,
+            y: full.y + full.height - sb_height - 1,
+            width: full.width,
+            height: 1,
+        };
+
+        let text = match self.command_history.records().back() {
+            Some(record) => {
+                let repeat = if record.repeat > 1 {
+                    format!(" ×{}", record.repeat)
+                } else {
+                    String::new()
+                };
+                format!(
+                    " jj {} ({}ms){}",
+                    crate::model::display_args(&record.args),
+                    record.duration_ms,
+                    repeat
+                )
+            }
+            None => " (no jj commands yet)".to_string(),
+        };
+        let line = Paragraph::new(Span::styled(text, Style::default().fg(Color::DarkGray)));
+        frame.render_widget(line, echo_area);
     }
 
     /// Get the status bar height for the current view
@@ -152,7 +215,7 @@ impl App {
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
-        let area = frame.area();
+        let area = self.view_area(frame);
         let ctx = self.build_hint_context();
         let hints = keys::current_hints(View::Log, self.log_view.input_mode, &ctx);
         let sb_height = status_hints_height(&hints, area.width);
@@ -228,9 +291,8 @@ impl App {
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
+        let area = self.view_area(frame);
         if let Some(ref mut diff_view) = self.diff_view {
-            let area = frame.area();
-
             // Reserve space for the status bar at the bottom. The diff/blame
             // bars are prefix-aware and may wrap to multiple rows, so reserve
             // the actual height (not a hardcoded 1) — otherwise the content's
@@ -269,7 +331,7 @@ impl App {
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
-        let area = frame.area();
+        let area = self.view_area(frame);
         let ctx = self.build_hint_context();
         let hints = keys::current_hints(View::Status, self.log_view.input_mode, &ctx);
         let sb_height = status_hints_height(&hints, area.width);
@@ -297,7 +359,7 @@ impl App {
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
-        let area = frame.area();
+        let area = self.view_area(frame);
         let ctx = self.build_hint_context();
         let hints = keys::current_hints(View::Operation, self.log_view.input_mode, &ctx);
         let sb_height = status_hints_height(&hints, area.width);
@@ -341,7 +403,7 @@ impl App {
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
-        let area = frame.area();
+        let area = self.view_area(frame);
         let ctx = self.build_bookmark_hint_context();
         let hints = keys::current_hints(View::Bookmark, self.log_view.input_mode, &ctx);
         let sb_height = status_hints_height(&hints, area.width);
@@ -362,7 +424,7 @@ impl App {
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
-        let area = frame.area();
+        let area = self.view_area(frame);
         let ctx = keys::HintContext::default();
         let hints = keys::current_hints(View::Tag, self.log_view.input_mode, &ctx);
         let sb_height = status_hints_height(&hints, area.width);
@@ -383,7 +445,7 @@ impl App {
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
-        let area = frame.area();
+        let area = self.view_area(frame);
         let ctx = keys::HintContext::default();
         let hints = keys::current_hints(View::Workspace, self.log_view.input_mode, &ctx);
         let sb_height = status_hints_height(&hints, area.width);
@@ -406,7 +468,7 @@ impl App {
     ) {
         if let Some(ref evolog_view) = self.evolog_view {
             // Reserve a status bar row at the bottom (Phase 46-D follow-up).
-            let area = frame.area();
+            let area = self.view_area(frame);
             let sb_height = status_hints_height(keys::EVOLOG_VIEW_HINTS, area.width);
             let main_area = Rect {
                 x: area.x,
@@ -431,7 +493,7 @@ impl App {
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
-        let area = frame.area();
+        let area = self.view_area(frame);
         let ctx = keys::HintContext::default();
         let hints = keys::current_hints(View::CommandHistory, self.log_view.input_mode, &ctx);
         let sb_height = status_hints_height(&hints, area.width);
@@ -468,7 +530,7 @@ impl App {
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
-        let area = frame.area();
+        let area = self.view_area(frame);
         let hints = self.trace_detail_hints();
         let sb_height = status_hints_height(hints, area.width);
         let main_area = Rect {
@@ -500,7 +562,7 @@ impl App {
         };
         render_help_panel(
             frame,
-            frame.area(),
+            self.view_area(frame),
             self.help_scroll,
             search_query,
             search_input,
@@ -515,7 +577,7 @@ impl App {
         notification: Option<&crate::model::Notification>,
     ) {
         if let Some(ref resolve_view) = self.resolve_view {
-            let area = frame.area();
+            let area = self.view_area(frame);
             let ctx = self.build_resolve_hint_context();
             let hints = keys::current_hints(View::Resolve, self.log_view.input_mode, &ctx);
             let sb_height = status_hints_height(&hints, area.width);
@@ -546,7 +608,7 @@ impl App {
         notification: Option<&crate::model::Notification>,
     ) {
         if let Some(ref blame_view) = self.blame_view {
-            let area = frame.area();
+            let area = self.view_area(frame);
             // Prefix-aware (file path can push the bar to wrap) — mirrors the
             // height render_blame_status_bar actually uses.
             let sb_height = crate::ui::widgets::blame_status_height(blame_view, area.width);
@@ -835,6 +897,64 @@ mod tests {
     use crate::model::{DiffContent, DiffLine};
 
     const TEST_WIDTH: usize = 40;
+
+    /// All text on the TestBackend buffer as one string.
+    fn buffer_text(terminal: &ratatui::Terminal<ratatui::backend::TestBackend>) -> String {
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect()
+    }
+
+    #[test]
+    fn command_echo_bar_shows_last_command_when_enabled() {
+        use crate::model::{CommandKind, CommandRecord, CommandStatus};
+
+        let mut app = App::new_for_test();
+        app.command_history.push(CommandRecord {
+            operation: "log (read)".to_string(),
+            args: vec!["--color=never".to_string(), "log".to_string()],
+            kind: CommandKind::Read,
+            repeat: 2,
+            timestamp: std::time::SystemTime::UNIX_EPOCH,
+            duration_ms: 12,
+            status: CommandStatus::Success,
+            error: None,
+        });
+
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+        // Off by default: no echo line.
+        terminal.draw(|f| app.render(f)).unwrap();
+        assert!(!buffer_text(&terminal).contains("jj --color=never log (12ms)"));
+
+        // On: the last command appears with duration and repeat count.
+        app.command_echo_enabled = true;
+        terminal.draw(|f| app.render(f)).unwrap();
+        let text = buffer_text(&terminal);
+        assert!(
+            text.contains("jj --color=never log (12ms) ×2"),
+            "echo line missing: {text}"
+        );
+    }
+
+    #[test]
+    fn view_area_reserves_one_row_only_when_echo_enabled() {
+        let mut app = App::new_for_test();
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                assert_eq!(app.view_area(f).height, 20, "echo off → full frame");
+                app.command_echo_enabled = true;
+                assert_eq!(app.view_area(f).height, 19, "echo on → one row reserved");
+            })
+            .unwrap();
+    }
 
     #[test]
     fn test_build_preview_lines_empty_content() {
