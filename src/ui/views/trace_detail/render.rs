@@ -171,9 +171,15 @@ fn row_to_line(row: &DetailRow) -> Line<'static> {
 }
 
 /// RFC 3339 → `YYYY-MM-DD HH:MM` (best-effort; unknown passes through).
+///
+/// Uses `str::get` (not direct slicing): timestamps come from tolerant-parsed
+/// trace JSONL, so an arbitrary string with a multibyte char spanning byte 16
+/// must fall through, not panic mid-render (P6: trace data never crashes tij).
 fn format_timestamp(ts: &str) -> String {
-    if ts.len() >= 16 && ts.as_bytes().get(10) == Some(&b'T') {
-        format!("{} {}", &ts[..10], &ts[11..16])
+    if ts.as_bytes().get(10) == Some(&b'T')
+        && let (Some(date), Some(time)) = (ts.get(..10), ts.get(11..16))
+    {
+        format!("{} {}", date, time)
     } else {
         ts.to_string()
     }
@@ -261,5 +267,19 @@ mod tests {
         assert_eq!(scroll_start(20, 3, 5), 1); // 3 - 2 context
         assert_eq!(scroll_start(20, 19, 5), 15); // clamp to total - height
         assert_eq!(scroll_start(3, 2, 5), 0); // fits, no scroll
+    }
+
+    #[test]
+    fn format_timestamp_handles_rfc3339_and_garbage() {
+        // Well-formed RFC 3339 → "YYYY-MM-DD HH:MM"
+        assert_eq!(format_timestamp("2026-06-05T14:20:00Z"), "2026-06-05 14:20");
+        // Too short / no 'T' → passes through unchanged
+        assert_eq!(format_timestamp("yesterday"), "yesterday");
+        assert_eq!(format_timestamp(""), "");
+        // Regression (P6): tolerant-parsed trace data can put a multibyte char
+        // across byte 16 — must NOT panic on a non-boundary slice, just pass
+        // the string through.
+        let weird = "0123456789T1234五六"; // byte 16 is inside '五'
+        assert_eq!(format_timestamp(weird), weird);
     }
 }

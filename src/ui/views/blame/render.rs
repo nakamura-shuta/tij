@@ -49,20 +49,21 @@ mod colors {
 impl BlameView {
     /// Render the blame view
     pub fn render(&self, frame: &mut Frame, area: Rect, notification: Option<&Notification>) {
-        let title = format!(" Blame View: {} ", self.file_path());
+        let title = Line::from(format!(" Blame View: {} ", self.file_path()))
+            .bold()
+            .cyan()
+            .centered();
 
-        // Build title with optional notification
-        let title_width = title.len();
+        // Build title with optional notification. Use display width (not byte
+        // len) so CJK file paths don't over-allocate the notification area.
+        let title_width = title.width();
         let available_for_notif = area.width.saturating_sub(title_width as u16 + 4) as usize;
         let notif_line = notification
             .filter(|n| !n.is_expired())
             .map(|n| components::build_notification_title(n, Some(available_for_notif)))
             .filter(|line| !line.spans.is_empty());
 
-        let block = components::bordered_block_with_notification(
-            Line::from(title).bold().cyan().centered(),
-            notif_line,
-        );
+        let block = components::bordered_block_with_notification(title, notif_line);
 
         if self.is_empty() {
             let paragraph = components::empty_state("No content to annotate", None).block(block);
