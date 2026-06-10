@@ -571,4 +571,23 @@ mod tests {
         assert!(!dv.has_ai_overlay());
         assert!(dv.ai_line_marks.is_empty());
     }
+
+    #[test]
+    fn civil_from_days_edge_dates() {
+        // Unix epoch
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+        // Day before the epoch (negative days must not break the era math)
+        assert_eq!(civil_from_days(-1), (1969, 12, 31));
+        // Leap day: 2024-02-29 = 19_782 days after the epoch
+        assert_eq!(civil_from_days(19_782), (2024, 2, 29));
+        // Day after a leap day rolls into March
+        assert_eq!(civil_from_days(19_783), (2024, 3, 1));
+        // Century non-leap boundary: 2100 is NOT a leap year
+        // 2100-02-28 = 47_540; the next day is March 1st, not Feb 29th.
+        assert_eq!(civil_from_days(47_540), (2100, 2, 28));
+        assert_eq!(civil_from_days(47_541), (2100, 3, 1));
+        // Year boundary
+        assert_eq!(civil_from_days(20_088), (2024, 12, 31));
+        assert_eq!(civil_from_days(20_089), (2025, 1, 1));
+    }
 }

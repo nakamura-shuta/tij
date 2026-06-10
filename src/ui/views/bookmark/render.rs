@@ -70,7 +70,6 @@ impl BookmarkView {
                 width: area.width,
                 height: 3.min(area.height),
             };
-            let input_text = format!("Rename bookmark: {}", state.input_buffer);
             let input_line = Line::from(vec![
                 Span::styled("Rename bookmark: ", Style::default().fg(Color::Cyan)),
                 Span::styled(
@@ -90,7 +89,6 @@ impl BookmarkView {
             let input_block = ratatui::widgets::Block::default()
                 .borders(ratatui::widgets::Borders::TOP)
                 .border_style(Style::default().fg(Color::DarkGray));
-            let _ = input_text; // suppress unused warning
             let input_paragraph = Paragraph::new(vec![input_line, hint_line]).block(input_block);
             frame.render_widget(input_paragraph, input_area);
         }

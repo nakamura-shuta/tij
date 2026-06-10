@@ -395,6 +395,26 @@ mod tests {
     }
 
     #[test]
+    fn report_escapes_newline_in_file_path() {
+        // Tolerant-parsed trace data can carry arbitrary strings — a newline
+        // in a file path must be collapsed, not break the table row.
+        let rec = ai_record(
+            "xqnktzmlworukplnyrropmtzylsuxxlv",
+            "src/evil\nname.rs",
+            None,
+            None,
+        );
+        let index = TraceIndex::build(&[rec]);
+        let changes = vec![change("xqnktzml", "2d31c7f1", "weird path")];
+        let md = build_report(&changes, &index, "t");
+        assert!(md.contains("src/evil name.rs"), "newline collapsed: {md}");
+        // Every table row must stay a single line (starts and ends with |)
+        for row in md.lines().filter(|l| l.starts_with('|')) {
+            assert!(row.ends_with('|'), "broken table row: {row}");
+        }
+    }
+
+    #[test]
     fn report_joins_multiple_models() {
         let mut rec = ai_record(
             "xqnktzmlworukplnyrropmtzylsuxxlv",
