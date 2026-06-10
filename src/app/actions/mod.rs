@@ -178,12 +178,12 @@ impl App {
         }
     }
 
-    /// End-of-input-event hook (called once per main-loop iteration): flush
-    /// any remaining captured invocations, then re-arm the echo so the next
-    /// event's reads can take it again.
+    /// End-of-loop-iteration hook: flush any remaining captured invocations.
+    /// Does NOT re-arm the echo — the write-priority flag is cleared at the
+    /// start of the next user KEY event (`on_key_event`), so idle iterations
+    /// (debounced preview `jj show`) cannot steal a write's echo.
     pub fn end_input_event(&mut self) {
         self.flush_invocations();
-        self.command_echo_write_event = false;
     }
 
     /// Run a jj command via the executor's `run()` and record it in command history.
@@ -2409,22 +2409,27 @@ mod tests {
     }
 
     #[test]
-    fn echo_prefers_write_over_its_refresh_reads() {
-        // Real `c` sequence is TWO flushes in one event: record_command
-        // flushes the write mid-event, then refresh/preview reads flush at
-        // event end. The write must survive BOTH (the c/u regression).
+    fn echo_write_sticks_until_next_user_key() {
+        // Real `c` sequence: key event runs the write + refresh reads, then
+        // ~200ms later an IDLE iteration resolves the debounced preview
+        // (`jj show`). The write must survive the idle read; only the NEXT
+        // user key re-arms the echo.
         let mut app = App::new_for_test();
 
-        // Flush 1 (inside record_command): the write.
+        // -- key event `c` (on_key_event clears the flag first) --
+        app.command_echo_write_event = false;
         app.jj
             .push_test_invocation(test_invocation(30, CommandKind::Write, &["new"]));
-        app.flush_invocations();
-        let echo = app.command_echo_last.as_ref().expect("echo set");
-        assert_eq!(echo.kind, CommandKind::Write);
-
-        // Flush 2 (end of the SAME event): the refresh + preview reads.
+        app.flush_invocations(); // record_command's mid-event flush
         app.jj
             .push_test_invocation(test_invocation(31, CommandKind::Read, &["log"]));
+        app.end_input_event(); // end of the key iteration
+        assert_eq!(
+            app.command_echo_last.as_ref().unwrap().kind,
+            CommandKind::Write
+        );
+
+        // -- idle iteration: debounced preview resolves `jj show` --
         app.jj
             .push_test_invocation(test_invocation(32, CommandKind::Read, &["show", "-r", "a"]));
         app.end_input_event();
@@ -2432,26 +2437,23 @@ mod tests {
         assert_eq!(
             echo.kind,
             CommandKind::Write,
-            "the write's own refresh reads must not steal the echo"
+            "idle preview read must not steal the write's echo"
         );
-        assert!(echo.args.contains(&"new".to_string()), "{:?}", echo.args);
+        assert!(echo.args.contains(&"new".to_string()));
 
-        // NEXT event, reads only (cursor navigation): echo follows again.
+        // -- NEXT user key (e.g. `j`): flag re-armed, its preview takes over --
+        app.command_echo_write_event = false; // = on_key_event
         app.jj
             .push_test_invocation(test_invocation(33, CommandKind::Read, &["show", "-r", "b"]));
         app.end_input_event();
         let echo = app.command_echo_last.as_ref().unwrap();
-        assert_eq!(echo.kind, CommandKind::Read);
-        assert!(echo.args.contains(&"show".to_string()));
+        assert_eq!(echo.kind, CommandKind::Read, "navigation feels live again");
 
-        // Idle event (no jj ran): echo unchanged.
+        // Idle with nothing run: unchanged.
         app.end_input_event();
-        assert!(
-            app.command_echo_last
-                .as_ref()
-                .unwrap()
-                .args
-                .contains(&"show".to_string())
+        assert_eq!(
+            app.command_echo_last.as_ref().unwrap().kind,
+            CommandKind::Read
         );
     }
 

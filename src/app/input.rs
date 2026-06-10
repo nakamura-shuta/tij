@@ -44,6 +44,12 @@ impl App {
 
     /// Handle key events
     pub fn on_key_event(&mut self, key: KeyEvent) {
+        // Re-arm the command echo: a write holds the echo until the user
+        // presses the NEXT key. Cleared here (not at event end) because the
+        // debounced preview resolves `jj show` in a later IDLE iteration of
+        // the same logical action — that read must not steal the write's echo.
+        self.command_echo_write_event = false;
+
         // Handle active dialog first (blocks other input)
         if let Some(ref mut dialog) = self.active_dialog {
             if let Some(result) = dialog.handle_key(key) {
