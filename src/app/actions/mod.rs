@@ -133,12 +133,6 @@ impl App {
     /// an auto label from the subcommand. Consecutive identical reads
     /// collapse into one row (`push_collapsing`).
     pub fn flush_invocations(&mut self) {
-        // Echo candidate: a write in this batch beats the trailing reads it
-        // triggered (pressing `c` should echo `jj new`, not the `jj log`
-        // refresh that follows in the same key event).
-        let mut batch_write: Option<CommandRecord> = None;
-        let mut batch_any = false;
-
         for inv in self.jj.take_invocations() {
             let operation = inv
                 .operation
@@ -158,32 +152,15 @@ impl App {
                 status,
                 error,
             };
+            // Echo = the last mutating/interactive command only. Reads
+            // (refreshes, debounced previews) arrive on their own schedule
+            // and would bury the operation the user just caused; they stay
+            // in the history (`H`, `[R]` filter) instead.
             if record.kind != CommandKind::Read {
-                batch_write = Some(record.clone());
+                self.command_echo_last = Some(record.clone());
             }
-            batch_any = true;
             self.command_history.push_collapsing(record);
         }
-
-        if let Some(write) = batch_write {
-            self.command_echo_last = Some(write);
-            self.command_echo_write_event = true;
-        } else if batch_any && !self.command_echo_write_event {
-            // Reads only (navigation/refresh): echo follows the newest record
-            // — cloned AFTER collapsing so the ×N count is current. Skipped
-            // when a write already claimed the echo this event: its refresh
-            // reads land in a LATER flush of the same event and must not
-            // bury it (the c/u case).
-            self.command_echo_last = self.command_history.records().back().cloned();
-        }
-    }
-
-    /// End-of-loop-iteration hook: flush any remaining captured invocations.
-    /// Does NOT re-arm the echo — the write-priority flag is cleared at the
-    /// start of the next user KEY event (`on_key_event`), so idle iterations
-    /// (debounced preview `jj show`) cannot steal a write's echo.
-    pub fn end_input_event(&mut self) {
-        self.flush_invocations();
     }
 
     /// Run a jj command via the executor's `run()` and record it in command history.
@@ -229,7 +206,6 @@ impl App {
             error,
         };
         self.command_echo_last = Some(record.clone());
-        self.command_echo_write_event = true;
         self.command_history.push(record);
     }
 
@@ -2409,52 +2385,58 @@ mod tests {
     }
 
     #[test]
-    fn echo_write_sticks_until_next_user_key() {
-        // Real `c` sequence: key event runs the write + refresh reads, then
-        // ~200ms later an IDLE iteration resolves the debounced preview
-        // (`jj show`). The write must survive the idle read; only the NEXT
-        // user key re-arms the echo.
+    fn echo_shows_only_mutating_commands() {
         let mut app = App::new_for_test();
+        assert!(app.command_echo_last.is_none(), "no operations yet");
 
-        // -- key event `c` (on_key_event clears the flag first) --
-        app.command_echo_write_event = false;
+        // write + trailing reads (one event's worth): echo = the write
         app.jj
             .push_test_invocation(test_invocation(30, CommandKind::Write, &["new"]));
-        app.flush_invocations(); // record_command's mid-event flush
         app.jj
             .push_test_invocation(test_invocation(31, CommandKind::Read, &["log"]));
-        app.end_input_event(); // end of the key iteration
-        assert_eq!(
-            app.command_echo_last.as_ref().unwrap().kind,
-            CommandKind::Write
-        );
-
-        // -- idle iteration: debounced preview resolves `jj show` --
-        app.jj
-            .push_test_invocation(test_invocation(32, CommandKind::Read, &["show", "-r", "a"]));
-        app.end_input_event();
+        app.flush_invocations();
         let echo = app.command_echo_last.as_ref().unwrap();
-        assert_eq!(
-            echo.kind,
-            CommandKind::Write,
-            "idle preview read must not steal the write's echo"
-        );
+        assert_eq!(echo.kind, CommandKind::Write);
         assert!(echo.args.contains(&"new".to_string()));
 
-        // -- NEXT user key (e.g. `j`): flag re-armed, its preview takes over --
-        app.command_echo_write_event = false; // = on_key_event
+        // reads-only flush (navigation / debounced preview): echo unchanged —
+        // read timing can never bury the operation
         app.jj
-            .push_test_invocation(test_invocation(33, CommandKind::Read, &["show", "-r", "b"]));
-        app.end_input_event();
-        let echo = app.command_echo_last.as_ref().unwrap();
-        assert_eq!(echo.kind, CommandKind::Read, "navigation feels live again");
-
-        // Idle with nothing run: unchanged.
-        app.end_input_event();
-        assert_eq!(
-            app.command_echo_last.as_ref().unwrap().kind,
-            CommandKind::Read
+            .push_test_invocation(test_invocation(32, CommandKind::Read, &["show", "-r", "a"]));
+        app.flush_invocations();
+        assert!(
+            app.command_echo_last
+                .as_ref()
+                .unwrap()
+                .args
+                .contains(&"new".to_string())
         );
+
+        // interactive (direct-push path, bypasses flush) also takes the echo.
+        // (Err result: portable across unix/windows; the echo is set
+        // regardless of the spawn outcome.)
+        let start = Instant::now();
+        let result: io::Result<ExitStatus> =
+            Err(io::Error::new(io::ErrorKind::NotFound, "editor not found"));
+        app.record_interactive_command("Split", &app.jj.split_argv("abc"), start, &result);
+        let echo = app.command_echo_last.as_ref().unwrap();
+        assert_eq!(echo.kind, CommandKind::Interactive);
+        assert!(echo.args.contains(&"split".to_string()));
+
+        // next write replaces it
+        app.jj
+            .push_test_invocation(test_invocation(33, CommandKind::Write, &["undo"]));
+        app.flush_invocations();
+        assert!(
+            app.command_echo_last
+                .as_ref()
+                .unwrap()
+                .args
+                .contains(&"undo".to_string())
+        );
+
+        // reads still land in the history even though they never echo
+        assert!(app.command_history.len() >= 4);
     }
 
     #[test]

@@ -135,7 +135,7 @@ impl App {
                     repeat
                 )
             }
-            None => " (no jj commands yet)".to_string(),
+            None => " (no operations yet)".to_string(),
         };
         let line = Paragraph::new(Span::styled(text, Style::default().fg(Color::DarkGray)));
         frame.render_widget(line, echo_area);
@@ -934,10 +934,10 @@ mod tests {
 
         let mut app = App::new_for_test();
         app.command_echo_last = Some(CommandRecord {
-            operation: "log (read)".to_string(),
-            args: vec!["--color=never".to_string(), "log".to_string()],
-            kind: CommandKind::Read,
-            repeat: 2,
+            operation: "New change".to_string(),
+            args: vec!["--color=never".to_string(), "new".to_string()],
+            kind: CommandKind::Write,
+            repeat: 1,
             timestamp: std::time::SystemTime::UNIX_EPOCH,
             duration_ms: 12,
             status: CommandStatus::Success,
@@ -949,14 +949,14 @@ mod tests {
 
         // Off by default: no echo line.
         terminal.draw(|f| app.render(f)).unwrap();
-        assert!(!buffer_text(&terminal).contains("jj --color=never log (12ms)"));
+        assert!(!buffer_text(&terminal).contains("jj --color=never new (12ms)"));
 
         // On: the last command appears with duration and repeat count.
         app.command_echo_enabled = true;
         terminal.draw(|f| app.render(f)).unwrap();
         let text = buffer_text(&terminal);
         assert!(
-            text.contains("jj --color=never log (12ms) ×2"),
+            text.contains("jj --color=never new (12ms)"),
             "echo line missing: {text}"
         );
     }
@@ -980,7 +980,7 @@ mod tests {
         let echo_y = 12 - 1 - 1;
         let echo_row: String = (0..60).map(|x| buf[(x, echo_y)].symbol()).collect();
         assert!(
-            echo_row.contains("(no jj commands yet)"),
+            echo_row.contains("(no operations yet)"),
             "echo row not rendered on placeholder route: {echo_row:?}"
         );
         // The placeholder's bottom border closes ABOVE the echo row, not on it.

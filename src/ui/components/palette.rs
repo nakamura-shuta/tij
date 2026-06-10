@@ -140,7 +140,7 @@ pub fn palette_commands() -> &'static [PaletteCommand] {
         },
         PaletteCommand {
             name: "toggle-command-echo",
-            description: "Show last jj command above the status bar",
+            description: "Show your last operation's jj command above the status bar",
             dispatch: PaletteDispatch::Command(LogCommand::ToggleCommandEcho),
         },
         PaletteCommand {

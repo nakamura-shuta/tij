@@ -235,16 +235,13 @@ pub struct App {
     /// last executed jj command on a line above the status bar. Default off —
     /// it costs one screen row (command transparency P2).
     pub command_echo_enabled: bool,
-    /// What the echo bar shows. NOT simply the newest history record: a write
-    /// triggers refresh reads in the same key event, which would instantly
-    /// bury `jj new` under `jj log` — the write the user caused is the
-    /// interesting line, so it wins over its own follow-up reads.
+    /// What the echo bar shows: the last **mutating or interactive** jj
+    /// command (the one your keypress caused). Reads (log/show/status — the
+    /// refreshes and previews around an operation) are deliberately excluded:
+    /// they arrive on their own debounced schedule and would bury the
+    /// operation; they remain fully visible in the Command History (`H`,
+    /// `[R]` filter).
     pub(crate) command_echo_last: Option<CommandRecord>,
-    /// True once a write/interactive claimed the echo within the CURRENT
-    /// input event. A write's own refresh reads arrive in a later flush of
-    /// the same event and must not steal the echo; the main loop clears this
-    /// at event end so pure-navigation events keep updating live.
-    pub(crate) command_echo_write_event: bool,
     /// Preview auto-disabled due to small terminal (render-time flag, does not override user intent)
     pub(crate) preview_auto_disabled: bool,
     /// LRU preview cache (change_id → DiffContent + commit_id + bookmarks)
@@ -323,7 +320,6 @@ impl App {
             preview_enabled: true,
             command_echo_enabled: false,
             command_echo_last: None,
-            command_echo_write_event: false,
             preview_auto_disabled: false,
             preview_cache: PreviewCache::new(),
             preview_pending_id: None,
