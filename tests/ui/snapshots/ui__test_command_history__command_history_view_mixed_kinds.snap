@@ -1,0 +1,62 @@
+---
+source: tests/ui/test_command_history.rs
+expression: out
+---
+TestBackend { buffer: Buffer {
+    area: Rect { x: 0, y: 0, width: 100, height: 10 },
+    content: [
+        "┌─────────────────────────────────── Command History [All] (3) ────────────────────────────────────┐",
+        "│  [TIME]    OK  [R]  log (read)     ×3   jj --color=never --no-integrate-operation log -T <…> --li│",
+        "│  [TIME]    OK  [W]  Describe            jj --color=never describe -r abc12345 -m msg             │",
+        "│  [TIME]    OK  [I]  Split               jj split -r abc12345                                     │",
+        "│                                                                                                  │",
+        "│                                                                                                  │",
+        "│                                                                                                  │",
+        "│                                                                                                  │",
+        "│                                                                                                  │",
+        "└──────────────────────────────────────────────────────────────────────────────────────────────────┘",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 36, y: 0, fg: Cyan, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 63, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 1, fg: White, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 3, y: 1, fg: DarkGray, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 11, y: 1, fg: White, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 13, y: 1, fg: Green, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 15, y: 1, fg: White, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 17, y: 1, fg: DarkGray, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 20, y: 1, fg: White, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 22, y: 1, fg: Cyan, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 36, y: 1, fg: White, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 37, y: 1, fg: DarkGray, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 41, y: 1, fg: White, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 99, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 3, y: 2, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 11, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 13, y: 2, fg: Green, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 15, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 17, y: 2, fg: Yellow, bg: Reset, underline: Reset, modifier: NONE,
+        x: 20, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 22, y: 2, fg: Cyan, bg: Reset, underline: Reset, modifier: NONE,
+        x: 36, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 37, y: 2, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 41, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 42, y: 2, fg: White, bg: Reset, underline: Reset, modifier: NONE,
+        x: 86, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 3, y: 3, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 11, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 13, y: 3, fg: Green, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 15, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 17, y: 3, fg: Magenta, bg: Reset, underline: Reset, modifier: NONE,
+        x: 20, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 22, y: 3, fg: Cyan, bg: Reset, underline: Reset, modifier: NONE,
+        x: 36, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 37, y: 3, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 41, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 42, y: 3, fg: White, bg: Reset, underline: Reset, modifier: NONE,
+        x: 62, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}, scrollback: Buffer {
+    area: Rect { x: 0, y: 0, width: 100, height: 0 }
+}, cursor: false, pos: (0, 0) }

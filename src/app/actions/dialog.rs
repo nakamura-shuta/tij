@@ -536,7 +536,16 @@ mod tests {
         app.handle_dialog_result(DialogResult::Confirmed(values));
         // Verify the exact args recorded in command_history
         let args = last_command_args(&app);
-        assert_eq!(args, vec!["metaedit", "-r", "def67890", "--update-author"]);
+        assert_eq!(
+            args,
+            vec![
+                "--color=never",
+                "metaedit",
+                "-r",
+                "def67890",
+                "--update-author"
+            ]
+        );
     }
 
     #[test]
@@ -546,7 +555,16 @@ mod tests {
         app.active_dialog = Some(dialog);
         app.handle_dialog_result(DialogResult::Confirmed(values));
         let args = last_command_args(&app);
-        assert_eq!(args, vec!["metaedit", "-r", "def67890", "--force-rewrite"]);
+        assert_eq!(
+            args,
+            vec![
+                "--color=never",
+                "metaedit",
+                "-r",
+                "def67890",
+                "--force-rewrite"
+            ]
+        );
     }
 
     #[test]
@@ -558,7 +576,13 @@ mod tests {
         let args = last_command_args(&app);
         assert_eq!(
             args,
-            vec!["metaedit", "-r", "def67890", "--update-author-timestamp"]
+            vec![
+                "--color=never",
+                "metaedit",
+                "-r",
+                "def67890",
+                "--update-author-timestamp"
+            ]
         );
     }
 
@@ -638,6 +662,7 @@ mod tests {
         assert_eq!(
             args,
             vec![
+                "--color=never",
                 "metaedit",
                 "-r",
                 "def67890",
@@ -716,7 +741,13 @@ mod tests {
         let args = last_command_args(&app);
         assert_eq!(
             args,
-            vec!["metaedit", "-r", "def67890", "--update-change-id"]
+            vec![
+                "--color=never",
+                "metaedit",
+                "-r",
+                "def67890",
+                "--update-change-id"
+            ]
         );
     }
 

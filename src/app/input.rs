@@ -344,8 +344,9 @@ impl App {
                 }
             }
             View::CommandHistory => {
-                let total = self.command_history.len();
-                let action = self.command_history_view.handle_key(key, total);
+                let action = self
+                    .command_history_view
+                    .handle_key(key, &self.command_history);
                 self.handle_command_history_action(action);
             }
             View::TraceDetail => {
@@ -1096,6 +1097,12 @@ impl App {
             }
             CommandHistoryAction::ToggleDetail(_) => {
                 // Detail toggle is handled internally by CommandHistoryView
+            }
+            CommandHistoryAction::CopyCommand(cmd) => {
+                match crate::app::clipboard::copy_to_clipboard(&cmd) {
+                    Ok(()) => self.notify_success(format!("Copied: {}", cmd)),
+                    Err(e) => self.set_error(format!("Failed to copy command: {}", e)),
+                }
             }
         }
     }

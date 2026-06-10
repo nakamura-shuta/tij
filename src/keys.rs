@@ -816,6 +816,20 @@ pub const HINT_DETAIL: KeyHint = KeyHint {
     color: Color::Green,
 };
 
+/// Command History: cycle the kind filter (All / Write / Read)
+pub const HINT_CMD_FILTER: KeyHint = KeyHint {
+    key: "f",
+    label: "Filter",
+    color: Color::Cyan,
+};
+
+/// Command History: copy the shell-pasteable command line
+pub const HINT_CMD_COPY: KeyHint = KeyHint {
+    key: "y",
+    label: "Copy cmd",
+    color: Color::Magenta,
+};
+
 // =============================================================================
 // HintContext + DialogHintKind
 // =============================================================================
@@ -1030,7 +1044,14 @@ fn workspace_view_hints() -> Vec<KeyHint> {
 }
 
 fn command_history_hints() -> Vec<KeyHint> {
-    vec![HINT_HELP, HINT_NAV, HINT_DETAIL, HINT_BACK]
+    vec![
+        HINT_HELP,
+        HINT_NAV,
+        HINT_DETAIL,
+        HINT_CMD_FILTER,
+        HINT_CMD_COPY,
+        HINT_BACK,
+    ]
 }
 
 /// ParallelizeSelect mode status bar hints
@@ -1547,6 +1568,14 @@ pub const COMMAND_HISTORY_KEYS: &[KeyBindEntry] = &[
     KeyBindEntry {
         key: "Enter",
         description: "Toggle detail",
+    },
+    KeyBindEntry {
+        key: "f",
+        description: "Filter: All / Write / Read",
+    },
+    KeyBindEntry {
+        key: "y",
+        description: "Copy command line",
     },
     KeyBindEntry {
         key: "q",

@@ -9,7 +9,7 @@ use ratatui::{
 };
 
 use super::CommandHistoryView;
-use crate::model::{CommandHistory, CommandRecord, CommandStatus, Notification};
+use crate::model::{CommandHistory, CommandKind, CommandRecord, CommandStatus, Notification};
 use crate::ui::{components, navigation, theme};
 
 /// Maximum number of error lines to show in detail view
@@ -18,17 +18,24 @@ const MAX_ERROR_LINES: usize = 5;
 impl CommandHistoryView {
     /// Render the command history view
     pub fn render(
-        &self,
+        &mut self,
         frame: &mut Frame,
         area: Rect,
         history: &CommandHistory,
         notification: Option<&Notification>,
     ) {
-        let count = history.len();
-        let title = Line::from(format!(" Command History ({}) ", count))
-            .bold()
-            .cyan()
-            .centered();
+        // The filtered `visible` set is the single source of truth for
+        // everything below (selection, detail, rows).
+        self.sync(history);
+        let count = self.visible_len();
+        let title = Line::from(format!(
+            " Command History [{}] ({}) ",
+            self.filter().label(),
+            count
+        ))
+        .bold()
+        .cyan()
+        .centered();
 
         let title_width = title.width();
         let available_for_notif = area.width.saturating_sub(title_width as u16 + 4) as usize;
@@ -39,8 +46,13 @@ impl CommandHistoryView {
 
         let block = components::bordered_block_with_notification(title, notif_line);
 
-        if history.is_empty() {
-            let paragraph = Paragraph::new("No commands recorded yet").block(block);
+        if count == 0 {
+            let msg = if history.is_empty() {
+                "No commands recorded yet"
+            } else {
+                "No commands match this filter — [f] to cycle"
+            };
+            let paragraph = Paragraph::new(msg).block(block);
             frame.render_widget(paragraph, area);
             return;
         }
@@ -50,7 +62,11 @@ impl CommandHistoryView {
             return;
         }
 
-        let records: Vec<&CommandRecord> = history.records().iter().collect();
+        // Visible (filtered) records, in history order
+        let records: Vec<&CommandRecord> = (0..count)
+            .filter_map(|pos| self.raw_index(pos))
+            .filter_map(|raw| history.records().get(raw))
+            .collect();
         let inner_width = area.width.saturating_sub(2) as usize;
 
         // Calculate scroll offset, accounting for expanded detail height
@@ -98,7 +114,7 @@ impl CommandHistoryView {
 }
 
 /// Build a single record line:
-/// `  HH:MM:SS  OK  Operation     jj command args...`
+/// `  HH:MM:SS  OK  [W]  Operation     jj command args... ×N`
 fn build_record_line(record: &CommandRecord, is_selected: bool, _width: usize) -> Line<'static> {
     // Time column
     let time_str = format_timestamp(&record.timestamp);
@@ -109,11 +125,28 @@ fn build_record_line(record: &CommandRecord, is_selected: bool, _width: usize) -
         CommandStatus::Failed => ("NG", Color::Red),
     };
 
-    // Operation column (12 chars, cyan)
-    let op = format!("{:<12}", truncate_str(&record.operation, 12));
+    // Kind column: [R]ead / [W]rite / [I]nteractive
+    let kind_color = match record.kind {
+        CommandKind::Read => Color::DarkGray,
+        CommandKind::Write => Color::Yellow,
+        CommandKind::Interactive => Color::Magenta,
+    };
 
-    // Command column: "jj " + args joined by space
-    let cmd = format!("jj {}", record.args.join(" "));
+    // Operation column (14 chars, cyan)
+    let op = format!("{:<14}", truncate_str(&record.operation, 14));
+
+    // Command column: "jj " + args (long -T templates elided in list rows;
+    // the Enter detail shows the full argv)
+    let cmd = format!("jj {}", crate::model::display_args(&record.args));
+
+    // ×N right after the operation (NOT at the line end — collapsed reads
+    // carry long template args that run past the right edge, which would
+    // hide a trailing repeat count exactly where it matters most)
+    let repeat = if record.repeat > 1 {
+        format!("×{:<3}", record.repeat)
+    } else {
+        "    ".to_string()
+    };
 
     let spans = vec![
         Span::raw("  "),
@@ -126,8 +159,15 @@ fn build_record_line(record: &CommandRecord, is_selected: bool, _width: usize) -
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        Span::styled(op, Style::default().fg(Color::Cyan)),
+        Span::styled(
+            format!("[{}]", record.kind.tag()),
+            Style::default().fg(kind_color),
+        ),
         Span::raw("  "),
+        Span::styled(op, Style::default().fg(Color::Cyan)),
+        Span::raw(" "),
+        Span::styled(repeat, Style::default().fg(Color::DarkGray)),
+        Span::raw(" "),
         Span::styled(cmd, Style::default().fg(Color::White)),
     ];
 

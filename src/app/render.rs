@@ -427,7 +427,7 @@ impl App {
     }
 
     fn render_command_history_view(
-        &self,
+        &mut self,
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
@@ -443,8 +443,14 @@ impl App {
             height: area.height.saturating_sub(sb_height),
         };
 
-        self.command_history_view
-            .render(frame, main_area, &self.command_history, notification);
+        // Split-borrow: the view (mut, re-syncs its filter) and the record
+        // store (shared) are different fields of App.
+        let Self {
+            command_history_view,
+            command_history,
+            ..
+        } = self;
+        command_history_view.render(frame, main_area, command_history, notification);
         render_status_hints(frame, &hints);
     }
 

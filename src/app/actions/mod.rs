@@ -13,9 +13,31 @@ use std::time::{Instant, SystemTime};
 
 use crate::jj::{JjError, RunResult};
 use crate::model::{
-    CommandRecord, CommandStatus, CompareInfo, DiffContent, DiffDisplayFormat, DiffMode,
-    Notification, RebaseMode,
+    CommandKind, CommandRecord, CommandStatus, CompareInfo, DiffContent, DiffDisplayFormat,
+    DiffMode, Notification, RebaseMode,
 };
+
+/// Auto label for an executor-captured invocation the App didn't name:
+/// the first non-flag token (the subcommand, two tokens for `git`/`op`/
+/// `bookmark`-style groups), with "(read)" appended for reads.
+fn auto_operation_label(bare_args: &[String], kind: CommandKind) -> String {
+    let mut words = bare_args
+        .iter()
+        .filter(|a| !a.starts_with('-'))
+        .map(String::as_str);
+    let first = words.next().unwrap_or("jj");
+    let name = match first {
+        "git" | "op" | "bookmark" | "tag" | "workspace" | "file" | "bisect" => match words.next() {
+            Some(second) => format!("{} {}", first, second),
+            None => first.to_string(),
+        },
+        _ => first.to_string(),
+    };
+    match kind {
+        CommandKind::Read => format!("{} (read)", name),
+        _ => name,
+    }
+}
 use crate::ui::components::{Dialog, DialogCallback, SelectItem};
 
 use crate::app::helpers::revision::{SelectedRevision, is_root_by_commit_id, short_id};
@@ -70,8 +92,12 @@ impl App {
 
     /// Record a command execution into the command history.
     ///
-    /// Called after a jj command completes. `args` are provided separately
-    /// so that the command is recorded even on failure (when `RunResult` is not available).
+    /// The executor already captured the invocation (command transparency);
+    /// this attaches the human-readable operation label to exactly that
+    /// capture — by `RunResult.seq` on success, by bare-args match on
+    /// failure — then flushes. If neither finds a capture (synthetic results
+    /// in tests, or a path that bypassed the executor), it falls back to
+    /// pushing a direct record so the operation is never lost.
     fn record_command(
         &mut self,
         operation: &str,
@@ -79,18 +105,54 @@ impl App {
         start: Instant,
         result: &Result<RunResult, JjError>,
     ) {
-        let (status, error) = match result {
-            Ok(_) => (CommandStatus::Success, None),
-            Err(e) => (CommandStatus::Failed, Some(e.to_string())),
+        let labeled = match result {
+            Ok(r) => self.jj.label_invocation(r.seq, operation),
+            Err(_) => self.jj.label_newest_unlabeled_matching(args, operation),
         };
-        self.command_history.push(CommandRecord {
-            operation: operation.to_string(),
-            args: args.iter().map(|s| s.to_string()).collect(),
-            timestamp: SystemTime::now(),
-            duration_ms: start.elapsed().as_millis(),
-            status,
-            error,
-        });
+        if !labeled {
+            let (status, error) = match result {
+                Ok(_) => (CommandStatus::Success, None),
+                Err(e) => (CommandStatus::Failed, Some(e.to_string())),
+            };
+            self.command_history.push(CommandRecord {
+                operation: operation.to_string(),
+                args: args.iter().map(|s| s.to_string()).collect(),
+                kind: CommandKind::Write,
+                repeat: 1,
+                timestamp: SystemTime::now(),
+                duration_ms: start.elapsed().as_millis(),
+                status,
+                error,
+            });
+        }
+        self.flush_invocations();
+    }
+
+    /// Drain captured executor invocations into the command history (oldest
+    /// first). Labeled entries keep their operation name; unlabeled ones get
+    /// an auto label from the subcommand. Consecutive identical reads
+    /// collapse into one row (`push_collapsing`).
+    pub fn flush_invocations(&mut self) {
+        for inv in self.jj.take_invocations() {
+            let operation = inv
+                .operation
+                .unwrap_or_else(|| auto_operation_label(&inv.bare_args, inv.kind));
+            let (status, error) = if inv.success {
+                (CommandStatus::Success, None)
+            } else {
+                (CommandStatus::Failed, inv.error)
+            };
+            self.command_history.push_collapsing(CommandRecord {
+                operation,
+                args: inv.argv,
+                kind: inv.kind,
+                repeat: 1,
+                timestamp: inv.at,
+                duration_ms: inv.duration_ms,
+                status,
+                error,
+            });
+        }
     }
 
     /// Run a jj command via the executor's `run()` and record it in command history.
@@ -108,10 +170,12 @@ impl App {
     ///
     /// Used for commands that go through `Stdio::inherit()` (split, diffedit, etc.)
     /// where we don't get RunResult but only ExitStatus.
+    /// `args` must come from the executor's `*_argv()` builders so the
+    /// record matches the real spawn (command transparency P1).
     fn record_interactive_command(
         &mut self,
         operation: &str,
-        args: &[&str],
+        args: &[String],
         start: Instant,
         result: &io::Result<ExitStatus>,
     ) {
@@ -126,6 +190,8 @@ impl App {
         self.command_history.push(CommandRecord {
             operation: operation.to_string(),
             args: args.iter().map(|s| s.to_string()).collect(),
+            kind: CommandKind::Interactive,
+            repeat: 1,
             timestamp: SystemTime::now(),
             duration_ms: start.elapsed().as_millis(),
             status,
@@ -143,18 +209,26 @@ impl App {
         start: Instant,
         result: &Result<String, JjError>,
     ) {
-        let (status, error) = match result {
-            Ok(_) => (CommandStatus::Success, None),
-            Err(e) => (CommandStatus::Failed, Some(e.to_string())),
-        };
-        self.command_history.push(CommandRecord {
-            operation: operation.to_string(),
-            args: args.iter().map(|s| s.to_string()).collect(),
-            timestamp: SystemTime::now(),
-            duration_ms: start.elapsed().as_millis(),
-            status,
-            error,
-        });
+        // String-returning executor methods hide RunResult (no seq), so the
+        // label correlates by bare args; on a miss, fall back to a direct
+        // record (synthetic results in tests / bypassed paths).
+        if !self.jj.label_newest_unlabeled_matching(args, operation) {
+            let (status, error) = match result {
+                Ok(_) => (CommandStatus::Success, None),
+                Err(e) => (CommandStatus::Failed, Some(e.to_string())),
+            };
+            self.command_history.push(CommandRecord {
+                operation: operation.to_string(),
+                args: args.iter().map(|s| s.to_string()).collect(),
+                kind: CommandKind::Write,
+                repeat: 1,
+                timestamp: SystemTime::now(),
+                duration_ms: start.elapsed().as_millis(),
+                status,
+                error,
+            });
+        }
+        self.flush_invocations();
     }
 
     /// Handle a simple jj action result: notify on success, set error on failure
@@ -275,7 +349,7 @@ impl App {
         let result = self.jj.describe_edit_interactive(revision);
         self.record_interactive_command(
             "Describe (editor)",
-            &["describe", revision],
+            &self.jj.describe_edit_argv(revision),
             start,
             &result,
         );
@@ -388,7 +462,7 @@ impl App {
         let result = self.jj.squash_into_interactive(source, destination);
         self.record_interactive_command(
             "Squash into",
-            &["squash", "--from", source, "--into", destination],
+            &self.jj.squash_into_argv(source, destination),
             start,
             &result,
         );
@@ -531,7 +605,7 @@ impl App {
         // Run jj split (blocking)
         let start = Instant::now();
         let result = self.jj.split_interactive(revision);
-        self.record_interactive_command("Split", &["split", "-r", revision], start, &result);
+        self.record_interactive_command("Split", &self.jj.split_argv(revision), start, &result);
 
         // 4. Handle result and refresh
         // Note: _guard will restore terminal when this function returns
@@ -566,10 +640,10 @@ impl App {
         } else {
             self.jj.diffedit_interactive(revision)
         };
-        let args: Vec<&str> = if let Some(f) = file {
-            vec!["diffedit", "-r", revision, f]
+        let args = if let Some(f) = file {
+            self.jj.diffedit_file_argv(revision, f)
         } else {
-            vec!["diffedit", "-r", revision]
+            self.jj.diffedit_argv(revision)
         };
         self.record_interactive_command("Diffedit", &args, start, &result);
 
@@ -612,10 +686,9 @@ impl App {
 
         let start = Instant::now();
         let result = self.jj.bisect_run_interactive(good, bad, cmd);
-        let range = format!("{}..{}", good, bad);
         self.record_interactive_command(
             "Bisect",
-            &["bisect", "run", "--range", &range, "--", "bash", "-c", cmd],
+            &self.jj.bisect_run_argv(good, bad, cmd),
             start,
             &result,
         );
@@ -652,12 +725,12 @@ impl App {
 
         let start = Instant::now();
         let result = self.jj.arrange_interactive(revset.as_deref());
-        let mut args: Vec<&str> = vec!["arrange"];
-        if let Some(ref rev) = revset {
-            args.push("-r");
-            args.push(rev);
-        }
-        self.record_interactive_command("Arrange", &args, start, &result);
+        self.record_interactive_command(
+            "Arrange",
+            &self.jj.arrange_argv(revset.as_deref()),
+            start,
+            &result,
+        );
 
         match result {
             Ok(status) if status.success() => {
@@ -1202,7 +1275,7 @@ impl App {
         let result = self.jj.resolve_interactive(file_path, Some(&change_id));
         self.record_interactive_command(
             "Resolve",
-            &["resolve", "-r", &change_id, file_path],
+            &self.jj.resolve_argv(file_path, Some(&change_id)),
             start,
             &result,
         );
@@ -2134,6 +2207,9 @@ mod tests {
             output: "done".to_string(),
             stderr: String::new(),
             args: vec!["describe".to_string(), "-m".to_string(), "test".to_string()],
+            // No matching capture exists → record_command takes the direct-
+            // push fallback (synthetic results never touch the executor log)
+            seq: u64::MAX,
         });
         app.record_command("Describe", &["describe", "-m", "test"], start, &result);
 
@@ -2198,7 +2274,7 @@ mod tests {
         let start = Instant::now();
         let result: io::Result<ExitStatus> =
             Err(io::Error::new(io::ErrorKind::NotFound, "editor not found"));
-        app.record_interactive_command("Split", &["split", "-r", "abc"], start, &result);
+        app.record_interactive_command("Split", &app.jj.split_argv("abc"), start, &result);
 
         assert_eq!(app.command_history.len(), 1);
         let record = &app.command_history.records()[0];
@@ -2210,6 +2286,117 @@ mod tests {
                 .as_deref()
                 .unwrap()
                 .contains("editor not found")
+        );
+    }
+
+    // =========================================================================
+    // Command transparency P1: seq labeling + flush (no jj spawned — synthetic
+    // invocations injected via push_test_invocation)
+    // =========================================================================
+
+    fn test_invocation(seq: u64, kind: CommandKind, bare: &[&str]) -> crate::jj::JjInvocation {
+        crate::jj::JjInvocation {
+            seq,
+            argv: {
+                let mut v = vec!["--color=never".to_string()];
+                v.extend(bare.iter().map(|s| s.to_string()));
+                v
+            },
+            bare_args: bare.iter().map(|s| s.to_string()).collect(),
+            kind,
+            at: SystemTime::now(),
+            duration_ms: 7,
+            success: true,
+            error: None,
+            operation: None,
+        }
+    }
+
+    #[test]
+    fn seq_label_targets_only_the_write_not_surrounding_reads() {
+        // Event produced: read, write, read. Labeling the write's seq must
+        // not touch either read (the take_invocations-drains-all bug class).
+        let mut app = App::new_for_test();
+        app.jj
+            .push_test_invocation(test_invocation(10, CommandKind::Read, &["log"]));
+        app.jj.push_test_invocation(test_invocation(
+            11,
+            CommandKind::Write,
+            &["describe", "-r", "abc"],
+        ));
+        app.jj
+            .push_test_invocation(test_invocation(12, CommandKind::Read, &["status"]));
+
+        assert!(app.jj.label_invocation(11, "Describe"));
+        app.flush_invocations();
+
+        let records = app.command_history.records();
+        assert_eq!(records.len(), 3);
+        assert_eq!(records[0].operation, "log (read)");
+        assert_eq!(records[1].operation, "Describe");
+        assert_eq!(records[2].operation, "status (read)");
+        assert_eq!(records[1].kind, CommandKind::Write);
+    }
+
+    #[test]
+    fn err_fallback_matches_bare_args_despite_prepended_flags() {
+        // The full argv carries --color=never; the Err-path label matches on
+        // bare_args, so the prepended flag must not break the correlation.
+        let mut app = App::new_for_test();
+        let mut inv = test_invocation(20, CommandKind::Write, &["abandon", "-r", "xyz"]);
+        inv.success = false;
+        inv.error = Some("boom".to_string());
+        app.jj.push_test_invocation(inv);
+
+        assert!(
+            app.jj
+                .label_newest_unlabeled_matching(&["abandon", "-r", "xyz"], "Abandon"),
+            "bare_args match must succeed even though argv has --color=never"
+        );
+        app.flush_invocations();
+        let records = app.command_history.records();
+        assert_eq!(records[0].operation, "Abandon");
+        assert_eq!(records[0].status, CommandStatus::Failed);
+    }
+
+    #[test]
+    fn flush_collapses_consecutive_identical_reads() {
+        let mut app = App::new_for_test();
+        for seq in 0..3 {
+            app.jj.push_test_invocation(test_invocation(
+                seq,
+                CommandKind::Read,
+                &["show", "-r", "a"],
+            ));
+        }
+        app.flush_invocations();
+        assert_eq!(app.command_history.len(), 1);
+        assert_eq!(app.command_history.records()[0].repeat, 3);
+    }
+
+    #[test]
+    fn auto_label_names_subcommand_groups() {
+        assert_eq!(
+            auto_operation_label(
+                &["--no-integrate-operation".to_string(), "log".to_string()],
+                CommandKind::Read
+            ),
+            "log (read)"
+        );
+        assert_eq!(
+            auto_operation_label(
+                &[
+                    "git".to_string(),
+                    "push".to_string(),
+                    "--dry-run".to_string()
+                ],
+                CommandKind::Read
+            ),
+            "git push (read)"
+        );
+        assert_eq!(
+            auto_operation_label(&["new".to_string()], CommandKind::Write),
+            "new"
         );
     }
 }

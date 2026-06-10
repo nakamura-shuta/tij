@@ -21,7 +21,9 @@ mod workspace;
 pub use annotation::{AnnotationContent, AnnotationLine};
 pub use bookmark::{Bookmark, BookmarkInfo};
 pub use change::Change;
-pub use command_record::{CommandHistory, CommandRecord, CommandStatus};
+pub use command_record::{
+    CommandHistory, CommandKind, CommandRecord, CommandStatus, display_args, shell_quote,
+};
 pub use conflict::ConflictFile;
 pub use diff::{
     CompareInfo, CompareRevisionInfo, DiffContent, DiffDisplayFormat, DiffLine, DiffLineKind,

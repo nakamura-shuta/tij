@@ -139,6 +139,10 @@ fn run(mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
     while app.running {
         terminal.draw(|frame| app.render(frame))?;
         handle_events(&mut app)?;
+        // Drain executor-captured jj invocations into the command history
+        // (command transparency P1). Write paths flush inside their record
+        // helpers; this catches pure-read flows (navigation, refresh).
+        app.flush_invocations();
     }
 
     Ok(())

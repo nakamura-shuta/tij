@@ -26,3 +26,6 @@ mod test_trace_detail;
 
 #[path = "ui/test_evolog.rs"]
 mod test_evolog;
+
+#[path = "ui/test_command_history.rs"]
+mod test_command_history;

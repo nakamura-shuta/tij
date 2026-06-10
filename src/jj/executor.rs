@@ -10,12 +10,15 @@
 //! - **Result consistency**: When parallel reads complete, apply all results to App state
 //!   atomically to avoid partial/inconsistent UI state.
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::{Arc, Mutex};
+use std::time::{Instant, SystemTime};
 
 use crate::model::{
-    AnnotationContent, Bookmark, BookmarkInfo, Change, ChangeId, CommitId, ConflictFile,
-    DiffContent, Operation, RebaseMode, Status, TagInfo, WorkspaceInfo,
+    AnnotationContent, Bookmark, BookmarkInfo, Change, ChangeId, CommandKind, CommitId,
+    ConflictFile, DiffContent, Operation, RebaseMode, Status, TagInfo, WorkspaceInfo,
 };
 
 use super::JjError;
@@ -62,7 +65,49 @@ pub struct RunResult {
     pub stderr: String,
     /// The arguments passed to jj (excluding --color=never and --repository)
     pub args: Vec<String>,
+    /// Sequence number of the captured [`JjInvocation`] — lets the App label
+    /// exactly this invocation with an operation name (command transparency)
+    pub seq: u64,
 }
+
+/// One captured jj process execution (command transparency P1).
+///
+/// Every spawn the executor performs is recorded here, then drained by the
+/// App into the Command History so the user can see — and copy — exactly
+/// what tij ran.
+#[derive(Debug, Clone)]
+pub struct JjInvocation {
+    /// Monotonic id (shared across executor clones)
+    pub seq: u64,
+    /// The full argv actually passed to jj (`-R`, `--color=never`,
+    /// `--no-integrate-operation` included — the honest command line)
+    pub argv: Vec<String>,
+    /// The args as the caller passed them (no auto-prepended flags). Used to
+    /// correlate failed invocations with App-side operation labels — the full
+    /// argv never matches the caller's args because of the prepended flags.
+    pub bare_args: Vec<String>,
+    pub kind: CommandKind,
+    pub at: SystemTime,
+    pub duration_ms: u128,
+    pub success: bool,
+    /// First line of stderr on failure
+    pub error: Option<String>,
+    /// Operation label set by the App (e.g. "Describe"); None = auto-label
+    pub operation: Option<String>,
+}
+
+/// Sequence counter and pending records live in ONE mutex so cloned
+/// executors (which share the `Arc`) can never hand out duplicate seqs.
+#[derive(Debug, Default)]
+struct InvocationLog {
+    next_seq: u64,
+    records: VecDeque<JjInvocation>,
+}
+
+/// Backstop so the pending queue cannot grow unbounded if the App never
+/// drains it (e.g. headless test harness). Generously above anything a
+/// single event loop iteration can produce.
+const MAX_PENDING_INVOCATIONS: usize = 1000;
 
 /// Executor for jj commands
 ///
@@ -73,6 +118,11 @@ pub struct RunResult {
 pub struct JjExecutor {
     /// Path to the repository (None = current directory)
     repo_path: Option<PathBuf>,
+    /// Captured invocations awaiting drain. `Arc<Mutex<…>>` (NOT RefCell):
+    /// the `assert_sync` below requires `Sync` because Compare/Interdiff
+    /// share `&JjExecutor` across `thread::scope` threads. Clones share the
+    /// same log, so seq stays globally monotonic.
+    log: Arc<Mutex<InvocationLog>>,
 }
 
 // Compile-time assertion: JjExecutor must be Sync for thread::scope sharing.
@@ -91,7 +141,10 @@ impl Default for JjExecutor {
 impl JjExecutor {
     /// Create a new executor for the current directory
     pub fn new() -> Self {
-        Self { repo_path: None }
+        Self {
+            repo_path: None,
+            log: Arc::default(),
+        }
     }
 
     /// Create a new executor for a specific repository path
@@ -99,6 +152,7 @@ impl JjExecutor {
     pub fn with_repo_path(path: PathBuf) -> Self {
         Self {
             repo_path: Some(path),
+            log: Arc::default(),
         }
     }
 
@@ -107,14 +161,110 @@ impl JjExecutor {
         self.repo_path.as_ref()
     }
 
+    /// The full argv `run`/`run_stderr` actually pass to jj for `args`.
+    fn full_argv(&self, args: &[&str]) -> Vec<String> {
+        let mut v = Vec::with_capacity(args.len() + 3);
+        if let Some(ref path) = self.repo_path {
+            v.push(flags::REPO_PATH.to_string());
+            v.push(path.display().to_string());
+        }
+        v.push(flags::NO_COLOR.to_string());
+        v.extend(args.iter().map(|s| s.to_string()));
+        v
+    }
+
+    /// Record one finished invocation; returns its seq.
+    fn capture(
+        &self,
+        args: &[&str],
+        kind: CommandKind,
+        started: Instant,
+        success: bool,
+        error: Option<String>,
+    ) -> u64 {
+        let mut log = self.log.lock().unwrap_or_else(|p| p.into_inner());
+        let seq = log.next_seq;
+        log.next_seq += 1;
+        if log.records.len() >= MAX_PENDING_INVOCATIONS {
+            log.records.pop_front();
+        }
+        log.records.push_back(JjInvocation {
+            seq,
+            argv: self.full_argv(args),
+            bare_args: args.iter().map(|s| s.to_string()).collect(),
+            kind,
+            at: SystemTime::now(),
+            duration_ms: started.elapsed().as_millis(),
+            success,
+            error,
+            operation: None,
+        });
+        seq
+    }
+
+    /// Drain all pending invocations (oldest first). The App converts these
+    /// into Command History records once per event-loop iteration.
+    pub fn take_invocations(&self) -> Vec<JjInvocation> {
+        let mut log = self.log.lock().unwrap_or_else(|p| p.into_inner());
+        log.records.drain(..).collect()
+    }
+
+    /// Attach an operation label to the invocation with this seq.
+    /// Returns false when it was already drained (caller falls back).
+    pub fn label_invocation(&self, seq: u64, operation: &str) -> bool {
+        let mut log = self.log.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(inv) = log.records.iter_mut().find(|i| i.seq == seq) {
+            inv.operation = Some(operation.to_string());
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Label the newest unlabeled invocation whose `bare_args` equal `args`
+    /// (the Err path has no `RunResult.seq`; matching must use bare args —
+    /// the full argv never equals the caller's args because of the
+    /// auto-prepended `-R`/`--color=never`).
+    pub fn label_newest_unlabeled_matching(&self, args: &[&str], operation: &str) -> bool {
+        let mut log = self.log.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(inv) = log
+            .records
+            .iter_mut()
+            .rev()
+            .find(|i| i.operation.is_none() && i.bare_args == args)
+        {
+            inv.operation = Some(operation.to_string());
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Test-only: inject a synthetic invocation (lib tests must not spawn jj).
+    #[cfg(test)]
+    pub(crate) fn push_test_invocation(&self, inv: JjInvocation) {
+        let mut log = self.log.lock().unwrap_or_else(|p| p.into_inner());
+        log.next_seq = log.next_seq.max(inv.seq + 1);
+        log.records.push_back(inv);
+    }
+
     /// Run a jj command with the given arguments
     ///
     /// Automatically adds `--color=never` to ensure parseable output.
     /// Returns `RunResult` containing both the output and the captured args.
     pub fn run(&self, args: &[&str]) -> Result<RunResult, JjError> {
+        // Public entry = mutating by default; reads go through
+        // `run_readonly_str`, which passes CommandKind::Read explicitly.
+        self.run_kind(args, CommandKind::Write)
+    }
+
+    /// `run()` with an explicit invocation kind for the command-transparency
+    /// capture. Every outcome path records exactly one [`JjInvocation`].
+    fn run_kind(&self, args: &[&str], kind: CommandKind) -> Result<RunResult, JjError> {
         use std::process::Stdio;
 
         let args_vec: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let started = Instant::now();
 
         let mut cmd = Command::new(constants::JJ_COMMAND);
 
@@ -140,26 +290,35 @@ impl JjExecutor {
         // it explicitly so terminal misdetection cannot blow up the TUI.
         cmd.env("JJ_PAGER", "cat");
 
-        let output = cmd.output().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                JjError::JjNotFound
-            } else {
-                JjError::IoError(e)
+        let output = match cmd.output() {
+            Ok(o) => o,
+            Err(e) => {
+                let err = if e.kind() == std::io::ErrorKind::NotFound {
+                    JjError::JjNotFound
+                } else {
+                    JjError::IoError(e)
+                };
+                self.capture(args, kind, started, false, Some(err.to_string()));
+                return Err(err);
             }
-        })?;
+        };
 
         if output.status.success() {
+            let seq = self.capture(args, kind, started, true, None);
             Ok(RunResult {
                 output: String::from_utf8_lossy(&output.stdout).into_owned(),
                 stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
                 args: args_vec,
+                seq,
             })
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
             let exit_code = output.status.code().unwrap_or(-1);
+            let first_err = stderr.lines().next().unwrap_or("").to_string();
 
             // Check for common error patterns
             if stderr.contains(errors::NOT_A_REPO) {
+                self.capture(args, kind, started, false, Some(first_err));
                 return Err(JjError::NotARepository);
             }
 
@@ -173,13 +332,54 @@ impl JjExecutor {
             // .jjignore or snapshot.max-new-file-size in the repository.
             let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
             if stderr.contains("Refused to snapshot") {
+                let seq = self.capture(args, kind, started, true, None);
                 return Ok(RunResult {
                     output: stdout,
                     stderr,
                     args: args_vec,
+                    seq,
                 });
             }
 
+            self.capture(args, kind, started, false, Some(first_err));
+            Err(JjError::CommandFailed { stderr, exit_code })
+        }
+    }
+
+    /// Run a jj command whose useful output is **stderr** (jj writes
+    /// `duplicate` results and all `git push --dry-run` previews to stderr,
+    /// so `run()` — which returns stdout — can't serve them). Same argv
+    /// construction as `run()`, same capture, stderr returned on success.
+    fn run_stderr(&self, args: &[&str], kind: CommandKind) -> Result<String, JjError> {
+        let started = Instant::now();
+        let mut cmd = Command::new(constants::JJ_COMMAND);
+        if let Some(ref path) = self.repo_path {
+            cmd.arg(flags::REPO_PATH).arg(path);
+        }
+        cmd.arg(flags::NO_COLOR);
+        cmd.args(args);
+
+        let output = match cmd.output() {
+            Ok(o) => o,
+            Err(e) => {
+                let err = if e.kind() == std::io::ErrorKind::NotFound {
+                    JjError::JjNotFound
+                } else {
+                    JjError::IoError(e)
+                };
+                self.capture(args, kind, started, false, Some(err.to_string()));
+                return Err(err);
+            }
+        };
+
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        if output.status.success() {
+            self.capture(args, kind, started, true, None);
+            Ok(stderr)
+        } else {
+            let exit_code = output.status.code().unwrap_or(-1);
+            let first_err = stderr.lines().next().unwrap_or("").to_string();
+            self.capture(args, kind, started, false, Some(first_err));
             Err(JjError::CommandFailed { stderr, exit_code })
         }
     }
@@ -202,7 +402,8 @@ impl JjExecutor {
         let mut all_args: Vec<&str> = Vec::with_capacity(args.len() + 1);
         all_args.push(flags::NO_INTEGRATE_OPERATION);
         all_args.extend_from_slice(args);
-        self.run_str(&all_args)
+        self.run_kind(&all_args, CommandKind::Read)
+            .map(|r| r.output)
     }
 
     /// Run `jj log` with optional revset filter (raw output)
@@ -927,28 +1128,7 @@ impl JjExecutor {
     /// Note: `jj duplicate` writes its result to stderr, not stdout.
     /// Output format: "Duplicated <commit_id> as <new_change_id> <new_commit_id> <description>"
     pub fn duplicate(&self, revision: &str) -> Result<String, JjError> {
-        let mut cmd = Command::new(constants::JJ_COMMAND);
-        if let Some(ref path) = self.repo_path {
-            cmd.arg(flags::REPO_PATH).arg(path);
-        }
-        cmd.arg(flags::NO_COLOR);
-        cmd.args([commands::DUPLICATE, revision]);
-
-        let output = cmd.output().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                JjError::JjNotFound
-            } else {
-                JjError::IoError(e)
-            }
-        })?;
-
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            let exit_code = output.status.code().unwrap_or(-1);
-            Err(JjError::CommandFailed { stderr, exit_code })
-        }
+        self.run_stderr(&[commands::DUPLICATE, revision], CommandKind::Write)
     }
 
     /// Run `jj git fetch` to fetch from default remotes
@@ -1023,36 +1203,18 @@ impl JjExecutor {
     /// On failure (exit != 0), returns `Err(JjError)` — e.g., untracked bookmark or
     /// empty description validation errors.
     pub fn git_push_dry_run(&self, bookmark_name: &str) -> Result<String, JjError> {
-        // Note: `jj git push --dry-run` outputs to stderr, not stdout,
-        // so we can't use the generic `run()` method here.
-        let mut cmd = Command::new(constants::JJ_COMMAND);
-        if let Some(ref path) = self.repo_path {
-            cmd.arg(flags::REPO_PATH).arg(path);
-        }
-        cmd.arg(flags::NO_COLOR);
-        cmd.args([
-            commands::GIT,
-            commands::GIT_PUSH,
-            flags::DRY_RUN,
-            flags::BOOKMARK_FLAG,
-            bookmark_name,
-        ]);
-
-        let output = cmd.output().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                JjError::JjNotFound
-            } else {
-                JjError::IoError(e)
-            }
-        })?;
-
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            let exit_code = output.status.code().unwrap_or(-1);
-            Err(JjError::CommandFailed { stderr, exit_code })
-        }
+        // `jj git push --dry-run` outputs to stderr, not stdout — and it
+        // mutates nothing, so it is a Read for the command history.
+        self.run_stderr(
+            &[
+                commands::GIT,
+                commands::GIT_PUSH,
+                flags::DRY_RUN,
+                flags::BOOKMARK_FLAG,
+                bookmark_name,
+            ],
+            CommandKind::Read,
+        )
     }
 
     /// Run `jj git push --named <bookmark>=<revision>` for new remote bookmarks (jj 0.37+)
@@ -1096,36 +1258,18 @@ impl JjExecutor {
         bookmark_name: &str,
         remote: &str,
     ) -> Result<String, JjError> {
-        let mut cmd = Command::new(constants::JJ_COMMAND);
-        if let Some(ref path) = self.repo_path {
-            cmd.arg(flags::REPO_PATH).arg(path);
-        }
-        cmd.arg(flags::NO_COLOR);
-        cmd.args([
-            commands::GIT,
-            commands::GIT_PUSH,
-            flags::DRY_RUN,
-            flags::BOOKMARK_FLAG,
-            bookmark_name,
-            flags::REMOTE,
-            remote,
-        ]);
-
-        let output = cmd.output().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                JjError::JjNotFound
-            } else {
-                JjError::IoError(e)
-            }
-        })?;
-
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            let exit_code = output.status.code().unwrap_or(-1);
-            Err(JjError::CommandFailed { stderr, exit_code })
-        }
+        self.run_stderr(
+            &[
+                commands::GIT,
+                commands::GIT_PUSH,
+                flags::DRY_RUN,
+                flags::BOOKMARK_FLAG,
+                bookmark_name,
+                flags::REMOTE,
+                remote,
+            ],
+            CommandKind::Read,
+        )
     }
 
     /// Run `jj git push --change <change_id> --remote <remote>`
@@ -1150,36 +1294,18 @@ impl JjExecutor {
         change_id: &str,
         remote: &str,
     ) -> Result<String, JjError> {
-        let mut cmd = Command::new(constants::JJ_COMMAND);
-        if let Some(ref path) = self.repo_path {
-            cmd.arg(flags::REPO_PATH).arg(path);
-        }
-        cmd.arg(flags::NO_COLOR);
-        cmd.args([
-            commands::GIT,
-            commands::GIT_PUSH,
-            flags::DRY_RUN,
-            flags::CHANGE,
-            change_id,
-            flags::REMOTE,
-            remote,
-        ]);
-
-        let output = cmd.output().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                JjError::JjNotFound
-            } else {
-                JjError::IoError(e)
-            }
-        })?;
-
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            let exit_code = output.status.code().unwrap_or(-1);
-            Err(JjError::CommandFailed { stderr, exit_code })
-        }
+        self.run_stderr(
+            &[
+                commands::GIT,
+                commands::GIT_PUSH,
+                flags::DRY_RUN,
+                flags::CHANGE,
+                change_id,
+                flags::REMOTE,
+                remote,
+            ],
+            CommandKind::Read,
+        )
     }
 
     /// Run `jj git push --change <change_id> --dry-run` to preview push
@@ -1187,34 +1313,16 @@ impl JjExecutor {
     /// Returns stderr output describing what would change on the remote
     /// if this change were pushed. Does NOT actually push anything.
     pub fn git_push_change_dry_run(&self, change_id: &str) -> Result<String, JjError> {
-        let mut cmd = Command::new(constants::JJ_COMMAND);
-        if let Some(ref path) = self.repo_path {
-            cmd.arg(flags::REPO_PATH).arg(path);
-        }
-        cmd.arg(flags::NO_COLOR);
-        cmd.args([
-            commands::GIT,
-            commands::GIT_PUSH,
-            flags::DRY_RUN,
-            flags::CHANGE,
-            change_id,
-        ]);
-
-        let output = cmd.output().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                JjError::JjNotFound
-            } else {
-                JjError::IoError(e)
-            }
-        })?;
-
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            let exit_code = output.status.code().unwrap_or(-1);
-            Err(JjError::CommandFailed { stderr, exit_code })
-        }
+        self.run_stderr(
+            &[
+                commands::GIT,
+                commands::GIT_PUSH,
+                flags::DRY_RUN,
+                flags::CHANGE,
+                change_id,
+            ],
+            CommandKind::Read,
+        )
     }
 
     /// Push with a bulk flag (--all, --tracked, --deleted)
@@ -1241,11 +1349,6 @@ impl JjExecutor {
         mode: PushBulkMode,
         remote: Option<&str>,
     ) -> Result<String, JjError> {
-        let mut cmd = Command::new(constants::JJ_COMMAND);
-        if let Some(ref path) = self.repo_path {
-            cmd.arg(flags::REPO_PATH).arg(path);
-        }
-        cmd.arg(flags::NO_COLOR);
         let mut args = vec![
             commands::GIT,
             commands::GIT_PUSH,
@@ -1255,23 +1358,7 @@ impl JjExecutor {
         if let Some(r) = remote {
             args.extend([flags::REMOTE, r]);
         }
-        cmd.args(&args);
-
-        let output = cmd.output().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                JjError::JjNotFound
-            } else {
-                JjError::IoError(e)
-            }
-        })?;
-
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            let exit_code = output.status.code().unwrap_or(-1);
-            Err(JjError::CommandFailed { stderr, exit_code })
-        }
+        self.run_stderr(&args, CommandKind::Read)
     }
 
     /// Run `jj git push --bookmark <name>` with extra flags (e.g. --allow-private)
@@ -1411,34 +1498,16 @@ impl JjExecutor {
     ///
     /// Returns stderr output (jj git push --dry-run outputs to stderr).
     pub fn git_push_revisions_dry_run(&self, revision: &str) -> Result<String, JjError> {
-        let mut cmd = Command::new(constants::JJ_COMMAND);
-        if let Some(ref path) = self.repo_path {
-            cmd.arg(flags::REPO_PATH).arg(path);
-        }
-        cmd.arg(flags::NO_COLOR);
-        cmd.args([
-            commands::GIT,
-            commands::GIT_PUSH,
-            flags::DRY_RUN,
-            flags::REVISIONS,
-            revision,
-        ]);
-
-        let output = cmd.output().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                JjError::JjNotFound
-            } else {
-                JjError::IoError(e)
-            }
-        })?;
-
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            let exit_code = output.status.code().unwrap_or(-1);
-            Err(JjError::CommandFailed { stderr, exit_code })
-        }
+        self.run_stderr(
+            &[
+                commands::GIT,
+                commands::GIT_PUSH,
+                flags::DRY_RUN,
+                flags::REVISIONS,
+                revision,
+            ],
+            CommandKind::Read,
+        )
     }
 
     /// Run `jj git push --dry-run --revisions <change_id> --remote <remote>`
@@ -1447,36 +1516,18 @@ impl JjExecutor {
         revision: &str,
         remote: &str,
     ) -> Result<String, JjError> {
-        let mut cmd = Command::new(constants::JJ_COMMAND);
-        if let Some(ref path) = self.repo_path {
-            cmd.arg(flags::REPO_PATH).arg(path);
-        }
-        cmd.arg(flags::NO_COLOR);
-        cmd.args([
-            commands::GIT,
-            commands::GIT_PUSH,
-            flags::DRY_RUN,
-            flags::REVISIONS,
-            revision,
-            flags::REMOTE,
-            remote,
-        ]);
-
-        let output = cmd.output().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                JjError::JjNotFound
-            } else {
-                JjError::IoError(e)
-            }
-        })?;
-
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stderr).into_owned())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-            let exit_code = output.status.code().unwrap_or(-1);
-            Err(JjError::CommandFailed { stderr, exit_code })
-        }
+        self.run_stderr(
+            &[
+                commands::GIT,
+                commands::GIT_PUSH,
+                flags::DRY_RUN,
+                flags::REVISIONS,
+                revision,
+                flags::REMOTE,
+                remote,
+            ],
+            CommandKind::Read,
+        )
     }
 
     /// Move a bookmark to a revision
