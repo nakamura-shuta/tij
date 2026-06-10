@@ -17,3 +17,12 @@ mod test_diff;
 
 #[path = "ui/test_status.rs"]
 mod test_status;
+
+#[path = "ui/test_blame.rs"]
+mod test_blame;
+
+#[path = "ui/test_trace_detail.rs"]
+mod test_trace_detail;
+
+#[path = "ui/test_evolog.rs"]
+mod test_evolog;

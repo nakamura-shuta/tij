@@ -1,0 +1,20 @@
+---
+source: tests/ui/test_trace_detail.rs
+expression: terminal.backend()
+---
+"┌─────────────────────── Tij - Agent Traces [xqnktzml] ────────────────────────┐"
+"│1 record(s)  —  [j/k] scroll  [y] copy URL                                    │"
+"│                                                                              │"
+"│2026-06-05 14:20  claude-code 2.0                                             │"
+"│  contributor: ai×1 (anthropic/claude-opus-4-8)                               │"
+"│  src/greet.py  L1-6                                                          │"
+"│  URLs:                                                                       │"
+"│    [conversation] claude-code://session/demo                                 │"
+"│    [pull-request] https://example.com/pr/1                                   │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"└──────────────────────────────────────────────────────────────────────────────┘"
