@@ -88,6 +88,20 @@ impl App {
         }
     }
 
+    /// Area for unloaded-view placeholders: `view_area` minus the rows the
+    /// view's status bar occupies. Placeholder routes don't draw a status
+    /// bar, but they must reserve the same bottom rows as the loaded view so
+    /// the content / echo / status-bar geometry holds uniformly — otherwise
+    /// the echo row would paint over the placeholder's bottom border.
+    fn placeholder_area(&self, frame: &Frame) -> Rect {
+        let area = self.view_area(frame);
+        let sb = self.get_current_status_bar_height(area.width);
+        Rect {
+            height: area.height.saturating_sub(sb),
+            ..area
+        }
+    }
+
     /// Draw the last executed jj command on the row directly above the
     /// status bar (the row `view_area` freed up).
     fn render_command_echo(&self, frame: &mut Frame) {
@@ -319,6 +333,7 @@ impl App {
         } else {
             render_placeholder(
                 frame,
+                self.placeholder_area(frame),
                 " Tij - Diff View ",
                 Color::Yellow,
                 "No diff loaded - Press q to go back",
@@ -481,6 +496,7 @@ impl App {
         } else {
             render_placeholder(
                 frame,
+                self.placeholder_area(frame),
                 " Tij - Evolution Log ",
                 Color::Cyan,
                 "No evolution log loaded - Press q to go back",
@@ -545,6 +561,7 @@ impl App {
         } else {
             render_placeholder(
                 frame,
+                self.placeholder_area(frame),
                 " Tij - Agent Traces ",
                 Color::Magenta,
                 "No traces loaded - Press q to go back",
@@ -595,6 +612,7 @@ impl App {
         } else {
             render_placeholder(
                 frame,
+                self.placeholder_area(frame),
                 " Tij - Resolve View ",
                 Color::Red,
                 "No conflicts loaded - Press q to go back",
@@ -630,6 +648,7 @@ impl App {
         } else {
             render_placeholder(
                 frame,
+                self.placeholder_area(frame),
                 " Tij - Blame View ",
                 Color::Yellow,
                 "No file loaded - Press q to go back",
@@ -939,6 +958,37 @@ mod tests {
         assert!(
             text.contains("jj --color=never log (12ms) ×2"),
             "echo line missing: {text}"
+        );
+    }
+
+    #[test]
+    fn placeholder_route_respects_echo_row() {
+        // Unloaded-view routes (Diff with no diff_view, etc.) draw a
+        // placeholder. It must use `view_area` like loaded views, so the
+        // echo row stays its own row instead of being painted over the
+        // placeholder frame.
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff; // diff_view is None → placeholder route
+        app.command_echo_enabled = true;
+
+        let backend = ratatui::backend::TestBackend::new(60, 12);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
+
+        let buf = terminal.backend().buffer();
+        // Echo row = bottom row minus the Diff placeholder's status height (1).
+        let echo_y = 12 - 1 - 1;
+        let echo_row: String = (0..60).map(|x| buf[(x, echo_y)].symbol()).collect();
+        assert!(
+            echo_row.contains("(no jj commands yet)"),
+            "echo row not rendered on placeholder route: {echo_row:?}"
+        );
+        // The placeholder's bottom border closes ABOVE the echo row, not on it.
+        let border_y = echo_y - 1;
+        let border_row: String = (0..60).map(|x| buf[(x, border_y)].symbol()).collect();
+        assert!(
+            border_row.starts_with('└'),
+            "placeholder frame must close above the echo row: {border_row:?}"
         );
     }
 
