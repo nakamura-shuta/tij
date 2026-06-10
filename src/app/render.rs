@@ -282,9 +282,10 @@ impl App {
             height: area.height.saturating_sub(sb_height),
         };
 
-        // Store visible height for file list (2 borders + 3 header lines)
-        // This is used by key handling for accurate scroll bounds
-        let file_list_height = main_area.height.saturating_sub(5);
+        // Store visible height for the file list, used by key handling for
+        // scroll bounds. Comes from the view (conflict-line aware) so the
+        // bounds match what's actually rendered.
+        let file_list_height = self.status_view.file_list_height(main_area.height);
         self.last_frame_height.set(file_list_height);
 
         self.status_view.render(frame, main_area, notification);

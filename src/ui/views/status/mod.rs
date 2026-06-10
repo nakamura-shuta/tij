@@ -115,6 +115,24 @@ impl StatusView {
         }
     }
 
+    /// Rows available for file entries inside the file-list block at
+    /// `area_height`: 2 border rows + the header prelude (working-copy line,
+    /// parent line, conflict-count line when any file is conflicted, and the
+    /// separator). Single source of truth shared by the renderer and the
+    /// App-side scroll-bounds height — previously the App hardcoded `- 5`,
+    /// which was off by one whenever the conflict line was shown (the
+    /// selection could walk one row below the visible area).
+    pub fn file_list_height(&self, area_height: u16) -> u16 {
+        let has_conflict_line = self.status.as_ref().is_some_and(|s| {
+            s.files
+                .iter()
+                .any(|f| matches!(f.state, FileState::Conflicted))
+        });
+        // working copy + parent + separator (+ conflict count)
+        let header_lines: u16 = if has_conflict_line { 4 } else { 3 };
+        area_height.saturating_sub(2 + header_lines)
+    }
+
     /// Get the selected file path
     pub fn selected_file_path(&self) -> Option<&str> {
         self.status
@@ -225,6 +243,26 @@ mod tests {
         let view = StatusView::new();
         assert!(view.status.is_none());
         assert_eq!(view.selected_index, 0);
+    }
+
+    #[test]
+    fn file_list_height_accounts_for_conflict_line() {
+        // Regression: the App used a hardcoded `- 5`, ignoring the conflict
+        // count line — with conflicts the scroll bounds were one row too tall
+        // and the selection could walk below the visible area.
+        let mut view = StatusView::new();
+        view.set_status(sample_status());
+        // No conflicts: 2 borders + WC + Parent + separator = 5
+        assert_eq!(view.file_list_height(20), 15);
+
+        let mut conflicted = sample_status();
+        conflicted.files[0].state = FileState::Conflicted;
+        view.set_status(conflicted);
+        // Conflict line adds one more header row = 6
+        assert_eq!(view.file_list_height(20), 14);
+
+        // Tiny terminal: saturates, never underflows
+        assert_eq!(view.file_list_height(3), 0);
     }
 
     #[test]

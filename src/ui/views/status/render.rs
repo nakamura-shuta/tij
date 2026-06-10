@@ -124,10 +124,9 @@ impl StatusView {
             .count();
         let has_conflict_line = conflict_count > 0;
 
-        // Calculate available height for files (minus borders and header)
-        // 2 borders + 3 header lines (+ 1 if conflict line shown)
-        let header_lines = if has_conflict_line { 4 } else { 3 };
-        let inner_height = area.height.saturating_sub(2 + header_lines as u16) as usize;
+        // Rows available for file entries — same math the App uses for scroll
+        // bounds (see `file_list_height`), so selection always stays visible.
+        let inner_height = self.file_list_height(area.height) as usize;
 
         // Build lines
         let mut lines = Vec::new();
@@ -163,10 +162,11 @@ impl StatusView {
 
         lines.push(Line::from("")); // Separator
 
-        // File list
-        let header_count = header_lines + 1; // +1 for separator
+        // File list — cap at exactly the rows the block can show (the prelude
+        // lines above are already counted in `file_list_height`).
+        let prelude_lines = lines.len();
         for (idx, file) in status.files.iter().enumerate().skip(self.scroll_offset) {
-            if lines.len() >= inner_height + header_count {
+            if lines.len() >= prelude_lines + inner_height {
                 break;
             }
 
