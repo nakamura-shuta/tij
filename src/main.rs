@@ -141,8 +141,9 @@ fn run(mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
         handle_events(&mut app)?;
         // Drain executor-captured jj invocations into the command history
         // (command transparency P1). Write paths flush inside their record
-        // helpers; this catches pure-read flows (navigation, refresh).
-        app.flush_invocations();
+        // helpers; this catches pure-read flows (navigation, refresh) and
+        // re-arms the echo bar for the next event.
+        app.end_input_event();
     }
 
     Ok(())

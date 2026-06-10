@@ -240,6 +240,11 @@ pub struct App {
     /// bury `jj new` under `jj log` — the write the user caused is the
     /// interesting line, so it wins over its own follow-up reads.
     pub(crate) command_echo_last: Option<CommandRecord>,
+    /// True once a write/interactive claimed the echo within the CURRENT
+    /// input event. A write's own refresh reads arrive in a later flush of
+    /// the same event and must not steal the echo; the main loop clears this
+    /// at event end so pure-navigation events keep updating live.
+    pub(crate) command_echo_write_event: bool,
     /// Preview auto-disabled due to small terminal (render-time flag, does not override user intent)
     pub(crate) preview_auto_disabled: bool,
     /// LRU preview cache (change_id → DiffContent + commit_id + bookmarks)
@@ -318,6 +323,7 @@ impl App {
             preview_enabled: true,
             command_echo_enabled: false,
             command_echo_last: None,
+            command_echo_write_event: false,
             preview_auto_disabled: false,
             preview_cache: PreviewCache::new(),
             preview_pending_id: None,

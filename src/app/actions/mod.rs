@@ -167,11 +167,23 @@ impl App {
 
         if let Some(write) = batch_write {
             self.command_echo_last = Some(write);
-        } else if batch_any {
+            self.command_echo_write_event = true;
+        } else if batch_any && !self.command_echo_write_event {
             // Reads only (navigation/refresh): echo follows the newest record
-            // — cloned AFTER collapsing so the ×N count is current.
+            // — cloned AFTER collapsing so the ×N count is current. Skipped
+            // when a write already claimed the echo this event: its refresh
+            // reads land in a LATER flush of the same event and must not
+            // bury it (the c/u case).
             self.command_echo_last = self.command_history.records().back().cloned();
         }
+    }
+
+    /// End-of-input-event hook (called once per main-loop iteration): flush
+    /// any remaining captured invocations, then re-arm the echo so the next
+    /// event's reads can take it again.
+    pub fn end_input_event(&mut self) {
+        self.flush_invocations();
+        self.command_echo_write_event = false;
     }
 
     /// Run a jj command via the executor's `run()` and record it in command history.
@@ -217,6 +229,7 @@ impl App {
             error,
         };
         self.command_echo_last = Some(record.clone());
+        self.command_echo_write_event = true;
         self.command_history.push(record);
     }
 
@@ -2397,33 +2410,42 @@ mod tests {
 
     #[test]
     fn echo_prefers_write_over_its_refresh_reads() {
-        // Pressing `c` runs: [precheck reads…,] write `new`, then refresh
-        // reads — all in one event. The echo must show the WRITE the user
-        // caused, not the `log` refresh that happens to come last.
+        // Real `c` sequence is TWO flushes in one event: record_command
+        // flushes the write mid-event, then refresh/preview reads flush at
+        // event end. The write must survive BOTH (the c/u regression).
         let mut app = App::new_for_test();
+
+        // Flush 1 (inside record_command): the write.
         app.jj
             .push_test_invocation(test_invocation(30, CommandKind::Write, &["new"]));
+        app.flush_invocations();
+        let echo = app.command_echo_last.as_ref().expect("echo set");
+        assert_eq!(echo.kind, CommandKind::Write);
+
+        // Flush 2 (end of the SAME event): the refresh + preview reads.
         app.jj
             .push_test_invocation(test_invocation(31, CommandKind::Read, &["log"]));
         app.jj
-            .push_test_invocation(test_invocation(32, CommandKind::Read, &["status"]));
-        app.flush_invocations();
-
-        let echo = app.command_echo_last.as_ref().expect("echo set");
-        assert_eq!(echo.kind, CommandKind::Write);
+            .push_test_invocation(test_invocation(32, CommandKind::Read, &["show", "-r", "a"]));
+        app.end_input_event();
+        let echo = app.command_echo_last.as_ref().unwrap();
+        assert_eq!(
+            echo.kind,
+            CommandKind::Write,
+            "the write's own refresh reads must not steal the echo"
+        );
         assert!(echo.args.contains(&"new".to_string()), "{:?}", echo.args);
 
-        // A reads-only event afterwards moves the echo to the newest read
-        // (navigation must keep feeling live).
+        // NEXT event, reads only (cursor navigation): echo follows again.
         app.jj
-            .push_test_invocation(test_invocation(33, CommandKind::Read, &["show", "-r", "a"]));
-        app.flush_invocations();
+            .push_test_invocation(test_invocation(33, CommandKind::Read, &["show", "-r", "b"]));
+        app.end_input_event();
         let echo = app.command_echo_last.as_ref().unwrap();
         assert_eq!(echo.kind, CommandKind::Read);
         assert!(echo.args.contains(&"show".to_string()));
 
-        // Empty flush (no jj ran): echo unchanged.
-        app.flush_invocations();
+        // Idle event (no jj ran): echo unchanged.
+        app.end_input_event();
         assert!(
             app.command_echo_last
                 .as_ref()
