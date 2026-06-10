@@ -121,7 +121,7 @@ impl App {
             height: 1,
         };
 
-        let text = match self.command_history.records().back() {
+        let text = match self.command_echo_last.as_ref() {
             Some(record) => {
                 let repeat = if record.repeat > 1 {
                     format!(" ×{}", record.repeat)
@@ -933,7 +933,7 @@ mod tests {
         use crate::model::{CommandKind, CommandRecord, CommandStatus};
 
         let mut app = App::new_for_test();
-        app.command_history.push(CommandRecord {
+        app.command_echo_last = Some(CommandRecord {
             operation: "log (read)".to_string(),
             args: vec!["--color=never".to_string(), "log".to_string()],
             kind: CommandKind::Read,

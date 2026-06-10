@@ -4,7 +4,7 @@ use std::cell::Cell;
 use std::collections::VecDeque;
 
 use crate::jj::JjExecutor;
-use crate::model::{Change, CommandHistory, DiffContent, Notification};
+use crate::model::{Change, CommandHistory, CommandRecord, DiffContent, Notification};
 use crate::ui::components::Dialog;
 use crate::ui::views::{
     BlameView, BookmarkView, CommandHistoryView, DiffView, EvologView, LogView, OperationView,
@@ -235,6 +235,11 @@ pub struct App {
     /// last executed jj command on a line above the status bar. Default off —
     /// it costs one screen row (command transparency P2).
     pub command_echo_enabled: bool,
+    /// What the echo bar shows. NOT simply the newest history record: a write
+    /// triggers refresh reads in the same key event, which would instantly
+    /// bury `jj new` under `jj log` — the write the user caused is the
+    /// interesting line, so it wins over its own follow-up reads.
+    pub(crate) command_echo_last: Option<CommandRecord>,
     /// Preview auto-disabled due to small terminal (render-time flag, does not override user intent)
     pub(crate) preview_auto_disabled: bool,
     /// LRU preview cache (change_id → DiffContent + commit_id + bookmarks)
@@ -312,6 +317,7 @@ impl App {
             pending_jump_change_id: None,
             preview_enabled: true,
             command_echo_enabled: false,
+            command_echo_last: None,
             preview_auto_disabled: false,
             preview_cache: PreviewCache::new(),
             preview_pending_id: None,

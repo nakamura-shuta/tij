@@ -133,6 +133,12 @@ impl App {
     /// an auto label from the subcommand. Consecutive identical reads
     /// collapse into one row (`push_collapsing`).
     pub fn flush_invocations(&mut self) {
+        // Echo candidate: a write in this batch beats the trailing reads it
+        // triggered (pressing `c` should echo `jj new`, not the `jj log`
+        // refresh that follows in the same key event).
+        let mut batch_write: Option<CommandRecord> = None;
+        let mut batch_any = false;
+
         for inv in self.jj.take_invocations() {
             let operation = inv
                 .operation
@@ -142,7 +148,7 @@ impl App {
             } else {
                 (CommandStatus::Failed, inv.error)
             };
-            self.command_history.push_collapsing(CommandRecord {
+            let record = CommandRecord {
                 operation,
                 args: inv.argv,
                 kind: inv.kind,
@@ -151,7 +157,20 @@ impl App {
                 duration_ms: inv.duration_ms,
                 status,
                 error,
-            });
+            };
+            if record.kind != CommandKind::Read {
+                batch_write = Some(record.clone());
+            }
+            batch_any = true;
+            self.command_history.push_collapsing(record);
+        }
+
+        if let Some(write) = batch_write {
+            self.command_echo_last = Some(write);
+        } else if batch_any {
+            // Reads only (navigation/refresh): echo follows the newest record
+            // — cloned AFTER collapsing so the ×N count is current.
+            self.command_echo_last = self.command_history.records().back().cloned();
         }
     }
 
@@ -187,7 +206,7 @@ impl App {
             ),
             Err(e) => (CommandStatus::Failed, Some(e.to_string())),
         };
-        self.command_history.push(CommandRecord {
+        let record = CommandRecord {
             operation: operation.to_string(),
             args: args.iter().map(|s| s.to_string()).collect(),
             kind: CommandKind::Interactive,
@@ -196,7 +215,9 @@ impl App {
             duration_ms: start.elapsed().as_millis(),
             status,
             error,
-        });
+        };
+        self.command_echo_last = Some(record.clone());
+        self.command_history.push(record);
     }
 
     /// Record a command from a `Result<String, JjError>` (for methods that don't use RunResult).
@@ -2372,6 +2393,44 @@ mod tests {
         app.flush_invocations();
         assert_eq!(app.command_history.len(), 1);
         assert_eq!(app.command_history.records()[0].repeat, 3);
+    }
+
+    #[test]
+    fn echo_prefers_write_over_its_refresh_reads() {
+        // Pressing `c` runs: [precheck reads…,] write `new`, then refresh
+        // reads — all in one event. The echo must show the WRITE the user
+        // caused, not the `log` refresh that happens to come last.
+        let mut app = App::new_for_test();
+        app.jj
+            .push_test_invocation(test_invocation(30, CommandKind::Write, &["new"]));
+        app.jj
+            .push_test_invocation(test_invocation(31, CommandKind::Read, &["log"]));
+        app.jj
+            .push_test_invocation(test_invocation(32, CommandKind::Read, &["status"]));
+        app.flush_invocations();
+
+        let echo = app.command_echo_last.as_ref().expect("echo set");
+        assert_eq!(echo.kind, CommandKind::Write);
+        assert!(echo.args.contains(&"new".to_string()), "{:?}", echo.args);
+
+        // A reads-only event afterwards moves the echo to the newest read
+        // (navigation must keep feeling live).
+        app.jj
+            .push_test_invocation(test_invocation(33, CommandKind::Read, &["show", "-r", "a"]));
+        app.flush_invocations();
+        let echo = app.command_echo_last.as_ref().unwrap();
+        assert_eq!(echo.kind, CommandKind::Read);
+        assert!(echo.args.contains(&"show".to_string()));
+
+        // Empty flush (no jj ran): echo unchanged.
+        app.flush_invocations();
+        assert!(
+            app.command_echo_last
+                .as_ref()
+                .unwrap()
+                .args
+                .contains(&"show".to_string())
+        );
     }
 
     #[test]
