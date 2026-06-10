@@ -69,7 +69,7 @@ the attribution in four places:
 | Log View | `[AI]` badge on changes with AI contributions (`[AI?]` when the trace is anchored via git SHA, which may point one change off in jj repos) |
 | `:` → `filter-ai` | Toggle the Log View to show only AI-attributed changes (post-filter over the loaded set; title shows `[AI] (N)`) |
 | `:` → `ai-summary` | One-line AI contribution summary over the loaded changes: `AI 12/40 (30%) · [AI] 9 [AI?] 3 · models: …` |
-| `:` → `ai-report` | Write a Markdown AI-attribution report (`agent-trace-report.md` in the workspace root): summary + a per-change table (change / confidence / description / model / files+ranges / session URL), plus an "Orphaned traces" section when any trace anchors a revision outside the loaded changes. Same loaded-set scope as `ai-summary`; overwrites on each run |
+| `:` → `ai-report` | Write a Markdown AI-attribution report (`agent-trace-report.md` in the workspace root): summary + a per-change table (change / confidence / description / model / files+ranges / session URL), plus an "Orphaned traces" section when any trace anchors a revision outside the loaded changes. Same loaded-set scope as `ai-summary`; overwrites on each run. The file lands in your working copy — gitignore `agent-trace-report.md` unless you mean to commit it |
 | `:` → `ai-orphans` | One-line count of orphaned traces — traces anchored to a revision matching none of the loaded changes (out of the `--limit` window, rebased, or abandoned): `Orphaned traces: 2 (jj 1, git 1)` |
 | `:` → `show-traces` | Trace Detail View for the selected change: per record, time / tool+version / contributor breakdown / per-file ranges, and every URL (conversation + `related[]`); `j/k` to scroll, `y` to copy the URL on the cursor row |
 | Diff View | `▎` gutter on AI-contributed line ranges (color-words format; approximate by design) |
@@ -121,7 +121,7 @@ cargo test --tests            # Integration tests only
 cargo insta test              # Snapshot tests
 ```
 
-**Test categories**: Unit (741), Integration (86), Snapshot (20), Property-based (15)
+**Test categories**: 1000+ tests — unit, integration, snapshot (insta), and property-based (proptest)
 
 ## Acknowledgments
 
