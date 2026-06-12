@@ -3,9 +3,9 @@ source: tests/ui/test_blame.rs
 expression: terminal.backend()
 ---
 "┌────────────────────────── Blame View: src/calc.py ───────────────────────────┐"
-"│aaaaaaaa [AI]  test@exam… 06-01      1: def add(a, b):                        │"
+"│aaaaaaaa [AI]  test@ex... 06-01      1: def add(a, b):                        │"
 "│                              ↑      2:     return a + b                      │"
-"│bbbbbbbb       test@exam… 06-01      3: def sub(a, b):                        │"
+"│bbbbbbbb       test@ex... 06-01      3: def sub(a, b):                        │"
 "│                              ↑      4:     return a - b                      │"
 "│                                                                              │"
 "│                                                                              │"

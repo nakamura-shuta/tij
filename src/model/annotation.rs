@@ -63,15 +63,6 @@ impl AnnotationLine {
         }
         self.timestamp.clone()
     }
-
-    /// Get truncated author name for display
-    pub fn short_author(&self, max_len: usize) -> String {
-        if self.author.chars().count() <= max_len {
-            self.author.clone()
-        } else {
-            self.author.chars().take(max_len - 1).collect::<String>() + "…"
-        }
-    }
 }
 
 #[cfg(test)]
@@ -97,20 +88,5 @@ mod tests {
             first_in_hunk: true,
         };
         assert_eq!(line.short_timestamp(), "01-30");
-    }
-
-    #[test]
-    fn test_annotation_line_short_author() {
-        let line = AnnotationLine {
-            change_id: ChangeId::new("twzksoxt".to_string()),
-            commit_id: CommitId::new("abcd1234".to_string()),
-            author: "nakamura.shuta".to_string(),
-            timestamp: "2026-01-30 10:43".to_string(),
-            line_number: 1,
-            content: "test".to_string(),
-            first_in_hunk: true,
-        };
-        assert_eq!(line.short_author(8), "nakamur…");
-        assert_eq!(line.short_author(20), "nakamura.shuta");
     }
 }

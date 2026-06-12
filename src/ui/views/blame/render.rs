@@ -141,10 +141,10 @@ impl BlameView {
                 }
             }
 
-            // Author (truncated)
-            let author = annotation.short_author(layout::AUTHOR_WIDTH);
+            // Author column, fitted by display width (CJK authors are
+            // 2 cells per char — char-based padding shifted the row)
             spans.push(Span::styled(
-                format!("{:<width$}", author, width = layout::AUTHOR_WIDTH),
+                crate::ui::text::fit_display_width(&annotation.author, layout::AUTHOR_WIDTH),
                 Style::default().fg(colors::AUTHOR),
             ));
             spans.push(Span::raw(" "));
