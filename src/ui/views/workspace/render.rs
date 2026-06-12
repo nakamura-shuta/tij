@@ -72,7 +72,7 @@ fn build_workspace_line(ws: &WorkspaceInfo, is_selected: bool, is_current: bool)
             }),
         ),
         Span::styled(
-            format!("{:<16}", truncate_str(&ws.name, 16)),
+            crate::ui::text::fit_display_width(&ws.name, 16),
             Style::default().fg(Color::Green),
         ),
         Span::styled(
@@ -84,7 +84,7 @@ fn build_workspace_line(ws: &WorkspaceInfo, is_selected: bool, is_current: bool)
     // Show root path if available
     if let Some(ref path) = ws.root_path {
         spans.push(Span::styled(
-            format!("  {}", truncate_str(path, 30)),
+            format!("  {}", crate::ui::text::fit_display_width(path, 30)),
             Style::default().fg(Color::DarkGray),
         ));
     }
@@ -110,16 +110,4 @@ fn build_workspace_line(ws: &WorkspaceInfo, is_selected: bool, is_current: bool)
         );
     }
     line
-}
-
-fn truncate_str(s: &str, max_len: usize) -> String {
-    let char_count = s.chars().count();
-    if char_count <= max_len {
-        s.to_string()
-    } else if max_len > 3 {
-        let truncated: String = s.chars().take(max_len - 3).collect();
-        format!("{}...", truncated)
-    } else {
-        s.chars().take(max_len).collect()
-    }
 }

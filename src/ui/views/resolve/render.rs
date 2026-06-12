@@ -108,7 +108,10 @@ impl ResolveView {
                 format!("({})", file.description)
             };
 
-            spans.push(Span::raw(format!("{:<30} ", file.path)));
+            spans.push(Span::raw(format!(
+                "{} ",
+                crate::ui::text::fit_display_width(&file.path, 30)
+            )));
             spans.push(Span::styled(sided, Style::default().fg(Color::DarkGray)));
 
             let mut line = Line::from(spans);

@@ -133,7 +133,7 @@ fn build_record_line(record: &CommandRecord, is_selected: bool, _width: usize) -
     };
 
     // Operation column (14 chars, cyan)
-    let op = format!("{:<14}", truncate_str(&record.operation, 14));
+    let op = crate::ui::text::fit_display_width(&record.operation, 14);
 
     // Command column: "jj " + args (long -T templates elided in list rows;
     // the Enter detail shows the full argv)
@@ -312,18 +312,5 @@ fn local_utc_offset_secs() -> i64 {
     #[cfg(not(unix))]
     {
         0 // Fallback to UTC on non-unix
-    }
-}
-
-/// Truncate a string to max_len characters
-fn truncate_str(s: &str, max_len: usize) -> String {
-    let char_count = s.chars().count();
-    if char_count <= max_len {
-        s.to_string()
-    } else if max_len > 3 {
-        let truncated: String = s.chars().take(max_len - 3).collect();
-        format!("{}...", truncated)
-    } else {
-        s.chars().take(max_len).collect()
     }
 }

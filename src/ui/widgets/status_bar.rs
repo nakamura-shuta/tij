@@ -139,10 +139,13 @@ fn status_bar_area(frame: &Frame, hints: &[KeyHint]) -> Option<Rect> {
     status_bar_area_h(frame, status_hints_height(hints, frame.area().width))
 }
 
-/// Display width of a status-bar prefix (best-effort: char count, which is
-/// exact for the ASCII revisions/paths/indices used here).
+/// Display width of a status-bar prefix in terminal cells (CJK-correct —
+/// Blame/Diff prefixes carry file paths that may contain wide characters).
 fn prefix_width(prefix: &[Span]) -> usize {
-    prefix.iter().map(|s| s.content.chars().count()).sum()
+    prefix
+        .iter()
+        .map(|s| crate::ui::text::display_width(&s.content))
+        .sum()
 }
 
 /// Width the hints add after a prefix — each hint is preceded by one space

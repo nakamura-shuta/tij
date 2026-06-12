@@ -120,7 +120,7 @@ fn build_bookmark_line(info: &BookmarkInfo, is_selected: bool) -> Line<'static> 
     let mut spans = vec![
         Span::raw("  "),
         Span::styled(
-            format!("{:<30}", truncate_str(&name, 30)),
+            crate::ui::text::fit_display_width(&name, 30),
             Style::default().fg(name_color),
         ),
     ];
@@ -151,70 +151,4 @@ fn build_bookmark_line(info: &BookmarkInfo, is_selected: bool) -> Line<'static> 
         );
     }
     line
-}
-
-fn truncate_str(s: &str, max_len: usize) -> String {
-    let char_count = s.chars().count();
-    if char_count <= max_len {
-        s.to_string()
-    } else if max_len > 3 {
-        let truncated: String = s.chars().take(max_len - 3).collect();
-        format!("{}...", truncated)
-    } else {
-        s.chars().take(max_len).collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn truncate_str_short_string_unchanged() {
-        assert_eq!(truncate_str("hello", 10), "hello");
-    }
-
-    #[test]
-    fn truncate_str_exact_length_unchanged() {
-        assert_eq!(truncate_str("hello", 5), "hello");
-    }
-
-    #[test]
-    fn truncate_str_long_string_adds_ellipsis() {
-        assert_eq!(truncate_str("hello world", 8), "hello...");
-    }
-
-    #[test]
-    fn truncate_str_max_len_3_no_ellipsis() {
-        assert_eq!(truncate_str("hello", 3), "hel");
-    }
-
-    #[test]
-    fn truncate_str_multibyte_japanese() {
-        // Japanese characters are 3 bytes each in UTF-8
-        let s = "ブックマーク名前テスト";
-        // 11 chars, truncate to 8 → 5 chars + "..."
-        let result = truncate_str(s, 8);
-        assert_eq!(result, "ブックマー...");
-        assert_eq!(result.chars().count(), 8);
-    }
-
-    #[test]
-    fn truncate_str_multibyte_exact_fit() {
-        let s = "日本語";
-        assert_eq!(truncate_str(s, 3), "日本語");
-    }
-
-    #[test]
-    fn truncate_str_emoji() {
-        let s = "feat-🚀-rocket-launch";
-        let result = truncate_str(s, 10);
-        assert_eq!(result.chars().count(), 10);
-        assert!(result.ends_with("..."));
-    }
-
-    #[test]
-    fn truncate_str_empty_string() {
-        assert_eq!(truncate_str("", 10), "");
-    }
 }

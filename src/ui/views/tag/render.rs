@@ -64,7 +64,7 @@ fn build_tag_line(tag: &TagInfo, is_selected: bool) -> Line<'static> {
     let mut spans = vec![
         Span::raw("  "),
         Span::styled(
-            format!("{:<20}", truncate_str(name, 20)),
+            crate::ui::text::fit_display_width(name, 20),
             Style::default().fg(Color::Green),
         ),
     ];
@@ -94,16 +94,4 @@ fn build_tag_line(tag: &TagInfo, is_selected: bool) -> Line<'static> {
         );
     }
     line
-}
-
-fn truncate_str(s: &str, max_len: usize) -> String {
-    let char_count = s.chars().count();
-    if char_count <= max_len {
-        s.to_string()
-    } else if max_len > 3 {
-        let truncated: String = s.chars().take(max_len - 3).collect();
-        format!("{}...", truncated)
-    } else {
-        s.chars().take(max_len).collect()
-    }
 }
