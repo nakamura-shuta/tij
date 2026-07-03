@@ -315,6 +315,16 @@ impl LogView {
             LogCommand::AiReport => LogAction::ExportAiReport,
             LogCommand::AiOrphans => LogAction::ShowOrphans,
             LogCommand::ToggleCommandEcho => LogAction::ToggleCommandEcho,
+            LogCommand::Run => {
+                if let Some(change) = self.selected_change() {
+                    LogAction::RunStart {
+                        revision: change.commit_id.to_string(),
+                        change_id: change.change_id.to_string(),
+                    }
+                } else {
+                    LogAction::None
+                }
+            }
         }
     }
 

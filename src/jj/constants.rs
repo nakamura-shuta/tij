@@ -53,6 +53,7 @@ pub mod commands {
     pub const SIMPLIFY_PARENTS: &str = "simplify-parents";
     pub const PARALLELIZE: &str = "parallelize";
     pub const FIX: &str = "fix";
+    pub const RUN: &str = "run";
     pub const GIT_REMOTE: &str = "remote";
     pub const GIT_REMOTE_LIST: &str = "list";
     pub const TAG: &str = "tag";

@@ -219,6 +219,11 @@ pub enum LogAction {
     ToggleCommandEcho,
     /// Notify the count of orphaned traces over the loaded changes (A7)
     ShowOrphans,
+    /// Start the `jj run` flow: open the target-preset select dialog.
+    /// `revision` (commit_id) builds the revset; `change_id` is shown in the
+    /// dialog title only (it is consumed there — the follow-up callback carries
+    /// the revision only, no dead field).
+    RunStart { revision: String, change_id: String },
 }
 
 /// Identifiers for low-frequency Log commands reachable only via the palette
@@ -243,6 +248,7 @@ pub enum LogCommand {
     AiReport,
     AiOrphans,
     ToggleCommandEcho,
+    Run,
 }
 
 /// Log View state

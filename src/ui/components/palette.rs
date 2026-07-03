@@ -58,6 +58,11 @@ pub fn palette_commands() -> &'static [PaletteCommand] {
             dispatch: PaletteDispatch::Command(LogCommand::Fix),
         },
         PaletteCommand {
+            name: "run",
+            description: "Run a shell command across revisions",
+            dispatch: PaletteDispatch::Command(LogCommand::Run),
+        },
+        PaletteCommand {
             name: "arrange",
             description: "Interactively arrange the commit graph",
             dispatch: PaletteDispatch::Command(LogCommand::Arrange),
@@ -330,6 +335,26 @@ mod tests {
             cmd.dispatch,
             PaletteDispatch::Command(LogCommand::ShowStackDiff)
         ));
+    }
+
+    #[test]
+    fn registry_has_run() {
+        let cmds = palette_commands();
+        let cmd = cmds
+            .iter()
+            .find(|c| c.name == "run")
+            .expect("run registered");
+        assert!(matches!(
+            cmd.dispatch,
+            PaletteDispatch::Command(LogCommand::Run)
+        ));
+    }
+
+    #[test]
+    fn filter_matches_run() {
+        let cmds = palette_commands();
+        let out = filter_commands(cmds, "run");
+        assert!(out.iter().any(|c| c.name == "run"));
     }
 
     #[test]

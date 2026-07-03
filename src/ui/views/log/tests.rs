@@ -2577,6 +2577,33 @@ fn test_fix_key_no_selection() {
 }
 
 // =============================================================================
+// Run tests (palette `run`)
+// =============================================================================
+
+#[test]
+fn test_run_command_dispatches_action() {
+    let mut view = LogView::new();
+    view.set_changes(create_test_changes());
+
+    let action = view.command_action(LogCommand::Run);
+    assert_eq!(
+        action,
+        LogAction::RunStart {
+            revision: "def67890".to_string(),
+            change_id: "abc12345".to_string(),
+        }
+    );
+}
+
+#[test]
+fn test_run_command_no_selection() {
+    let mut view = LogView::new();
+    // Empty changes → no selected change → no action
+    let action = view.command_action(LogCommand::Run);
+    assert_eq!(action, LogAction::None);
+}
+
+// =============================================================================
 // Metaedit key tests
 // =============================================================================
 
