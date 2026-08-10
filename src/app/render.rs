@@ -1074,6 +1074,62 @@ mod tests {
             .unwrap();
     }
 
+    /// A blank `error_message` has nothing to show: no banner, and — the part
+    /// that actually costs something — no row taken off the view.
+    #[test]
+    fn blank_error_message_reserves_nothing_and_draws_nothing() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff;
+
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        for blank in ["", " ", "   \t ", "\n  \n"] {
+            app.error_message = Some(blank.to_string());
+            terminal
+                .draw(|f| {
+                    assert_eq!(app.error_banner_rows(f.area()), 0, "blank={blank:?}");
+                    assert_eq!(app.view_area(f).height, 20, "blank={blank:?}");
+                    app.render(f);
+                })
+                .unwrap();
+            let text = buffer_text(&terminal);
+            assert!(
+                !text.contains("Error:"),
+                "blank error must draw no banner ({blank:?}): {text}"
+            );
+        }
+    }
+
+    /// The banner as the user actually sees it after a failed `jj tag set` on
+    /// an 80-column terminal: the `JjError` wrapper and jj's duplicated
+    /// `Error: ` are gone, tij's operation context and the `Hint:` row stay,
+    /// and the message no longer wraps.
+    #[test]
+    fn tag_create_failure_reads_without_the_plumbing_at_80_columns() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff;
+        app.error_message = Some(
+            "Tag creation failed: jj command failed (exit code 1): \
+             Error: Refusing to move tag: v1.0\n\
+             Hint: Use --allow-move to update existing tags."
+                .to_string(),
+        );
+
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
+
+        // 20 rows = 17 placeholder + 2 banner + 1 status bar.
+        assert_eq!(
+            row_text(&terminal, 17, 80).trim_end(),
+            " Error:  Tag creation failed: Refusing to move tag: v1.0"
+        );
+        assert_eq!(
+            row_text(&terminal, 18, 80).trim_end(),
+            "         Hint: Use --allow-move to update existing tags."
+        );
+    }
+
     /// The regression this feature exists for: jj's `Hint:` line used to fall
     /// outside the one-row banner. It must now have a row of its own, and that
     /// row must be *below* the view, not painted over it.

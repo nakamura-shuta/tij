@@ -112,6 +112,20 @@ mod tests {
         assert_eq!(error_banner_height(MULTILINE_STDERR, 80, 0), 0);
     }
 
+    /// A blank error takes no rows at any terminal size — the view keeps them.
+    #[test]
+    fn blank_error_reserves_no_rows() {
+        for error in ["", " ", "   \t ", "\n  \n"] {
+            for available in [0u16, 3, 4, 24, 100] {
+                assert_eq!(
+                    error_banner_height(error, 80, available),
+                    0,
+                    "error={error:?} available={available}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn height_is_capped_at_max_banner_rows() {
         let many = "a\nb\nc\nd\ne\nf\ng\nh";
