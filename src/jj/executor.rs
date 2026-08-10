@@ -48,11 +48,14 @@ impl PushBulkMode {
     }
 
     /// Human-readable label for UI
+    ///
+    /// jj 0.44 pushes tags alongside bookmarks for all three bulk modes, so the
+    /// labels name both.
     pub fn label(&self) -> &'static str {
         match self {
-            Self::All => "all bookmarks",
-            Self::Tracked => "tracked bookmarks",
-            Self::Deleted => "deleted bookmarks",
+            Self::All => "all bookmarks and tags",
+            Self::Tracked => "tracked bookmarks and tags",
+            Self::Deleted => "deleted bookmarks and tags",
         }
     }
 }
@@ -1704,16 +1707,40 @@ impl JjExecutor {
 
     // ── Tag operations ─────────────────────────────────────────────
 
-    /// List all local tags with their target commit info
+    /// List all tags (local and remote) with their target commit info
     ///
     /// Uses a single-stage query (unlike bookmarks which need 2 stages)
     /// because `jj tag list -T` can access `normal_target` directly.
+    ///
+    /// `--all-remotes` is required: without it `jj tag list` returns no
+    /// untracked remote tag at all, so there would be nothing to track.
+    ///
+    /// The template concatenates fields explicitly with `++ "\t" ++` instead of
+    /// using `separate()`. `separate()` drops empty fields *together with* their
+    /// separator, which makes the column count vary per row; explicit
+    /// concatenation keeps empty fields and yields a fixed 8 columns.
+    ///
+    /// The three `normal_target` fields are wrapped in `try(expr, "")`: rows with
+    /// `present == false` (local tag deleted while the remote tag remains) have no
+    /// commit, and jj does not fail there — it embeds the literal string
+    /// `<Error: No Commit available>` in the output, which would be mis-parsed as
+    /// a change_id. `try()` turns it into an empty field.
     pub fn tag_list(&self) -> Result<Vec<TagInfo>, JjError> {
-        const TAG_LIST_TEMPLATE: &str = r#"separate("\t", name, if(remote, remote, ""), if(present, "true", "false"), if(tracked, "true", "false"), normal_target.change_id().short(8), normal_target.commit_id().short(8), normal_target.description().first_line()) ++ "\n""#;
+        const TAG_LIST_TEMPLATE: &str = concat!(
+            r#"name ++ "\t""#,
+            r#" ++ if(remote, remote, "") ++ "\t""#,
+            r#" ++ if(present, "true", "false") ++ "\t""#,
+            r#" ++ if(tracked, "true", "false") ++ "\t""#,
+            r#" ++ if(conflict, "true", "false") ++ "\t""#,
+            r#" ++ try(normal_target.change_id().short(8), "") ++ "\t""#,
+            r#" ++ try(normal_target.commit_id().short(8), "") ++ "\t""#,
+            r#" ++ try(normal_target.description().first_line(), "") ++ "\n""#,
+        );
 
         let output = self.run_readonly_str(&[
             commands::TAG,
             commands::TAG_LIST,
+            flags::ALL_REMOTES,
             flags::TEMPLATE,
             TAG_LIST_TEMPLATE,
         ])?;
@@ -1786,8 +1813,9 @@ mod tests {
 
     #[test]
     fn test_push_bulk_mode_label() {
-        assert_eq!(PushBulkMode::All.label(), "all bookmarks");
-        assert_eq!(PushBulkMode::Tracked.label(), "tracked bookmarks");
-        assert_eq!(PushBulkMode::Deleted.label(), "deleted bookmarks");
+        // jj 0.44: every bulk mode pushes tags together with bookmarks.
+        assert_eq!(PushBulkMode::All.label(), "all bookmarks and tags");
+        assert_eq!(PushBulkMode::Tracked.label(), "tracked bookmarks and tags");
+        assert_eq!(PushBulkMode::Deleted.label(), "deleted bookmarks and tags");
     }
 }

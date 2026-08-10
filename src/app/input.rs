@@ -1007,6 +1007,21 @@ impl App {
                     DialogCallback::TagDelete { name: name.clone() },
                 ));
             }
+            // track/untrack are undoable with `u` → no confirmation.
+            TagAction::Track(full_name) => {
+                self.execute_tag_track(&full_name);
+            }
+            TagAction::Untrack(full_name) => {
+                self.execute_tag_untrack(&full_name);
+            }
+            // Push leaves the machine → always confirmed first.
+            TagAction::Push(name) => {
+                self.start_tag_push(name);
+            }
+            // Client-side view state only: no jj run, no refresh.
+            TagAction::CycleFilter => {
+                self.tag_view.cycle_filter();
+            }
         }
     }
 

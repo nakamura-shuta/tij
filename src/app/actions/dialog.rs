@@ -50,7 +50,9 @@ impl App {
                     self.handle_bookmark_dialog(callback, values);
                 }
                 // Tag
-                DialogCallback::TagCreate { .. } | DialogCallback::TagDelete { .. } => {
+                DialogCallback::TagCreate { .. }
+                | DialogCallback::TagDelete { .. }
+                | DialogCallback::TagPush { .. } => {
                     self.handle_tag_dialog(callback, values);
                 }
                 // Workspace
@@ -94,6 +96,13 @@ impl App {
             | DialogCallback::GitPushRevisions { .. }
             | DialogCallback::GitPushMultiBookmarkMode { .. } => {
                 self.push_target_remote = None;
+                // GitPushRemoteSelect is shared with the Tag View push flow;
+                // cancelling it must not leave a tag armed for the next push.
+                self.pending_push_tag = None;
+            }
+            DialogCallback::TagPush { .. } => {
+                self.push_target_remote = None;
+                self.pending_push_tag = None;
             }
             DialogCallback::BookmarkForget => {
                 self.pending_forget_bookmark = None;
@@ -147,7 +156,11 @@ impl App {
             DialogCallback::GitPushRemoteSelect => {
                 if let Some(remote) = values.first() {
                     self.push_target_remote = Some(remote.clone());
-                    self.start_push();
+                    // The dialog is shared: resume whichever flow armed it.
+                    match self.pending_push_tag.take() {
+                        Some(name) => self.start_tag_push(name),
+                        None => self.start_push(),
+                    }
                 }
             }
             DialogCallback::GitPushModeSelect { change_id } => {

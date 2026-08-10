@@ -8,7 +8,7 @@ use ratatui::{
 
 use super::state::{App, View};
 use crate::app::helpers::revision::short_id;
-use crate::keys::{self, BookmarkKind, DialogHintKind, HintContext};
+use crate::keys::{self, BookmarkKind, DialogHintKind, HintContext, TagKind};
 use crate::model::{DiffContent, DiffLineKind, FileOperation};
 use crate::ui::components::dialog::DialogKind;
 use crate::ui::widgets::{
@@ -434,13 +434,32 @@ impl App {
         render_status_hints(frame, &hints);
     }
 
+    /// Build HintContext for Tag View (uses selected tag kind + filter mode)
+    fn build_tag_hint_context(&self) -> HintContext {
+        let kind = self.tag_view.selected_tag().map(|tag| {
+            if tag.is_local() {
+                TagKind::Local
+            } else if tag.is_tracked_remote() {
+                TagKind::TrackedRemote
+            } else {
+                TagKind::UntrackedRemote
+            }
+        });
+        HintContext {
+            selected_tag_kind: kind,
+            tag_filter: self.tag_view.filter(),
+            dialog: self.dialog_hint_kind(),
+            ..HintContext::default()
+        }
+    }
+
     fn render_tag_view(
         &self,
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
         let area = self.view_area(frame);
-        let ctx = keys::HintContext::default();
+        let ctx = self.build_tag_hint_context();
         let hints = keys::current_hints(View::Tag, self.log_view.input_mode, &ctx);
         let sb_height = status_hints_height(&hints, area.width);
 

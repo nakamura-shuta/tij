@@ -253,6 +253,12 @@ pub struct App {
     /// Cleared on all exit paths: push success/error (via `take()` at top of
     /// `execute_push`), remote selection cancel, bookmark selection cancel.
     pub(crate) push_target_remote: Option<String>,
+    /// Tag name awaiting a remote selection (Tag View `P` on a multi-remote repo)
+    ///
+    /// Set only while the `GitPushRemoteSelect` dialog is open, so its confirm
+    /// handler knows to resume the *tag* push instead of the bookmark push.
+    /// Cleared on selection (`take()`), on cancel, and in `execute_tag_push`.
+    pub(crate) pending_push_tag: Option<String>,
     /// Help view scroll offset (line-based)
     pub(crate) help_scroll: u16,
     /// Help view: active search query (for highlighting and n/N navigation)
@@ -324,6 +330,7 @@ impl App {
             preview_cache: PreviewCache::new(),
             preview_pending_id: None,
             push_target_remote: None,
+            pending_push_tag: None,
             help_scroll: 0,
             help_search_query: None,
             help_search_input: false,

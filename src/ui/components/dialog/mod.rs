@@ -101,6 +101,8 @@ pub enum DialogCallback {
     TagCreate { revision: String },
     /// Tag deletion (Confirm dialog)
     TagDelete { name: String },
+    /// Tag push to a remote (Confirm dialog) — carries the bare tag name
+    TagPush { name: String },
     /// Workspace add (Input dialog for path)
     WorkspaceAdd,
     /// Workspace forget (Confirm dialog)
