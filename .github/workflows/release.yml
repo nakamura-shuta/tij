@@ -30,10 +30,29 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo publish
+      # Tolerate ONLY "already published" (so a re-run of a successful release
+      # is a no-op). Every other failure — expired CARGO_REGISTRY_TOKEN, network
+      # error, verification failure — must fail the job loudly.
+      #
+      # This replaces `continue-on-error: true`, which swallowed a 403 auth
+      # failure during v0.11.1 and reported the job as green while nothing was
+      # published. If cargo ever changes the "already uploaded" wording this
+      # fails closed (job red on an already-published crate), which is the safe
+      # direction: a false alarm, not a silent non-release.
+      - name: cargo publish
+        run: |
+          set -o pipefail
+          if cargo publish 2>&1 | tee publish.log; then
+            exit 0
+          fi
+          if grep -qiE 'already (uploaded|exists)' publish.log; then
+            echo "::notice::this version is already on crates.io — skipping publish"
+            exit 0
+          fi
+          echo "::error::cargo publish failed (see log above)"
+          exit 1
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        continue-on-error: true  # Allow release to continue if already published
 
   # Build release binaries for each target
   build:
