@@ -58,7 +58,9 @@ pub struct CommandRecord {
     pub duration_ms: u128,
     /// Whether the command succeeded or failed
     pub status: CommandStatus,
-    /// Error message if the command failed
+    /// Error text if the command failed — jj's **full** stderr, which is
+    /// routinely multi-line (`Error: …` then `Hint: …`). The list row shows
+    /// none of it; the Enter detail renders it line by line.
     pub error: Option<String>,
 }
 

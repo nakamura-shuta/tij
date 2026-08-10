@@ -77,3 +77,30 @@ fn test_command_history_view_mixed_kinds() {
     let out = redact_times(&render_to_snapshot(&mut view, &history));
     assert_snapshot!(out);
 }
+
+/// A failed record expanded with Enter: jj's stderr is multi-line
+/// (`Error:` then `Hint:`) and the detail view is the only place the hint can
+/// be read, so both rows must appear.
+#[test]
+fn test_command_history_detail_shows_multiline_stderr() {
+    let mut history = CommandHistory::new();
+    let mut failed = record(
+        "Tag set",
+        CommandKind::Write,
+        &["--color=never", "tag", "set", "v1.0", "-r", "abc12345"],
+        1,
+    );
+    failed.status = CommandStatus::Failed;
+    failed.error = Some(
+        "Error: Refusing to create new remote tag v1.0@other\n\
+         Hint: Run `jj tag track v1.0@other` and try again."
+            .to_string(),
+    );
+    history.push(failed);
+
+    let mut view = CommandHistoryView::new();
+    view.toggle_detail(); // Enter on the selected (only) row
+    let out = redact_times(&render_to_snapshot(&mut view, &history));
+    assert!(out.contains("Hint: Run"), "hint must be rendered:\n{out}");
+    assert_snapshot!(out);
+}

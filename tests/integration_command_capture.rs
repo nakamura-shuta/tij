@@ -60,7 +60,43 @@ fn failed_run_is_captured_with_error() {
     let invs = jj.take_invocations();
     assert_eq!(invs.len(), 1);
     assert!(!invs[0].success);
-    assert!(invs[0].error.is_some(), "failure carries stderr first line");
+    assert!(invs[0].error.is_some(), "failure carries stderr");
+}
+
+/// Regression (real jj): the capture keeps the **whole** stderr.
+///
+/// `jj bookmark create <existing>` answers with two lines — `Error: …` and
+/// `Hint: …`. The capture used to keep only the first, and because the error
+/// banner is one row tall, the hint was then unreachable from anywhere in tij.
+#[test]
+fn failed_run_captures_full_multiline_stderr() {
+    skip_if_no_jj!();
+    let repo = TestRepo::new();
+    let jj = executor_for(&repo);
+    repo.write_file("f.txt", "hello");
+    repo.jj(&["describe", "-m", "base"]);
+    repo.jj(&["bookmark", "create", "dup", "-r", "@"]);
+
+    let result = jj.run(&["bookmark", "create", "dup", "-r", "@"]);
+    assert!(result.is_err(), "creating an existing bookmark must fail");
+
+    let invs = jj.take_invocations();
+    let err = invs
+        .last()
+        .expect("invocation captured")
+        .error
+        .clone()
+        .expect("failure carries stderr");
+
+    assert!(err.contains("Error:"), "stderr head kept: {err:?}");
+    assert!(
+        err.contains("Hint:"),
+        "the Hint line must not be truncated away: {err:?}"
+    );
+    assert!(
+        err.lines().count() >= 2,
+        "multi-line stderr stays multi-line: {err:?}"
+    );
 }
 
 #[test]

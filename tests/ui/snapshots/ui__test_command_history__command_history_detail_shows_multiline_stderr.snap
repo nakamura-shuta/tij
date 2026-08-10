@@ -1,0 +1,50 @@
+---
+source: tests/ui/test_command_history.rs
+expression: out
+---
+TestBackend { buffer: Buffer {
+    area: Rect { x: 0, y: 0, width: 100, height: 10 },
+    content: [
+        "┌─────────────────────────────────── Command History [All] (1) ────────────────────────────────────┐",
+        "│  [TIME]    NG  [W]  Tag set             jj --color=never tag set v1.0 -r abc12345                │",
+        "│      Command: jj --color=never tag set v1.0 -r abc12345                                          │",
+        "│      Duration: 12ms                                                                              │",
+        "│      Error: Error: Refusing to create new remote tag v1.0@other                                  │",
+        "│             Hint: Run `jj tag track v1.0@other` and try again.                                   │",
+        "│                                                                                                  │",
+        "│                                                                                                  │",
+        "│                                                                                                  │",
+        "└──────────────────────────────────────────────────────────────────────────────────────────────────┘",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 36, y: 0, fg: Cyan, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 63, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 1, fg: White, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 3, y: 1, fg: DarkGray, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 11, y: 1, fg: White, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 13, y: 1, fg: Red, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 15, y: 1, fg: White, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 17, y: 1, fg: Yellow, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 20, y: 1, fg: White, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 22, y: 1, fg: Cyan, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 36, y: 1, fg: White, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 37, y: 1, fg: DarkGray, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 41, y: 1, fg: White, bg: Indexed(24), underline: Reset, modifier: BOLD,
+        x: 83, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 7, y: 2, fg: Yellow, bg: Reset, underline: Reset, modifier: NONE,
+        x: 16, y: 2, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 57, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 7, y: 3, fg: Yellow, bg: Reset, underline: Reset, modifier: NONE,
+        x: 17, y: 3, fg: DarkGray, bg: Reset, underline: Reset, modifier: NONE,
+        x: 21, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 7, y: 4, fg: Yellow, bg: Reset, underline: Reset, modifier: NONE,
+        x: 14, y: 4, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
+        x: 65, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 7, y: 5, fg: Yellow, bg: Reset, underline: Reset, modifier: NONE,
+        x: 14, y: 5, fg: Red, bg: Reset, underline: Reset, modifier: NONE,
+        x: 64, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}, scrollback: Buffer {
+    area: Rect { x: 0, y: 0, width: 100, height: 0 }
+}, cursor: false, pos: (0, 0) }

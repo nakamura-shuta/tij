@@ -93,10 +93,32 @@ pub struct JjInvocation {
     pub at: SystemTime,
     pub duration_ms: u128,
     pub success: bool,
-    /// First line of stderr on failure
+    /// **Full** stderr on failure (see [`recorded_error`]) — not just its
+    /// first line. jj routinely answers with `Error: …` followed by a
+    /// `Hint: …` line, and the Command History detail is the only place that
+    /// hint is reachable (the error banner is one row tall).
     pub error: Option<String>,
     /// Operation label set by the App (e.g. "Describe"); None = auto-label
     pub operation: Option<String>,
+}
+
+/// The error text recorded for a failed invocation: the **whole** stderr,
+/// trailing newline trimmed.
+///
+/// Truncating to the first line here used to drop jj's second line, e.g.
+///
+/// ```text
+/// Error: Refusing to create new remote tag v1.0@other
+/// Hint: Run `jj tag track v1.0@other` and try again.
+/// ```
+///
+/// The hint is the actionable half, so the capture keeps every line and lets
+/// the consumer decide how much to show (`CommandHistoryView` renders up to
+/// `MAX_ERROR_LINES`). `trim_end` only removes the trailing newline so the
+/// detail view does not gain a phantom blank row; an empty stderr still
+/// records `Some("")`, exactly as before, and renders as no error line.
+fn recorded_error(stderr: &str) -> String {
+    stderr.trim_end().to_string()
 }
 
 /// Sequence counter and pending records live in ONE mutex so cloned
@@ -317,11 +339,11 @@ impl JjExecutor {
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
             let exit_code = output.status.code().unwrap_or(-1);
-            let first_err = stderr.lines().next().unwrap_or("").to_string();
+            let err_text = recorded_error(&stderr);
 
             // Check for common error patterns
             if stderr.contains(errors::NOT_A_REPO) {
-                self.capture(args, kind, started, false, Some(first_err));
+                self.capture(args, kind, started, false, Some(err_text));
                 return Err(JjError::NotARepository);
             }
 
@@ -344,7 +366,7 @@ impl JjExecutor {
                 });
             }
 
-            self.capture(args, kind, started, false, Some(first_err));
+            self.capture(args, kind, started, false, Some(err_text));
             Err(JjError::CommandFailed { stderr, exit_code })
         }
     }
@@ -381,8 +403,8 @@ impl JjExecutor {
             Ok(stderr)
         } else {
             let exit_code = output.status.code().unwrap_or(-1);
-            let first_err = stderr.lines().next().unwrap_or("").to_string();
-            self.capture(args, kind, started, false, Some(first_err));
+            let err_text = recorded_error(&stderr);
+            self.capture(args, kind, started, false, Some(err_text));
             Err(JjError::CommandFailed { stderr, exit_code })
         }
     }
@@ -1809,6 +1831,41 @@ mod tests {
         assert_eq!(PushBulkMode::All.flag(), "--all");
         assert_eq!(PushBulkMode::Tracked.flag(), "--tracked");
         assert_eq!(PushBulkMode::Deleted.flag(), "--deleted");
+    }
+
+    /// Regression: the capture must not collapse jj's stderr to its first
+    /// line. jj puts the actionable half in the `Hint:` line, and after this
+    /// the Command History detail is the only place it can be read.
+    #[test]
+    fn recorded_error_keeps_every_stderr_line() {
+        let stderr = "Error: Refusing to create new remote tag v1.0@other\n\
+                      Hint: Run `jj tag track v1.0@other` and try again.\n";
+        let recorded = recorded_error(stderr);
+        assert_eq!(
+            recorded.lines().count(),
+            2,
+            "both lines survive the capture: {recorded:?}"
+        );
+        assert!(recorded.starts_with("Error: Refusing to create new remote tag"));
+        assert!(
+            recorded.contains("Hint: Run `jj tag track v1.0@other` and try again."),
+            "the Hint line must not be truncated away: {recorded:?}"
+        );
+    }
+
+    #[test]
+    fn recorded_error_trims_only_the_trailing_newline() {
+        // No phantom blank row in the detail view …
+        assert_eq!(recorded_error("Error: boom\n"), "Error: boom");
+        assert_eq!(recorded_error("Error: boom\n\n"), "Error: boom");
+        // … and interior blank lines / indentation are left alone.
+        assert_eq!(
+            recorded_error("Error: a\n\n  Hint: b"),
+            "Error: a\n\n  Hint: b"
+        );
+        // Empty stderr keeps recording as an empty string (renders as no
+        // error line), matching the pre-full-stderr behaviour.
+        assert_eq!(recorded_error(""), "");
     }
 
     #[test]

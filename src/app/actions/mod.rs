@@ -2409,6 +2409,38 @@ mod tests {
         assert_eq!(records[0].status, CommandStatus::Failed);
     }
 
+    /// Regression: a multi-line jj stderr must reach the Command History
+    /// intact. The executor used to keep only `stderr.lines().next()`, which
+    /// silently dropped the `Hint:` line — and since the error banner is one
+    /// row tall, the hint was then unreachable from anywhere in tij.
+    #[test]
+    fn flush_preserves_multiline_stderr_in_the_record() {
+        let mut app = App::new_for_test();
+        let mut inv = test_invocation(40, CommandKind::Write, &["tag", "set", "v1.0", "-r", "@"]);
+        inv.success = false;
+        inv.error = Some(
+            "Error: Refusing to create new remote tag v1.0@other\n\
+             Hint: Run `jj tag track v1.0@other` and try again."
+                .to_string(),
+        );
+        app.jj.push_test_invocation(inv);
+        app.flush_invocations();
+
+        let record = &app.command_history.records()[0];
+        assert_eq!(record.status, CommandStatus::Failed);
+        let error = record.error.as_deref().expect("failure carries stderr");
+        assert_eq!(
+            error.lines().count(),
+            2,
+            "both stderr lines kept: {error:?}"
+        );
+        assert!(error.contains("Error: Refusing to create new remote tag v1.0@other"));
+        assert!(
+            error.contains("Hint: Run `jj tag track v1.0@other` and try again."),
+            "the Hint line must survive into the history: {error:?}"
+        );
+    }
+
     #[test]
     fn flush_collapses_consecutive_identical_reads() {
         let mut app = App::new_for_test();
