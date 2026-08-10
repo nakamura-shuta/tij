@@ -42,10 +42,14 @@ jobs:
       - name: cargo publish
         run: |
           set -o pipefail
-          if cargo publish 2>&1 | tee publish.log; then
+          # The log MUST live outside the checkout: `cargo publish` refuses to
+          # run when the working directory has uncommitted changes, so writing
+          # it next to Cargo.toml makes the step fail itself.
+          log="${RUNNER_TEMP:-/tmp}/publish.log"
+          if cargo publish 2>&1 | tee "$log"; then
             exit 0
           fi
-          if grep -qiE 'already (uploaded|exists)' publish.log; then
+          if grep -qiE 'already (uploaded|exists)' "$log"; then
             echo "::notice::this version is already on crates.io — skipping publish"
             exit 0
           fi
