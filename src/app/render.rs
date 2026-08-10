@@ -12,8 +12,8 @@ use crate::keys::{self, BookmarkKind, DialogHintKind, HintContext, TagKind};
 use crate::model::{DiffContent, DiffLineKind, FileOperation};
 use crate::ui::components::dialog::DialogKind;
 use crate::ui::widgets::{
-    render_blame_status_bar, render_diff_status_bar, render_error_banner, render_help_panel,
-    render_placeholder, render_status_hints, status_hints_height,
+    error_banner_height, render_blame_status_bar, render_diff_status_bar, render_error_banner,
+    render_help_panel, render_placeholder, render_status_hints, status_hints_height,
 };
 
 impl App {
@@ -50,12 +50,16 @@ impl App {
             self.render_command_echo(frame);
         }
 
-        // Render error banner above status bar (errors are always shown prominently)
+        // Render error banner above status bar (errors are always shown
+        // prominently). It owns its rows — `view_area` already handed them
+        // over — so a multi-line stderr never paints over view content.
         if let Some(ref error) = self.error_message {
-            let status_bar_height = self.get_current_status_bar_height(frame.area().width);
+            let full = frame.area();
+            let status_bar_height = self.get_current_status_bar_height(full.width);
             // With the echo bar on, the banner sits above it, not over it.
             let echo = if self.command_echo_enabled { 1 } else { 0 };
-            render_error_banner(frame, error, status_bar_height + echo);
+            let height = self.error_banner_rows(full);
+            render_error_banner(frame, error, status_bar_height + echo, height);
         }
 
         // Render dialog on top of everything
@@ -74,18 +78,33 @@ impl App {
     }
 
     /// The area a view may draw into: the full frame, minus one row when the
-    /// command echo bar is enabled. The single place that decides how much
-    /// screen the views get — views must use this instead of `frame.area()`.
+    /// command echo bar is enabled, minus the rows the error banner needs. The
+    /// single place that decides how much screen the views get — views must use
+    /// this instead of `frame.area()`.
     fn view_area(&self, frame: &Frame) -> Rect {
         let full = frame.area();
-        if self.command_echo_enabled {
-            Rect {
-                height: full.height.saturating_sub(1),
-                ..full
-            }
-        } else {
-            full
+        let echo = if self.command_echo_enabled { 1 } else { 0 };
+        let reserved = echo + self.error_banner_rows(full);
+        Rect {
+            height: full.height.saturating_sub(reserved),
+            ..full
         }
+    }
+
+    /// Rows the error banner takes out of the frame this render — 0 when there
+    /// is no error, or when the terminal is too short to spare them.
+    ///
+    /// jj stderr is routinely two lines (`Error:` + the actionable `Hint:`) and
+    /// wraps on narrow terminals, so the banner is not a fixed single row. Both
+    /// `view_area` and the banner renderer read this same number, which is what
+    /// keeps the reservation and the drawing in step.
+    fn error_banner_rows(&self, full: Rect) -> u16 {
+        let Some(error) = self.error_message.as_deref() else {
+            return 0;
+        };
+        let sb = self.get_current_status_bar_height(full.width);
+        let echo = if self.command_echo_enabled { 1 } else { 0 };
+        error_banner_height(error, full.width, full.height.saturating_sub(sb + echo))
     }
 
     /// Area for unloaded-view placeholders: `view_area` minus the rows the
@@ -1011,18 +1030,155 @@ mod tests {
         );
     }
 
+    /// jj's real two-line answer when a tag would create an untracked remote
+    /// ref: the second line is the actionable half.
+    const MULTILINE_STDERR: &str = "Error: Refusing to create new remote tag v1.0@other\n\
+                                    Hint: Run `jj tag track v1.0@other` and try again.";
+
+    /// Read one row of the TestBackend buffer.
+    fn row_text(
+        terminal: &ratatui::Terminal<ratatui::backend::TestBackend>,
+        y: u16,
+        width: u16,
+    ) -> String {
+        let buf = terminal.backend().buffer();
+        (0..width).map(|x| buf[(x, y)].symbol()).collect()
+    }
+
     #[test]
-    fn view_area_reserves_one_row_only_when_echo_enabled() {
+    fn view_area_reserves_rows_for_the_echo_bar_and_the_error_banner() {
         let mut app = App::new_for_test();
+        // Diff without a loaded diff → placeholder route, status bar height 1.
+        app.current_view = View::Diff;
         let backend = ratatui::backend::TestBackend::new(80, 20);
         let mut terminal = ratatui::Terminal::new(backend).unwrap();
         terminal
             .draw(|f| {
-                assert_eq!(app.view_area(f).height, 20, "echo off → full frame");
+                assert_eq!(app.view_area(f).height, 20, "echo off, no error → full");
                 app.command_echo_enabled = true;
                 assert_eq!(app.view_area(f).height, 19, "echo on → one row reserved");
+
+                app.error_message = Some(MULTILINE_STDERR.to_string());
+                assert_eq!(
+                    app.view_area(f).height,
+                    17,
+                    "echo row + the banner's two rows"
+                );
+
+                app.command_echo_enabled = false;
+                assert_eq!(app.view_area(f).height, 18, "banner rows only");
+
+                // The placeholder route follows view_area, minus its status bar.
+                assert_eq!(app.placeholder_area(f).height, 17);
             })
             .unwrap();
+    }
+
+    /// The regression this feature exists for: jj's `Hint:` line used to fall
+    /// outside the one-row banner. It must now have a row of its own, and that
+    /// row must be *below* the view, not painted over it.
+    #[test]
+    fn error_banner_shows_the_hint_line_below_the_view() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff;
+        app.error_message = Some(MULTILINE_STDERR.to_string());
+
+        let backend = ratatui::backend::TestBackend::new(60, 12);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
+
+        // 12 rows = 9 placeholder (border closes on row 8) + 2 banner + 1 status.
+        assert!(
+            row_text(&terminal, 8, 60).starts_with('└'),
+            "view must close above the banner: {:?}",
+            row_text(&terminal, 8, 60)
+        );
+        assert!(
+            row_text(&terminal, 9, 60).contains("Error:  Error: Refusing to create new remote tag"),
+            "{:?}",
+            row_text(&terminal, 9, 60)
+        );
+        assert!(
+            row_text(&terminal, 10, 60).contains("Hint: Run `jj tag track v1.0@other` and try"),
+            "the Hint line must be on its own banner row: {:?}",
+            row_text(&terminal, 10, 60)
+        );
+    }
+
+    /// Banner and echo bar are separate reservations — they must not collide.
+    #[test]
+    fn error_banner_sits_above_the_echo_row() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff;
+        app.command_echo_enabled = true;
+        app.error_message = Some(MULTILINE_STDERR.to_string());
+
+        let backend = ratatui::backend::TestBackend::new(60, 12);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
+
+        // 8 placeholder (border on row 7) + 2 banner + echo + status.
+        assert!(row_text(&terminal, 7, 60).starts_with('└'));
+        assert!(row_text(&terminal, 8, 60).contains("Error: Refusing"));
+        assert!(row_text(&terminal, 9, 60).contains("Hint: Run"));
+        assert!(
+            row_text(&terminal, 10, 60).contains("(no operations yet)"),
+            "echo row overwritten by the banner: {:?}",
+            row_text(&terminal, 10, 60)
+        );
+    }
+
+    #[test]
+    fn error_banner_truncates_with_a_more_marker() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff;
+        app.error_message = Some("l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8".to_string());
+
+        let backend = ratatui::backend::TestBackend::new(60, 12);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
+
+        // Capped at 5 rows: 4 stderr lines + the marker, rows 6..=10.
+        assert!(row_text(&terminal, 5, 60).starts_with('└'));
+        assert!(row_text(&terminal, 6, 60).contains("Error:  l1"));
+        assert!(row_text(&terminal, 9, 60).contains("l4"));
+        assert!(
+            row_text(&terminal, 10, 60).contains("... (4 more lines)"),
+            "{:?}",
+            row_text(&terminal, 10, 60)
+        );
+    }
+
+    /// A short terminal must keep a usable view and must not panic: the banner
+    /// gives up its rows before the view does.
+    #[test]
+    fn error_banner_never_crushes_the_view_on_a_short_terminal() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff; // status bar height 1
+        app.error_message = Some(MULTILINE_STDERR.to_string());
+
+        for height in 1..=10u16 {
+            let backend = ratatui::backend::TestBackend::new(40, height);
+            let mut terminal = ratatui::Terminal::new(backend).unwrap();
+            terminal
+                .draw(|f| {
+                    let full = f.area();
+                    let banner = app.error_banner_rows(full);
+                    let view = app.view_area(f).height;
+                    assert!(
+                        banner < full.height,
+                        "banner {banner} + status bar does not fit in {height}"
+                    );
+                    if full.height >= 4 {
+                        assert!(
+                            view.saturating_sub(1) >= crate::ui::widgets::MIN_VIEW_ROWS,
+                            "view crushed to {view} rows at terminal height {height}"
+                        );
+                    }
+                    app.render(f); // must not panic at any height
+                })
+                .unwrap();
+        }
     }
 
     #[test]

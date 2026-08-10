@@ -5,7 +5,7 @@ mod help_panel;
 mod placeholder;
 mod status_bar;
 
-pub use error_banner::render_error_banner;
+pub use error_banner::{MIN_VIEW_ROWS, error_banner_height, render_error_banner};
 pub use help_panel::{matching_line_indices, render_help_panel};
 pub use placeholder::render_placeholder;
 pub use status_bar::{
