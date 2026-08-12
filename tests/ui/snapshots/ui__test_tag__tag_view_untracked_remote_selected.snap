@@ -1,0 +1,20 @@
+---
+source: tests/ui/test_tag.rs
+expression: out
+---
+"┌────────────────────────────────── Tags (6) ──────────────────────────────────┐"
+"│  ── Local ──                                                                 │"
+"│  v0.11.0                         mzslzzzz  release: v0.11.0                  │"
+"│  v0.12.0 !                       qpvuntsm  release: v0.12.0                  │"
+"│  v0.9.0                                    (no description)                  │"
+"│  ── Remote (tracked) ──                                                      │"
+"│  v0.11.0@origin                                                              │"
+"│  ── Remote (untracked) ──                                                    │"
+"│  v0.10.1@upstream                                                            │"
+"│  v0.12.0@origin                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"└──────────────────────────────────────────────────────────────────────────────┘"
+" [?] Help   [j/k] Navigate   [Enter] Jump   [n] Create Tag   [t] Track          "
+"                                                                                "
+" [F] Filter: All   [u] Undo   [^R] Redo   [^L] Refresh   [q] Back               "

@@ -1,0 +1,20 @@
+---
+source: tests/ui/test_tag.rs
+expression: out
+---
+"┌──────────────────────────── Tags (1/6, tracked) ─────────────────────────────┐"
+"│  ── Remote (tracked) ──                                                      │"
+"│  v0.11.0@origin                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"└──────────────────────────────────────────────────────────────────────────────┘"
+" [?] Help   [j/k] Navigate   [Enter] Jump   [n] Create Tag   [T] Untrack        "
+"                                                                                "
+" [F] Filter: Tracked   [u] Undo   [^R] Redo   [^L] Refresh   [q] Back           "
