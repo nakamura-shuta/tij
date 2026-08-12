@@ -121,6 +121,36 @@ fn recorded_error(stderr: &str) -> String {
     stderr.trim_end().to_string()
 }
 
+/// Exit code `jj resolve --list` uses for "this revision has no conflicts".
+///
+/// Measured against jj 0.44: no conflicts (with or without `-r`, with or
+/// without paths) exits **2**, while genuine failures such as a nonexistent
+/// revision exit 1. The code alone therefore separates the non-error from
+/// real errors.
+const NO_CONFLICTS_EXIT_CODE: i32 = 2;
+
+/// Substring jj prints on stderr for the same state. Covers both wordings:
+/// `Error: No conflicts found at this revision` and, when paths are given,
+/// `Error: No conflicts found at the given path(s)`.
+const NO_CONFLICTS_MARKER: &str = "No conflicts";
+
+/// Is this failure jj's way of saying "there is nothing to resolve here"?
+///
+/// "No conflicts" is a normal state, not an error, but jj reports it as one.
+/// Both the exit code **and** the message are required: exit-code-only would
+/// swallow a real error if jj ever reused code 2 for something else, and
+/// message-only would swallow a different (exit 1) failure whose text happens
+/// to mention conflicts. Requiring both fails in the safe direction — if jj
+/// changes either half, "no conflicts" merely surfaces as an error banner
+/// again instead of a real error being silently discarded.
+fn is_no_conflicts_error(err: &JjError) -> bool {
+    matches!(
+        err,
+        JjError::CommandFailed { stderr, exit_code }
+            if *exit_code == NO_CONFLICTS_EXIT_CODE && stderr.contains(NO_CONFLICTS_MARKER)
+    )
+}
+
 /// Sequence counter and pending records live in ONE mutex so cloned
 /// executors (which share the `Arc`) can never hand out duplicate seqs.
 #[derive(Debug, Default)]
@@ -1081,7 +1111,9 @@ impl JjExecutor {
     /// List conflicted files for a change
     ///
     /// Runs `jj resolve --list [-r <change_id>]` and parses the output.
-    /// Returns an empty list if there are no conflicts.
+    /// Returns an empty list if there are no conflicts — jj reports that
+    /// normal state as a failure, which `is_no_conflicts_error` normalizes
+    /// back into `Ok(vec![])`. Every other failure is propagated.
     pub fn resolve_list(&self, revision: Option<&str>) -> Result<Vec<ConflictFile>, JjError> {
         let mut args = vec![commands::RESOLVE, resolve_flags::LIST];
 
@@ -1090,8 +1122,11 @@ impl JjExecutor {
             args.push(rev);
         }
 
-        let output = self.run_readonly_str(&args)?;
-        Ok(Parser::parse_resolve_list(&output))
+        match self.run_readonly_str(&args) {
+            Ok(output) => Ok(Parser::parse_resolve_list(&output)),
+            Err(e) if is_no_conflicts_error(&e) => Ok(Vec::new()),
+            Err(e) => Err(e),
+        }
     }
 
     /// Resolve a conflict using a built-in tool (:ours or :theirs)
@@ -1866,6 +1901,76 @@ mod tests {
         // Empty stderr keeps recording as an empty string (renders as no
         // error line), matching the pre-full-stderr behaviour.
         assert_eq!(recorded_error(""), "");
+    }
+
+    // =====================================================================
+    // resolve_list: "no conflicts" is a normal state, not an error
+    //
+    // jj 0.44 exits 2 with `Error: No conflicts found …` when a revision is
+    // conflict-free. `resolve_list` turns exactly that into `Ok(vec![])`; the
+    // predicate below is what draws the line, so it is pinned from both sides.
+    // =====================================================================
+
+    #[test]
+    fn no_conflicts_at_this_revision_is_not_a_real_error() {
+        let err = JjError::CommandFailed {
+            stderr: "Error: No conflicts found at this revision\n".to_string(),
+            exit_code: 2,
+        };
+        assert!(is_no_conflicts_error(&err));
+    }
+
+    #[test]
+    fn no_conflicts_at_the_given_paths_is_not_a_real_error() {
+        // Path-scoped wording (`jj resolve --list <path>`), plus jj's warning line.
+        let err = JjError::CommandFailed {
+            stderr: "Warning: No matching entries for paths: src/main.rs\n\
+                     Error: No conflicts found at the given path(s)\n"
+                .to_string(),
+            exit_code: 2,
+        };
+        assert!(is_no_conflicts_error(&err));
+    }
+
+    #[test]
+    fn exit_2_with_another_message_stays_a_real_error() {
+        // Exit code alone must not classify: if jj ever reuses 2, a genuine
+        // failure must still reach the error banner.
+        let err = JjError::CommandFailed {
+            stderr: "Error: Merge tool exited with code 2\n".to_string(),
+            exit_code: 2,
+        };
+        assert!(!is_no_conflicts_error(&err));
+    }
+
+    #[test]
+    fn no_conflicts_wording_with_exit_1_stays_a_real_error() {
+        // Message alone must not classify either — exit 1 is a real failure
+        // even when its text mentions conflicts.
+        let err = JjError::CommandFailed {
+            stderr: "Error: No conflicts something went wrong\n".to_string(),
+            exit_code: 1,
+        };
+        assert!(!is_no_conflicts_error(&err));
+    }
+
+    #[test]
+    fn nonexistent_revision_stays_a_real_error() {
+        // Measured jj 0.44 behaviour for a bad `-r`: exit 1.
+        let err = JjError::CommandFailed {
+            stderr: "Error: Revision `nosuch` doesn't exist\n".to_string(),
+            exit_code: 1,
+        };
+        assert!(!is_no_conflicts_error(&err));
+    }
+
+    #[test]
+    fn non_command_failures_stay_real_errors() {
+        assert!(!is_no_conflicts_error(&JjError::JjNotFound));
+        assert!(!is_no_conflicts_error(&JjError::NotARepository));
+        assert!(!is_no_conflicts_error(&JjError::ParseError(
+            "No conflicts".to_string()
+        )));
     }
 
     #[test]

@@ -1,7 +1,10 @@
 //! View navigation (opening views with data loading)
 
+use crate::jj::JjError;
 use crate::jj::parser::{Parser, parse_evolog};
-use crate::model::{ChangeId, CommitId, CompareInfo, CompareRevisionInfo, Notification};
+use crate::model::{
+    ChangeId, CommitId, CompareInfo, CompareRevisionInfo, ConflictFile, Notification,
+};
 use crate::ui::views::{BlameView, DiffView, EvologView, ResolveView};
 
 use super::state::{App, View};
@@ -285,7 +288,21 @@ impl App {
     ///
     /// Runs `jj resolve --list` and opens the Resolve List View if conflicts exist.
     pub(crate) fn open_resolve_view(&mut self, revision: &str, is_working_copy: bool) {
-        match self.jj.resolve_list(Some(revision)) {
+        let result = self.jj.resolve_list(Some(revision));
+        self.apply_resolve_list_open(result, revision, is_working_copy);
+    }
+
+    /// Apply a `resolve --list` result to the open path.
+    ///
+    /// Split out of `open_resolve_view` so the no-conflicts branch can be
+    /// exercised without spawning jj (same shape as `run_jj_action`).
+    pub(crate) fn apply_resolve_list_open(
+        &mut self,
+        result: Result<Vec<ConflictFile>, JjError>,
+        revision: &str,
+        is_working_copy: bool,
+    ) {
+        match result {
             Ok(files) => {
                 if files.is_empty() {
                     self.notify_info("No conflicts in this change");
@@ -302,5 +319,78 @@ impl App {
                 self.set_error(format!("Failed to list conflicts: {}", e));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::NotificationKind;
+
+    fn conflict(path: &str) -> ConflictFile {
+        ConflictFile {
+            path: path.to_string(),
+            description: "2-sided conflict".to_string(),
+        }
+    }
+
+    /// Regression: pressing Resolve on a conflict-free change used to paint
+    /// "Error: Failed to list conflicts: … No conflicts found at this
+    /// revision" — jj reports that normal state as exit 2, and the error
+    /// escaped `resolve_list`. It must be an info notification, no banner.
+    #[test]
+    fn open_with_no_conflicts_notifies_instead_of_erroring() {
+        let mut app = App::new_for_test();
+
+        app.apply_resolve_list_open(Ok(Vec::new()), "abc12345", false);
+
+        assert!(
+            app.error_message.is_none(),
+            "no conflicts is not an error: {:?}",
+            app.error_message
+        );
+        let notification = app.notification.expect("expected an info notification");
+        assert_eq!(notification.message, "No conflicts in this change");
+        assert_eq!(notification.kind, NotificationKind::Info);
+        // Stays put — nothing to show in the Resolve View.
+        assert!(app.resolve_view.is_none());
+        assert_eq!(app.current_view, View::Log);
+    }
+
+    #[test]
+    fn open_with_conflicts_enters_the_resolve_view() {
+        let mut app = App::new_for_test();
+
+        app.apply_resolve_list_open(Ok(vec![conflict("src/main.rs")]), "abc12345", true);
+
+        assert_eq!(app.current_view, View::Resolve);
+        let view = app.resolve_view.expect("expected a resolve view");
+        assert_eq!(view.revision, "abc12345");
+        assert!(view.is_working_copy);
+        assert_eq!(view.files().len(), 1);
+        assert!(app.error_message.is_none());
+    }
+
+    /// The normalization must not swallow real failures: those still reach
+    /// the error banner.
+    #[test]
+    fn open_with_a_real_error_sets_the_error_banner() {
+        let mut app = App::new_for_test();
+
+        app.apply_resolve_list_open(
+            Err(JjError::CommandFailed {
+                stderr: "Error: Revision `nosuch` doesn't exist".to_string(),
+                exit_code: 1,
+            }),
+            "nosuch",
+            false,
+        );
+
+        let error = app.error_message.expect("expected an error banner");
+        assert!(error.starts_with("Failed to list conflicts:"), "{error}");
+        assert!(error.contains("doesn't exist"), "{error}");
+        assert!(app.notification.is_none());
+        assert!(app.resolve_view.is_none());
+        assert_eq!(app.current_view, View::Log);
     }
 }
