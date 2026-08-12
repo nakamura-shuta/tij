@@ -47,7 +47,13 @@ static ANNOTATE_LINE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// Regex for parsing `jj resolve --list` output when using space delimiter
 /// Matches: `<path>  <N>-sided conflict` (2+ spaces between path and description)
 static RESOLVE_LIST_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(.+?)\s{2,}(\d+-sided\s+conflict)$").expect("Invalid resolve list regex")
+    // `\s+`, not `\s{2,}`: jj right-pads the path column to 36 cells, so a path
+    // of 35+ characters is followed by a SINGLE space and the old pattern
+    // dropped the line silently — a conflict in e.g.
+    // `src/ui/views/command_history/render.rs` was invisible in the Resolve
+    // View. `.+?` stays non-greedy and `$` anchors the description, so paths
+    // containing spaces still split at the right place via backtracking.
+    Regex::new(r"^(.+?)\s+(\d+-sided\s+conflict)$").expect("Invalid resolve list regex")
 });
 
 /// Parser for jj command output
