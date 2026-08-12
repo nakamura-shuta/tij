@@ -132,7 +132,8 @@ pub const FETCH: KeyCode = KeyCode::Char('F');
 /// Push to remote (Log View, uppercase for remote ops)
 pub const PUSH: KeyCode = KeyCode::Char('P');
 
-/// Track remote bookmarks (Bookmark View normal-mode `t`; Log View uppercase remote ops use PUSH/FETCH).
+/// Track remote bookmarks/tags (Bookmark View and Tag View normal-mode `t`;
+/// Log View uppercase remote ops use PUSH/FETCH).
 pub const TRACK: KeyCode = KeyCode::Char('t');
 
 /// Compare two revisions (Log View)
@@ -162,8 +163,16 @@ pub const COMMAND_HISTORY: KeyCode = KeyCode::Char('H');
 /// Toggle preview pane (Log View)
 pub const PREVIEW: KeyCode = KeyCode::Char('p');
 
-/// Untrack remote bookmark (Bookmark View) — Shift+T is the inverse of `t` track.
+/// Untrack a remote bookmark/tag (Bookmark View, Tag View) — Shift+T is the
+/// inverse of `t` track. The name keeps the `BOOKMARK_` prefix for
+/// compatibility; the binding is shared by both object views.
 pub const BOOKMARK_UNTRACK: KeyCode = KeyCode::Char('T');
+
+/// Cycle the display filter all → tracked → conflicted (Tag View).
+///
+/// `F` is also `FETCH` in the Log View: tij key constants are View-scoped, and
+/// `t`/`f`/`r`/`d` are each already shared by three View-local constants.
+pub const TAG_FILTER: KeyCode = KeyCode::Char('F');
 
 /// Shared rename verb for object views (Bookmark, Workspace).
 pub const OBJECT_RENAME: KeyCode = KeyCode::Char('r');
@@ -830,6 +839,25 @@ pub const HINT_CMD_COPY: KeyHint = KeyHint {
     color: Color::Magenta,
 };
 
+// Tag View filter hints — the label carries the *current* mode, so the user
+// can read the state off the status bar without opening the view title.
+// `KeyHint.label` is `&'static str`, hence one constant per mode.
+pub const HINT_TAG_FILTER_ALL: KeyHint = KeyHint {
+    key: "F",
+    label: "Filter: All",
+    color: Color::Cyan,
+};
+pub const HINT_TAG_FILTER_TRACKED: KeyHint = KeyHint {
+    key: "F",
+    label: "Filter: Tracked",
+    color: Color::Cyan,
+};
+pub const HINT_TAG_FILTER_CONFLICTED: KeyHint = KeyHint {
+    key: "F",
+    label: "Filter: Conflicted",
+    color: Color::Cyan,
+};
+
 // =============================================================================
 // HintContext + DialogHintKind
 // =============================================================================
@@ -847,6 +875,20 @@ pub enum BookmarkKind {
     UntrackedRemote,
 }
 
+/// Tag kind for context-dependent Tag View hints
+///
+/// Mirrors [`BookmarkKind`]: the Tag View shows `t`/`T`/`P` only where the key
+/// actually does something (`TagAction::None` otherwise).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TagKind {
+    /// Local tag (pushable with `P`)
+    Local,
+    /// Tracked remote tag (untrackable with `T`)
+    TrackedRemote,
+    /// Untracked remote tag (trackable with `t`)
+    UntrackedRemote,
+}
+
 /// Context for dynamic hint selection
 #[derive(Default)]
 pub struct HintContext {
@@ -860,6 +902,10 @@ pub struct HintContext {
     pub dialog: Option<DialogHintKind>,
     /// Selected bookmark kind (Bookmark View only)
     pub selected_bookmark_kind: Option<BookmarkKind>,
+    /// Selected tag kind (Tag View only; `None` when nothing is selectable)
+    pub selected_tag_kind: Option<TagKind>,
+    /// Current Tag View display filter (drives the `[F] Filter: ...` label)
+    pub tag_filter: crate::ui::views::TagFilter,
     /// Whether --skip-emptied is toggled ON in rebase select mode
     pub skip_emptied: bool,
     /// Whether --simplify-parents is toggled ON in rebase select mode
@@ -896,7 +942,7 @@ pub fn current_hints(view: View, input_mode: InputMode, ctx: &HintContext) -> Ve
         View::Log => log_hints(input_mode, ctx),
         View::Resolve => resolve_hints(ctx),
         View::Bookmark => bookmark_view_hints(ctx),
-        View::Tag => tag_view_hints(),
+        View::Tag => tag_view_hints(ctx),
         View::Workspace => workspace_view_hints(),
         View::CommandHistory => command_history_hints(),
         View::Status => STATUS_VIEW_HINTS.to_vec(),
@@ -1010,14 +1056,26 @@ fn bookmark_view_hints(ctx: &HintContext) -> Vec<KeyHint> {
     h
 }
 
-fn tag_view_hints() -> Vec<KeyHint> {
-    let mut h = vec![
-        HINT_HELP,
-        HINT_NAV,
-        HINT_JUMP_ENTER,
-        HINT_TAG_CREATE,
-        HINT_TAG_DELETE,
-    ];
+fn tag_view_hints(ctx: &HintContext) -> Vec<KeyHint> {
+    let mut h = vec![HINT_HELP, HINT_NAV, HINT_JUMP_ENTER, HINT_TAG_CREATE];
+    // Only the keys that actually act on the selected row (mirrors Bookmark View).
+    // `d` is local-only: `jj tag delete` takes a bare name, so on a remote row it
+    // would delete the local tag of the same name.
+    match ctx.selected_tag_kind {
+        Some(TagKind::Local) => {
+            h.push(HINT_TAG_DELETE);
+            h.push(HINT_PUSH);
+        }
+        Some(TagKind::TrackedRemote) => h.push(HINT_UNTRACK),
+        Some(TagKind::UntrackedRemote) => h.push(HINT_TRACK),
+        None => {}
+    }
+    // Filter is always available; the label carries the current mode.
+    h.push(match ctx.tag_filter {
+        crate::ui::views::TagFilter::All => HINT_TAG_FILTER_ALL,
+        crate::ui::views::TagFilter::Tracked => HINT_TAG_FILTER_TRACKED,
+        crate::ui::views::TagFilter::Conflicted => HINT_TAG_FILTER_CONFLICTED,
+    });
     h.extend(undo_redo_refresh_back());
     h
 }
@@ -1502,6 +1560,22 @@ pub const TAG_KEYS: &[KeyBindEntry] = &[
         description: "Delete tag",
     },
     KeyBindEntry {
+        key: "t",
+        description: "Track remote tag",
+    },
+    KeyBindEntry {
+        key: "T",
+        description: "Untrack remote tag",
+    },
+    KeyBindEntry {
+        key: "P",
+        description: "Push tag to remote",
+    },
+    KeyBindEntry {
+        key: "F",
+        description: "Cycle filter (all/tracked/conflicted)",
+    },
+    KeyBindEntry {
         key: "u",
         description: "Undo",
     },
@@ -1860,6 +1934,127 @@ mod tests {
             !has_undo(View::CommandHistory),
             "CommandHistory must NOT show undo (read-only)"
         );
+    }
+
+    // --- Tag View: context-dependent hints ---
+
+    fn tag_hints(kind: Option<TagKind>) -> Vec<KeyHint> {
+        let ctx = HintContext {
+            selected_tag_kind: kind,
+            ..HintContext::default()
+        };
+        current_hints(View::Tag, InputMode::Normal, &ctx)
+    }
+
+    #[test]
+    fn tag_view_hints_show_only_actionable_remote_keys() {
+        // (selected kind, key that must be shown, keys that must NOT be shown)
+        let cases: [(Option<TagKind>, Option<&str>, [&str; 3]); 4] = [
+            (Some(TagKind::Local), Some("P"), ["t", "T", ""]),
+            (Some(TagKind::TrackedRemote), Some("T"), ["t", "P", ""]),
+            (Some(TagKind::UntrackedRemote), Some("t"), ["T", "P", ""]),
+            (None, None, ["t", "T", "P"]),
+        ];
+        for (kind, shown, hidden) in cases {
+            let hints = tag_hints(kind);
+            if let Some(key) = shown {
+                assert!(
+                    hints.iter().any(|h| h.key == key),
+                    "{kind:?} must expose [{key}]"
+                );
+            }
+            for key in hidden.iter().filter(|k| !k.is_empty()) {
+                assert!(
+                    !hints.iter().any(|h| h.key == *key),
+                    "{kind:?} must NOT expose [{key}] (it is a no-op there)"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tag_view_filter_hint_is_always_shown_with_the_current_mode() {
+        use crate::ui::views::TagFilter;
+        for (filter, expected) in [
+            (TagFilter::All, "Filter: All"),
+            (TagFilter::Tracked, "Filter: Tracked"),
+            (TagFilter::Conflicted, "Filter: Conflicted"),
+        ] {
+            // Filter never depends on the selection, so check the empty-view case too.
+            for kind in [None, Some(TagKind::Local)] {
+                let ctx = HintContext {
+                    selected_tag_kind: kind,
+                    tag_filter: filter,
+                    ..HintContext::default()
+                };
+                let hints = current_hints(View::Tag, InputMode::Normal, &ctx);
+                let f = hints
+                    .iter()
+                    .find(|h| h.key == "F")
+                    .unwrap_or_else(|| panic!("{filter:?}/{kind:?} must expose [F]"));
+                assert_eq!(f.label, expected, "{filter:?} label");
+            }
+        }
+    }
+
+    #[test]
+    fn tag_view_keeps_its_base_hints_for_every_kind() {
+        for kind in [
+            None,
+            Some(TagKind::Local),
+            Some(TagKind::TrackedRemote),
+            Some(TagKind::UntrackedRemote),
+        ] {
+            let hints = tag_hints(kind);
+            // `d` is deliberately absent here — it is local-only, covered by
+            // `tag_view_delete_hint_is_local_only`.
+            for key in ["?", "n", "u", "q"] {
+                assert!(
+                    hints.iter().any(|h| h.key == key),
+                    "{kind:?} must keep the [{key}] hint"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tag_view_delete_hint_is_local_only() {
+        // The hint must not advertise a key that no-ops on the selected row:
+        // `d` only acts on local rows (see `tag/input.rs`).
+        assert!(
+            tag_hints(Some(TagKind::Local)).iter().any(|h| h.key == "d"),
+            "local rows must offer [d] Delete"
+        );
+        for kind in [
+            None,
+            Some(TagKind::TrackedRemote),
+            Some(TagKind::UntrackedRemote),
+        ] {
+            assert!(
+                !tag_hints(kind).iter().any(|h| h.key == "d"),
+                "{kind:?} must not advertise [d] Delete"
+            );
+        }
+    }
+
+    #[test]
+    fn tag_help_keys_cover_the_new_bindings() {
+        for (key, needle) in [
+            ("t", "Track"),
+            ("T", "Untrack"),
+            ("P", "Push"),
+            ("F", "filter"),
+        ] {
+            let entry = TAG_KEYS
+                .iter()
+                .find(|e| e.key == key)
+                .unwrap_or_else(|| panic!("TAG_KEYS must document [{key}]"));
+            assert!(
+                entry.description.contains(needle),
+                "[{key}] description {:?} should mention {needle}",
+                entry.description
+            );
+        }
     }
 
     #[test]

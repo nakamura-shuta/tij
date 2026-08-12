@@ -14,7 +14,7 @@ use std::time::{Instant, SystemTime};
 use crate::jj::{JjError, RunResult};
 use crate::model::{
     CommandKind, CommandRecord, CommandStatus, CompareInfo, DiffContent, DiffDisplayFormat,
-    DiffMode, Notification, RebaseMode,
+    DiffMode, Notification, RebaseMode, shell_quote,
 };
 
 /// Auto label for an executor-captured invocation the App didn't name:
@@ -718,6 +718,46 @@ impl App {
             Err(e) => {
                 self.set_error(format!("Bisect failed: {}", e));
             }
+        }
+
+        self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
+    }
+
+    /// Execute `jj run` interactively across a revset.
+    ///
+    /// Suspends TUI, runs `jj run -r <revset> -- bash -c <command>` with
+    /// inherited stdio, then resumes TUI, notifies, and refreshes log/status.
+    /// An empty command is treated as a cancel (no spawn) — mirrors the
+    /// Input-dialog "empty = cancel" convention.
+    pub(crate) fn execute_run(&mut self, revset: &str, command: &str) {
+        let command = command.trim();
+        if command.is_empty() {
+            self.notify_info("Run cancelled: empty command");
+            return;
+        }
+
+        // TUI stays suspended for the whole fn (spawn + notify + refresh);
+        // `_guard` restores the alternate screen when the fn returns.
+        let _guard = suspend_tui();
+        // shell_quote both fields so the echoed banner is paste-safe even when
+        // the command contains a `'` or the revset contains parens (mutable()).
+        println!(
+            "--- jj run -r {} -- bash -c {} ---",
+            shell_quote(revset),
+            shell_quote(command)
+        );
+
+        let start = Instant::now();
+        let result = self.jj.run_interactive(revset, command);
+        self.record_interactive_command("Run", &self.jj.run_argv(revset, command), start, &result);
+
+        match result {
+            Ok(status) if status.success() => self.notify_success("Run completed (undo: u)"),
+            Ok(status) => self.notify_info(format!(
+                "Run exited with status: {}",
+                status.code().unwrap_or(-1)
+            )),
+            Err(e) => self.set_error(format!("Run failed: {}", e)),
         }
 
         self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
@@ -2367,6 +2407,38 @@ mod tests {
         let records = app.command_history.records();
         assert_eq!(records[0].operation, "Abandon");
         assert_eq!(records[0].status, CommandStatus::Failed);
+    }
+
+    /// Regression: a multi-line jj stderr must reach the Command History
+    /// intact. The executor used to keep only `stderr.lines().next()`, which
+    /// silently dropped the `Hint:` line — and since the error banner is one
+    /// row tall, the hint was then unreachable from anywhere in tij.
+    #[test]
+    fn flush_preserves_multiline_stderr_in_the_record() {
+        let mut app = App::new_for_test();
+        let mut inv = test_invocation(40, CommandKind::Write, &["tag", "set", "v1.0", "-r", "@"]);
+        inv.success = false;
+        inv.error = Some(
+            "Error: Refusing to create new remote tag v1.0@other\n\
+             Hint: Run `jj tag track v1.0@other` and try again."
+                .to_string(),
+        );
+        app.jj.push_test_invocation(inv);
+        app.flush_invocations();
+
+        let record = &app.command_history.records()[0];
+        assert_eq!(record.status, CommandStatus::Failed);
+        let error = record.error.as_deref().expect("failure carries stderr");
+        assert_eq!(
+            error.lines().count(),
+            2,
+            "both stderr lines kept: {error:?}"
+        );
+        assert!(error.contains("Error: Refusing to create new remote tag v1.0@other"));
+        assert!(
+            error.contains("Hint: Run `jj tag track v1.0@other` and try again."),
+            "the Hint line must survive into the history: {error:?}"
+        );
     }
 
     #[test]

@@ -173,3 +173,88 @@ fn story_conflict_resolution_via_new_commit() {
         .describe("@", "Continue after resolution")
         .expect("describe should succeed");
 }
+
+/// Regression: "no conflicts" must reach the caller as `Ok(empty)`.
+///
+/// jj reports a conflict-free revision as a *failure* (exit 2,
+/// `Error: No conflicts found at this revision`). Before the fix that error
+/// escaped `resolve_list` and the Resolve key painted a red banner on a
+/// perfectly healthy change. This test binds the normalization inside
+/// `resolve_list` to real jj output — the unit tests only pin the predicate.
+#[test]
+fn story_resolve_list_on_clean_change_is_empty_not_an_error() {
+    skip_if_no_jj!();
+    let repo = TestRepo::new();
+    let executor = JjExecutor::with_repo_path(repo.path());
+
+    repo.write_file("clean.txt", "no conflicts here");
+    repo.jj(&["describe", "-m", "Clean change"]);
+    let clean_id = repo.current_change_id();
+
+    // With `-r <change>` …
+    let files = executor
+        .resolve_list(Some(&clean_id))
+        .expect("a conflict-free revision is a normal state, not an error");
+    assert!(files.is_empty(), "expected no conflicts, got {:?}", files);
+
+    // … and without (`@`), which jj also reports as exit 2.
+    let files = executor
+        .resolve_list(None)
+        .expect("a conflict-free working copy is a normal state, not an error");
+    assert!(files.is_empty(), "expected no conflicts, got {:?}", files);
+}
+
+/// The full arc: real conflict → resolved → listed as empty (not an error).
+///
+/// This is the `refresh_resolve_list` flow ("All conflicts resolved!"): jj
+/// answers the post-resolution listing with exit 2 + "No conflicts found at
+/// this revision", which `resolve_list` normalizes away.
+#[test]
+fn story_resolve_list_goes_from_conflicted_to_empty_after_resolution() {
+    skip_if_no_jj!();
+    let repo = TestRepo::new();
+    let executor = JjExecutor::with_repo_path(repo.path());
+
+    repo.write_file("code.rs", "fn original() {}");
+    repo.jj(&["describe", "-m", "Base"]);
+    let base_id = repo.current_change_id();
+
+    repo.jj(&["new", "-m", "Feature A"]);
+    repo.write_file("code.rs", "fn feature_a() {}");
+    let a_id = repo.current_change_id();
+
+    repo.jj(&["new", &base_id, "-m", "Feature B"]);
+    repo.write_file("code.rs", "fn feature_b() {}");
+    let b_id = repo.current_change_id();
+
+    executor
+        .rebase_unified(RebaseMode::Revision, &b_id, &a_id, &[])
+        .expect("rebase should succeed");
+
+    // The conflict is real — asserted via `has_conflict`, not `resolve_list`.
+    // `jj resolve --list` right-pads the path to column 36 (measured on jj
+    // 0.44), so a path of 35+ characters is followed by a *single* space and
+    // `parse_resolve_list` — which requires 2+ — drops the row. The path here
+    // is printed relative to the test process's cwd, i.e. a long `../…/tmp/…`
+    // one. Pre-existing parser limitation, unrelated to this test.
+    assert!(
+        executor
+            .has_conflict(&b_id)
+            .expect("has_conflict should work"),
+        "rebase should have produced a conflict"
+    );
+
+    // Resolve by writing merged content (same approach as the test above —
+    // no interactive merge tool involved).
+    repo.jj(&["edit", &b_id]);
+    repo.write_file("code.rs", "fn feature_a() {}\nfn feature_b() {}");
+
+    let resolved = executor
+        .resolve_list(Some(&b_id))
+        .expect("after resolution jj exits 2 with 'No conflicts found' — not an error");
+    assert!(
+        resolved.is_empty(),
+        "expected an empty list after resolution, got {:?}",
+        resolved
+    );
+}

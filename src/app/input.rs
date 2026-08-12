@@ -526,6 +526,9 @@ impl App {
                 self.execute_arrange();
             }
 
+            // Run a shell command across revisions (jj run)
+            LogAction::RunStart { .. } => self.handle_log_run(action),
+
             // Misc
             LogAction::NextChange | LogAction::PrevChange | LogAction::ToggleReversed => {
                 self.handle_log_misc(action);
@@ -853,6 +856,43 @@ impl App {
         }
     }
 
+    /// Open the `jj run` target-preset select dialog. See `LogAction::RunStart`
+    /// for the revision/change_id split.
+    fn handle_log_run(&mut self, action: LogAction) {
+        use crate::ui::components::{Dialog, DialogCallback, SelectItem};
+
+        if let LogAction::RunStart {
+            revision,
+            change_id,
+        } = action
+        {
+            let items = vec![
+                SelectItem {
+                    label: "Selected revision only".to_string(),
+                    value: "selected".to_string(),
+                    selected: false,
+                },
+                SelectItem {
+                    label: "Selected revision and @".to_string(),
+                    value: "selected-to-at".to_string(),
+                    selected: false,
+                },
+                SelectItem {
+                    label: "All mutable revisions".to_string(),
+                    value: "mutable".to_string(),
+                    selected: false,
+                },
+            ];
+            self.active_dialog = Some(Dialog::select_single(
+                format!("Run command on… ({})", short_id(&change_id)),
+                "Select target revisions:",
+                items,
+                None,
+                DialogCallback::RunTarget { revision },
+            ));
+        }
+    }
+
     fn handle_log_misc(&mut self, action: LogAction) {
         match action {
             LogAction::NextChange => self.execute_next(),
@@ -966,6 +1006,21 @@ impl App {
                     None,
                     DialogCallback::TagDelete { name: name.clone() },
                 ));
+            }
+            // track/untrack are undoable with `u` → no confirmation.
+            TagAction::Track(full_name) => {
+                self.execute_tag_track(&full_name);
+            }
+            TagAction::Untrack(full_name) => {
+                self.execute_tag_untrack(&full_name);
+            }
+            // Push leaves the machine → always confirmed first.
+            TagAction::Push(name) => {
+                self.start_tag_push(name);
+            }
+            // Client-side view state only: no jj run, no refresh.
+            TagAction::CycleFilter => {
+                self.tag_view.cycle_filter();
             }
         }
     }
@@ -1574,6 +1629,111 @@ mod tests {
             InputMode::CompareSelect,
             "palette 'compare' must enter compare-select mode"
         );
+    }
+
+    // =========================================================================
+    // jj run: RunStart opens the target-preset select dialog (pure, no jj)
+    // =========================================================================
+
+    /// Open the real `jj run` target-preset dialog via the production path
+    /// (`handle_log_action(RunStart)` → `handle_log_run`). Pure — no jj shelling.
+    fn open_run_target_dialog(app: &mut App, revision: &str, change_id: &str) {
+        app.handle_log_action(LogAction::RunStart {
+            revision: revision.to_string(),
+            change_id: change_id.to_string(),
+        });
+    }
+
+    #[test]
+    fn run_start_opens_target_select_dialog() {
+        use crate::ui::components::{DialogCallback, DialogKind};
+
+        let mut app = App::new_for_test();
+        open_run_target_dialog(&mut app, "def67890", "abc12345");
+
+        let dialog = app
+            .active_dialog
+            .as_ref()
+            .expect("RunStart opens a target select dialog");
+        assert!(
+            matches!(dialog.kind, DialogKind::Select { .. }),
+            "expected Select dialog, got: {:?}",
+            dialog.kind
+        );
+        // Callback carries the commit_id revision only (change_id stays in the title).
+        assert_eq!(
+            dialog.callback_id,
+            DialogCallback::RunTarget {
+                revision: "def67890".to_string()
+            }
+        );
+        // Title shows the originating change_id so the user knows the anchor.
+        if let DialogKind::Select { title, .. } = &dialog.kind {
+            assert!(
+                title.contains("abc12345"),
+                "title '{}' should mention the change id",
+                title
+            );
+        }
+    }
+
+    /// Cross-check that the PRODUCER (the real SelectItem values emitted by
+    /// `handle_log_run`) and the CONSUMER (`handle_dialog_result`'s RunTarget
+    /// match arms) agree. A typo on either side would otherwise ship green and
+    /// silently no-op at runtime: this drives each REAL `item.value` through
+    /// the consumer and asserts the resolved revset.
+    #[test]
+    fn run_target_real_preset_values_resolve_to_expected_revsets() {
+        use crate::ui::components::{DialogCallback, DialogKind, DialogResult};
+
+        // 1. The exact preset values the producer emits, pinned in order.
+        let mut app = App::new_for_test();
+        open_run_target_dialog(&mut app, "def67890", "abc12345");
+        let values: Vec<String> = match &app.active_dialog.as_ref().unwrap().kind {
+            DialogKind::Select { items, .. } => items.iter().map(|i| i.value.clone()).collect(),
+            other => panic!("expected Select dialog, got: {:?}", other),
+        };
+        assert_eq!(
+            values,
+            ["selected", "selected-to-at", "mutable"],
+            "producer preset values changed — update the consumer match arms too"
+        );
+
+        // 2. Each real value, driven through the real consumer, yields the
+        //    expected revset in the follow-up RunCommand input dialog.
+        let expected = [
+            ("selected", "def67890"),
+            ("selected-to-at", "def67890::@"),
+            ("mutable", "mutable()"),
+        ];
+        for (value, want_revset) in expected {
+            // Re-open the real dialog each iteration (Confirmed replaces it).
+            open_run_target_dialog(&mut app, "def67890", "abc12345");
+            assert!(
+                values.contains(&value.to_string()),
+                "'{value}' must be one of the real producer values"
+            );
+            app.handle_dialog_result(DialogResult::Confirmed(vec![value.to_string()]));
+
+            let dialog = app
+                .active_dialog
+                .as_ref()
+                .expect("RunTarget confirm opens the command input dialog");
+            assert!(
+                matches!(dialog.kind, DialogKind::Input { .. }),
+                "expected Input dialog for '{value}', got: {:?}",
+                dialog.kind
+            );
+            assert_eq!(
+                dialog.callback_id,
+                DialogCallback::RunCommand {
+                    revset: want_revset.to_string()
+                },
+                "preset '{value}' must resolve to revset '{want_revset}'"
+            );
+            // No jj run spawned yet (command not entered).
+            assert!(app.command_history.is_empty());
+        }
     }
 
     // =========================================================================

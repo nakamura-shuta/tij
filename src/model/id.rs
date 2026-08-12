@@ -63,7 +63,11 @@ impl ChangeId {
 
 impl fmt::Display for ChangeId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        // `f.pad` (not `f.write_str`) so width/alignment specifiers work.
+        // `write_str` bypasses the formatter options entirely, which made
+        // `format!("{:<10}", change_id)` in the Tag/Bookmark/Workspace views
+        // emit an unpadded 8-char id that ran into the next column.
+        f.pad(&self.0)
     }
 }
 
@@ -143,7 +147,9 @@ impl CommitId {
 
 impl fmt::Display for CommitId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        // See the note on `ChangeId`'s Display impl — `f.pad` honors width
+        // specifiers, `f.write_str` silently ignores them.
+        f.pad(&self.0)
     }
 }
 
@@ -197,6 +203,47 @@ mod tests {
     fn test_commit_id_display() {
         let id = CommitId::new("def67890".to_string());
         assert_eq!(format!("{}", id), "def67890");
+    }
+
+    // Width-specifier regression tests.
+    //
+    // The Display impls must use `f.pad`, not `f.write_str`: `write_str`
+    // bypasses the formatter options, so `{:<10}` silently produced an
+    // unpadded 8-char id and the next column ran into it (observed in Tag
+    // View as `tmqsqxnrfirst`).
+
+    #[test]
+    fn change_id_display_honors_width_specifier() {
+        let id = ChangeId::new("tmqsqxnr".to_string());
+        assert_eq!(format!("{:<10}", id), "tmqsqxnr  ");
+        assert_eq!(format!("{:>10}", id), "  tmqsqxnr");
+        assert_eq!(format!("{:^10}", id), " tmqsqxnr ");
+    }
+
+    #[test]
+    fn commit_id_display_honors_width_specifier() {
+        let id = CommitId::new("cd7317d1".to_string());
+        assert_eq!(format!("{:<10}", id), "cd7317d1  ");
+        assert_eq!(format!("{:>10}", id), "  cd7317d1");
+    }
+
+    #[test]
+    fn id_display_width_shorter_than_value_is_not_truncated() {
+        // Width is a minimum, never a maximum — an id longer than the
+        // requested width must survive intact.
+        let id = ChangeId::new("abcdefghijkl".to_string());
+        assert_eq!(format!("{:<4}", id), "abcdefghijkl");
+    }
+
+    #[test]
+    fn view_change_id_column_is_padded_to_12_cells() {
+        // The exact call shape used by the Tag / Bookmark / Workspace views.
+        // The empty-id branch in those views emits `format!("{:12}", "")`,
+        // so the populated branch must also occupy 12 cells.
+        let id = ChangeId::new("tmqsqxnr".to_string());
+        let column = format!("  {:<10}", id);
+        assert_eq!(column.chars().count(), 12);
+        assert_eq!(column, "  tmqsqxnr  ");
     }
 
     #[test]

@@ -8,12 +8,12 @@ use ratatui::{
 
 use super::state::{App, View};
 use crate::app::helpers::revision::short_id;
-use crate::keys::{self, BookmarkKind, DialogHintKind, HintContext};
+use crate::keys::{self, BookmarkKind, DialogHintKind, HintContext, TagKind};
 use crate::model::{DiffContent, DiffLineKind, FileOperation};
 use crate::ui::components::dialog::DialogKind;
 use crate::ui::widgets::{
-    render_blame_status_bar, render_diff_status_bar, render_error_banner, render_help_panel,
-    render_placeholder, render_status_hints, status_hints_height,
+    error_banner_height, render_blame_status_bar, render_diff_status_bar, render_error_banner,
+    render_help_panel, render_placeholder, render_status_hints, status_hints_height,
 };
 
 impl App {
@@ -50,12 +50,16 @@ impl App {
             self.render_command_echo(frame);
         }
 
-        // Render error banner above status bar (errors are always shown prominently)
+        // Render error banner above status bar (errors are always shown
+        // prominently). It owns its rows — `view_area` already handed them
+        // over — so a multi-line stderr never paints over view content.
         if let Some(ref error) = self.error_message {
-            let status_bar_height = self.get_current_status_bar_height(frame.area().width);
+            let full = frame.area();
+            let status_bar_height = self.get_current_status_bar_height(full.width);
             // With the echo bar on, the banner sits above it, not over it.
             let echo = if self.command_echo_enabled { 1 } else { 0 };
-            render_error_banner(frame, error, status_bar_height + echo);
+            let height = self.error_banner_rows(full);
+            render_error_banner(frame, error, status_bar_height + echo, height);
         }
 
         // Render dialog on top of everything
@@ -74,18 +78,33 @@ impl App {
     }
 
     /// The area a view may draw into: the full frame, minus one row when the
-    /// command echo bar is enabled. The single place that decides how much
-    /// screen the views get — views must use this instead of `frame.area()`.
+    /// command echo bar is enabled, minus the rows the error banner needs. The
+    /// single place that decides how much screen the views get — views must use
+    /// this instead of `frame.area()`.
     fn view_area(&self, frame: &Frame) -> Rect {
         let full = frame.area();
-        if self.command_echo_enabled {
-            Rect {
-                height: full.height.saturating_sub(1),
-                ..full
-            }
-        } else {
-            full
+        let echo = if self.command_echo_enabled { 1 } else { 0 };
+        let reserved = echo + self.error_banner_rows(full);
+        Rect {
+            height: full.height.saturating_sub(reserved),
+            ..full
         }
+    }
+
+    /// Rows the error banner takes out of the frame this render — 0 when there
+    /// is no error, or when the terminal is too short to spare them.
+    ///
+    /// jj stderr is routinely two lines (`Error:` + the actionable `Hint:`) and
+    /// wraps on narrow terminals, so the banner is not a fixed single row. Both
+    /// `view_area` and the banner renderer read this same number, which is what
+    /// keeps the reservation and the drawing in step.
+    fn error_banner_rows(&self, full: Rect) -> u16 {
+        let Some(error) = self.error_message.as_deref() else {
+            return 0;
+        };
+        let sb = self.get_current_status_bar_height(full.width);
+        let echo = if self.command_echo_enabled { 1 } else { 0 };
+        error_banner_height(error, full.width, full.height.saturating_sub(sb + echo))
     }
 
     /// Area for unloaded-view placeholders: `view_area` minus the rows the
@@ -154,9 +173,22 @@ impl App {
                 let hints = keys::current_hints(View::Bookmark, self.log_view.input_mode, &ctx);
                 status_hints_height(&hints, width)
             }
-            View::Tag | View::Workspace => {
+            // Tag must use the SAME context `render_tag_view` renders with.
+            // With the default context the hint list is 9 entries; a selected
+            // row adds Delete/Push/Track/Untrack and makes it 10–11, which
+            // wraps to 3 rows instead of 1 from ~126 columns up. Reserving the
+            // wrong height let the status bar paint over the view's bottom
+            // border. Bookmark already did this correctly.
+            View::Tag => {
+                let ctx = self.build_tag_hint_context();
+                let hints = keys::current_hints(View::Tag, self.log_view.input_mode, &ctx);
+                status_hints_height(&hints, width)
+            }
+            // Workspace hints are static (`workspace_view_hints` takes no
+            // context), so the default is exact here.
+            View::Workspace => {
                 let ctx = keys::HintContext::default();
-                let hints = keys::current_hints(self.current_view, self.log_view.input_mode, &ctx);
+                let hints = keys::current_hints(View::Workspace, self.log_view.input_mode, &ctx);
                 status_hints_height(&hints, width)
             }
             View::Resolve => {
@@ -434,13 +466,32 @@ impl App {
         render_status_hints(frame, &hints);
     }
 
+    /// Build HintContext for Tag View (uses selected tag kind + filter mode)
+    fn build_tag_hint_context(&self) -> HintContext {
+        let kind = self.tag_view.selected_tag().map(|tag| {
+            if tag.is_local() {
+                TagKind::Local
+            } else if tag.is_tracked_remote() {
+                TagKind::TrackedRemote
+            } else {
+                TagKind::UntrackedRemote
+            }
+        });
+        HintContext {
+            selected_tag_kind: kind,
+            tag_filter: self.tag_view.filter(),
+            dialog: self.dialog_hint_kind(),
+            ..HintContext::default()
+        }
+    }
+
     fn render_tag_view(
         &self,
         frame: &mut Frame,
         notification: Option<&crate::model::Notification>,
     ) {
         let area = self.view_area(frame);
-        let ctx = keys::HintContext::default();
+        let ctx = self.build_tag_hint_context();
         let hints = keys::current_hints(View::Tag, self.log_view.input_mode, &ctx);
         let sb_height = status_hints_height(&hints, area.width);
 
@@ -992,18 +1043,280 @@ mod tests {
         );
     }
 
+    /// jj's real two-line answer when a tag would create an untracked remote
+    /// ref: the second line is the actionable half.
+    const MULTILINE_STDERR: &str = "Error: Refusing to create new remote tag v1.0@other\n\
+                                    Hint: Run `jj tag track v1.0@other` and try again.";
+
+    /// Read one row of the TestBackend buffer.
+    fn row_text(
+        terminal: &ratatui::Terminal<ratatui::backend::TestBackend>,
+        y: u16,
+        width: u16,
+    ) -> String {
+        let buf = terminal.backend().buffer();
+        (0..width).map(|x| buf[(x, y)].symbol()).collect()
+    }
+
     #[test]
-    fn view_area_reserves_one_row_only_when_echo_enabled() {
+    fn tag_status_bar_height_matches_the_hints_actually_rendered() {
+        // `get_current_status_bar_height` reserves the rows and
+        // `render_tag_view` draws them; they must agree at every width.
+        // Regression: the height branch used `HintContext::default()` while
+        // the render used the real context, so a selected row (9 hints -> 10
+        // or 11) reserved 1 row but drew 3 from ~126 columns up, and the
+        // status bar painted over the view's bottom border.
+        use crate::model::{ChangeId, CommitId, TagInfo};
+
+        let tag = |name: &str, remote: Option<&str>, tracked: bool| TagInfo {
+            name: name.to_string(),
+            remote: remote.map(str::to_string),
+            present: true,
+            tracked,
+            conflict: false,
+            change_id: Some(ChangeId::new("aaaaaaaa".to_string())),
+            commit_id: Some(CommitId::new("bbbbbbbb".to_string())),
+            description: Some("desc".to_string()),
+        };
+
         let mut app = App::new_for_test();
+        app.current_view = View::Tag;
+        // One row of each kind, so walking the list exercises every hint set.
+        app.tag_view.set_tags(vec![
+            tag("v1.0", None, false),
+            tag("v1.0", Some("origin"), true),
+            tag("v0.9", Some("origin"), false),
+        ]);
+
+        app.tag_view.select_first();
+        loop {
+            let ctx = app.build_tag_hint_context();
+            let hints = keys::current_hints(View::Tag, app.log_view.input_mode, &ctx);
+            for width in 40u16..=200 {
+                assert_eq!(
+                    app.get_current_status_bar_height(width),
+                    status_hints_height(&hints, width),
+                    "tag status bar height disagrees at width {width} for {:?}",
+                    ctx.selected_tag_kind
+                );
+            }
+            let before = app.tag_view.selected_tag().map(|t| t.full_name());
+            app.tag_view.select_next();
+            if app.tag_view.selected_tag().map(|t| t.full_name()) == before {
+                break;
+            }
+        }
+    }
+
+    #[test]
+    fn tag_and_workspace_height_branches_use_their_render_context() {
+        // Guards the branch split: Tag reads the real context, Workspace's
+        // hints are static so the default is exact. If Tag is ever folded
+        // back in with `HintContext::default()`, this fails.
+        let mut app = App::new_for_test();
+        app.current_view = View::Tag;
+        for width in [80u16, 126, 140, 200] {
+            let via_branch = app.get_current_status_bar_height(width);
+            let ctx = app.build_tag_hint_context();
+            let hints = keys::current_hints(View::Tag, app.log_view.input_mode, &ctx);
+            assert_eq!(
+                via_branch,
+                status_hints_height(&hints, width),
+                "Tag height branch must use build_tag_hint_context at width {width}"
+            );
+        }
+    }
+
+    #[test]
+    fn view_area_reserves_rows_for_the_echo_bar_and_the_error_banner() {
+        let mut app = App::new_for_test();
+        // Diff without a loaded diff → placeholder route, status bar height 1.
+        app.current_view = View::Diff;
         let backend = ratatui::backend::TestBackend::new(80, 20);
         let mut terminal = ratatui::Terminal::new(backend).unwrap();
         terminal
             .draw(|f| {
-                assert_eq!(app.view_area(f).height, 20, "echo off → full frame");
+                assert_eq!(app.view_area(f).height, 20, "echo off, no error → full");
                 app.command_echo_enabled = true;
                 assert_eq!(app.view_area(f).height, 19, "echo on → one row reserved");
+
+                app.error_message = Some(MULTILINE_STDERR.to_string());
+                assert_eq!(
+                    app.view_area(f).height,
+                    17,
+                    "echo row + the banner's two rows"
+                );
+
+                app.command_echo_enabled = false;
+                assert_eq!(app.view_area(f).height, 18, "banner rows only");
+
+                // The placeholder route follows view_area, minus its status bar.
+                assert_eq!(app.placeholder_area(f).height, 17);
             })
             .unwrap();
+    }
+
+    /// A blank `error_message` has nothing to show: no banner, and — the part
+    /// that actually costs something — no row taken off the view.
+    #[test]
+    fn blank_error_message_reserves_nothing_and_draws_nothing() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff;
+
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        for blank in ["", " ", "   \t ", "\n  \n"] {
+            app.error_message = Some(blank.to_string());
+            terminal
+                .draw(|f| {
+                    assert_eq!(app.error_banner_rows(f.area()), 0, "blank={blank:?}");
+                    assert_eq!(app.view_area(f).height, 20, "blank={blank:?}");
+                    app.render(f);
+                })
+                .unwrap();
+            let text = buffer_text(&terminal);
+            assert!(
+                !text.contains("Error:"),
+                "blank error must draw no banner ({blank:?}): {text}"
+            );
+        }
+    }
+
+    /// The banner as the user actually sees it after a failed `jj tag set` on
+    /// an 80-column terminal: the `JjError` wrapper and jj's duplicated
+    /// `Error: ` are gone, tij's operation context and the `Hint:` row stay,
+    /// and the message no longer wraps.
+    #[test]
+    fn tag_create_failure_reads_without_the_plumbing_at_80_columns() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff;
+        app.error_message = Some(
+            "Tag creation failed: jj command failed (exit code 1): \
+             Error: Refusing to move tag: v1.0\n\
+             Hint: Use --allow-move to update existing tags."
+                .to_string(),
+        );
+
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
+
+        // 20 rows = 17 placeholder + 2 banner + 1 status bar.
+        assert_eq!(
+            row_text(&terminal, 17, 80).trim_end(),
+            " Error:  Tag creation failed: Refusing to move tag: v1.0"
+        );
+        assert_eq!(
+            row_text(&terminal, 18, 80).trim_end(),
+            "         Hint: Use --allow-move to update existing tags."
+        );
+    }
+
+    /// The regression this feature exists for: jj's `Hint:` line used to fall
+    /// outside the one-row banner. It must now have a row of its own, and that
+    /// row must be *below* the view, not painted over it.
+    #[test]
+    fn error_banner_shows_the_hint_line_below_the_view() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff;
+        app.error_message = Some(MULTILINE_STDERR.to_string());
+
+        let backend = ratatui::backend::TestBackend::new(60, 12);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
+
+        // 12 rows = 9 placeholder (border closes on row 8) + 2 banner + 1 status.
+        assert!(
+            row_text(&terminal, 8, 60).starts_with('└'),
+            "view must close above the banner: {:?}",
+            row_text(&terminal, 8, 60)
+        );
+        assert!(
+            row_text(&terminal, 9, 60).contains("Error:  Error: Refusing to create new remote tag"),
+            "{:?}",
+            row_text(&terminal, 9, 60)
+        );
+        assert!(
+            row_text(&terminal, 10, 60).contains("Hint: Run `jj tag track v1.0@other` and try"),
+            "the Hint line must be on its own banner row: {:?}",
+            row_text(&terminal, 10, 60)
+        );
+    }
+
+    /// Banner and echo bar are separate reservations — they must not collide.
+    #[test]
+    fn error_banner_sits_above_the_echo_row() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff;
+        app.command_echo_enabled = true;
+        app.error_message = Some(MULTILINE_STDERR.to_string());
+
+        let backend = ratatui::backend::TestBackend::new(60, 12);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
+
+        // 8 placeholder (border on row 7) + 2 banner + echo + status.
+        assert!(row_text(&terminal, 7, 60).starts_with('└'));
+        assert!(row_text(&terminal, 8, 60).contains("Error: Refusing"));
+        assert!(row_text(&terminal, 9, 60).contains("Hint: Run"));
+        assert!(
+            row_text(&terminal, 10, 60).contains("(no operations yet)"),
+            "echo row overwritten by the banner: {:?}",
+            row_text(&terminal, 10, 60)
+        );
+    }
+
+    #[test]
+    fn error_banner_truncates_with_a_more_marker() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff;
+        app.error_message = Some("l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8".to_string());
+
+        let backend = ratatui::backend::TestBackend::new(60, 12);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
+
+        // Capped at 5 rows: 4 stderr lines + the marker, rows 6..=10.
+        assert!(row_text(&terminal, 5, 60).starts_with('└'));
+        assert!(row_text(&terminal, 6, 60).contains("Error:  l1"));
+        assert!(row_text(&terminal, 9, 60).contains("l4"));
+        assert!(
+            row_text(&terminal, 10, 60).contains("... (4 more lines)"),
+            "{:?}",
+            row_text(&terminal, 10, 60)
+        );
+    }
+
+    /// A short terminal must keep a usable view and must not panic: the banner
+    /// gives up its rows before the view does.
+    #[test]
+    fn error_banner_never_crushes_the_view_on_a_short_terminal() {
+        let mut app = App::new_for_test();
+        app.current_view = View::Diff; // status bar height 1
+        app.error_message = Some(MULTILINE_STDERR.to_string());
+
+        for height in 1..=10u16 {
+            let backend = ratatui::backend::TestBackend::new(40, height);
+            let mut terminal = ratatui::Terminal::new(backend).unwrap();
+            terminal
+                .draw(|f| {
+                    let full = f.area();
+                    let banner = app.error_banner_rows(full);
+                    let view = app.view_area(f).height;
+                    assert!(
+                        banner < full.height,
+                        "banner {banner} + status bar does not fit in {height}"
+                    );
+                    if full.height >= 4 {
+                        assert!(
+                            view.saturating_sub(1) >= crate::ui::widgets::MIN_VIEW_ROWS,
+                            "view crushed to {view} rows at terminal height {height}"
+                        );
+                    }
+                    app.render(f); // must not panic at any height
+                })
+                .unwrap();
+        }
     }
 
     #[test]

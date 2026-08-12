@@ -1,0 +1,20 @@
+---
+source: tests/ui/test_tag.rs
+expression: out
+---
+"┌─────────────────────────── Tags (1/6, conflicted) ───────────────────────────┐"
+"│  ── Local ──                                                                 │"
+"│  v0.12.0 !                       qpvuntsm  release: v0.12.0                  │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"└──────────────────────────────────────────────────────────────────────────────┘"
+" [?] Help   [j/k] Navigate   [Enter] Jump   [n] Create Tag   [d] Delete         "
+"                                                                                "
+" [P] Push   [F] Filter: Conflicted   [u] Undo   [^R] Redo   [^L] Refresh   [q] B"

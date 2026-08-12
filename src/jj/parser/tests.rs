@@ -1000,6 +1000,34 @@ fn test_parse_resolve_list_empty() {
     assert!(files.is_empty());
 }
 
+#[test]
+fn test_parse_resolve_list_long_path_separated_by_one_space() {
+    // Verbatim `jj resolve --list` output (jj 0.44). jj right-pads the path
+    // column to 36 cells, so a 41-character path gets exactly ONE separating
+    // space. The old `\s{2,}` pattern dropped that line and the conflict was
+    // invisible in the Resolve View.
+    let output = concat!(
+        "a/bbbbbbbb/cccccccc/dddddddd/eeeeeeee.txt 2-sided conflict\n",
+        "s.txt                               2-sided conflict\n",
+    );
+    let files = Parser::parse_resolve_list(output);
+    assert_eq!(files.len(), 2, "both conflicts must survive parsing");
+    assert_eq!(files[0].path, "a/bbbbbbbb/cccccccc/dddddddd/eeeeeeee.txt");
+    assert_eq!(files[0].description, "2-sided conflict");
+    assert_eq!(files[1].path, "s.txt");
+}
+
+#[test]
+fn test_parse_resolve_list_single_space_path_with_spaces() {
+    // A padded-out path that also contains spaces: `.+?` must still backtrack
+    // to the last separator rather than splitting at the first one.
+    let output = "a/very long name/that fills the column.txt 3-sided conflict\n";
+    let files = Parser::parse_resolve_list(output);
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].path, "a/very long name/that fills the column.txt");
+    assert_eq!(files[0].description, "3-sided conflict");
+}
+
 // =========================================================================
 // conflict field in log parser tests (Phase 9)
 // =========================================================================

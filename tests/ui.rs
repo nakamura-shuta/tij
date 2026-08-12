@@ -29,3 +29,9 @@ mod test_evolog;
 
 #[path = "ui/test_command_history.rs"]
 mod test_command_history;
+
+#[path = "ui/test_tag.rs"]
+mod test_tag;
+
+#[path = "ui/test_bookmark.rs"]
+mod test_bookmark;

@@ -24,6 +24,6 @@ pub use log::{InputMode, LogAction, LogCommand, LogView, RebaseMode};
 pub use operation::{OperationAction, OperationView};
 pub use resolve::{ResolveAction, ResolveView};
 pub use status::{StatusAction, StatusInputMode, StatusView};
-pub use tag::{TagAction, TagView};
+pub use tag::{TagAction, TagFilter, TagView};
 pub use trace_detail::{TraceDetailAction, TraceDetailView};
 pub use workspace::{WorkspaceAction, WorkspaceView};

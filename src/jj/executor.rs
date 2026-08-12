@@ -48,11 +48,14 @@ impl PushBulkMode {
     }
 
     /// Human-readable label for UI
+    ///
+    /// jj 0.44 pushes tags alongside bookmarks for all three bulk modes, so the
+    /// labels name both.
     pub fn label(&self) -> &'static str {
         match self {
-            Self::All => "all bookmarks",
-            Self::Tracked => "tracked bookmarks",
-            Self::Deleted => "deleted bookmarks",
+            Self::All => "all bookmarks and tags",
+            Self::Tracked => "tracked bookmarks and tags",
+            Self::Deleted => "deleted bookmarks and tags",
         }
     }
 }
@@ -90,10 +93,62 @@ pub struct JjInvocation {
     pub at: SystemTime,
     pub duration_ms: u128,
     pub success: bool,
-    /// First line of stderr on failure
+    /// **Full** stderr on failure (see [`recorded_error`]) — not just its
+    /// first line. jj routinely answers with `Error: …` followed by a
+    /// `Hint: …` line, and the Command History detail is the only place that
+    /// hint is reachable (the error banner is one row tall).
     pub error: Option<String>,
     /// Operation label set by the App (e.g. "Describe"); None = auto-label
     pub operation: Option<String>,
+}
+
+/// The error text recorded for a failed invocation: the **whole** stderr,
+/// trailing newline trimmed.
+///
+/// Truncating to the first line here used to drop jj's second line, e.g.
+///
+/// ```text
+/// Error: Refusing to create new remote tag v1.0@other
+/// Hint: Run `jj tag track v1.0@other` and try again.
+/// ```
+///
+/// The hint is the actionable half, so the capture keeps every line and lets
+/// the consumer decide how much to show (`CommandHistoryView` renders up to
+/// `MAX_ERROR_LINES`). `trim_end` only removes the trailing newline so the
+/// detail view does not gain a phantom blank row; an empty stderr still
+/// records `Some("")`, exactly as before, and renders as no error line.
+fn recorded_error(stderr: &str) -> String {
+    stderr.trim_end().to_string()
+}
+
+/// Exit code `jj resolve --list` uses for "this revision has no conflicts".
+///
+/// Measured against jj 0.44: no conflicts (with or without `-r`, with or
+/// without paths) exits **2**, while genuine failures such as a nonexistent
+/// revision exit 1. The code alone therefore separates the non-error from
+/// real errors.
+const NO_CONFLICTS_EXIT_CODE: i32 = 2;
+
+/// Substring jj prints on stderr for the same state. Covers both wordings:
+/// `Error: No conflicts found at this revision` and, when paths are given,
+/// `Error: No conflicts found at the given path(s)`.
+const NO_CONFLICTS_MARKER: &str = "No conflicts";
+
+/// Is this failure jj's way of saying "there is nothing to resolve here"?
+///
+/// "No conflicts" is a normal state, not an error, but jj reports it as one.
+/// Both the exit code **and** the message are required: exit-code-only would
+/// swallow a real error if jj ever reused code 2 for something else, and
+/// message-only would swallow a different (exit 1) failure whose text happens
+/// to mention conflicts. Requiring both fails in the safe direction — if jj
+/// changes either half, "no conflicts" merely surfaces as an error banner
+/// again instead of a real error being silently discarded.
+fn is_no_conflicts_error(err: &JjError) -> bool {
+    matches!(
+        err,
+        JjError::CommandFailed { stderr, exit_code }
+            if *exit_code == NO_CONFLICTS_EXIT_CODE && stderr.contains(NO_CONFLICTS_MARKER)
+    )
 }
 
 /// Sequence counter and pending records live in ONE mutex so cloned
@@ -314,11 +369,11 @@ impl JjExecutor {
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
             let exit_code = output.status.code().unwrap_or(-1);
-            let first_err = stderr.lines().next().unwrap_or("").to_string();
+            let err_text = recorded_error(&stderr);
 
             // Check for common error patterns
             if stderr.contains(errors::NOT_A_REPO) {
-                self.capture(args, kind, started, false, Some(first_err));
+                self.capture(args, kind, started, false, Some(err_text));
                 return Err(JjError::NotARepository);
             }
 
@@ -341,7 +396,7 @@ impl JjExecutor {
                 });
             }
 
-            self.capture(args, kind, started, false, Some(first_err));
+            self.capture(args, kind, started, false, Some(err_text));
             Err(JjError::CommandFailed { stderr, exit_code })
         }
     }
@@ -378,8 +433,8 @@ impl JjExecutor {
             Ok(stderr)
         } else {
             let exit_code = output.status.code().unwrap_or(-1);
-            let first_err = stderr.lines().next().unwrap_or("").to_string();
-            self.capture(args, kind, started, false, Some(first_err));
+            let err_text = recorded_error(&stderr);
+            self.capture(args, kind, started, false, Some(err_text));
             Err(JjError::CommandFailed { stderr, exit_code })
         }
     }
@@ -1056,7 +1111,9 @@ impl JjExecutor {
     /// List conflicted files for a change
     ///
     /// Runs `jj resolve --list [-r <change_id>]` and parses the output.
-    /// Returns an empty list if there are no conflicts.
+    /// Returns an empty list if there are no conflicts — jj reports that
+    /// normal state as a failure, which `is_no_conflicts_error` normalizes
+    /// back into `Ok(vec![])`. Every other failure is propagated.
     pub fn resolve_list(&self, revision: Option<&str>) -> Result<Vec<ConflictFile>, JjError> {
         let mut args = vec![commands::RESOLVE, resolve_flags::LIST];
 
@@ -1065,8 +1122,11 @@ impl JjExecutor {
             args.push(rev);
         }
 
-        let output = self.run_readonly_str(&args)?;
-        Ok(Parser::parse_resolve_list(&output))
+        match self.run_readonly_str(&args) {
+            Ok(output) => Ok(Parser::parse_resolve_list(&output)),
+            Err(e) if is_no_conflicts_error(&e) => Ok(Vec::new()),
+            Err(e) => Err(e),
+        }
     }
 
     /// Resolve a conflict using a built-in tool (:ours or :theirs)
@@ -1704,16 +1764,40 @@ impl JjExecutor {
 
     // ── Tag operations ─────────────────────────────────────────────
 
-    /// List all local tags with their target commit info
+    /// List all tags (local and remote) with their target commit info
     ///
     /// Uses a single-stage query (unlike bookmarks which need 2 stages)
     /// because `jj tag list -T` can access `normal_target` directly.
+    ///
+    /// `--all-remotes` is required: without it `jj tag list` returns no
+    /// untracked remote tag at all, so there would be nothing to track.
+    ///
+    /// The template concatenates fields explicitly with `++ "\t" ++` instead of
+    /// using `separate()`. `separate()` drops empty fields *together with* their
+    /// separator, which makes the column count vary per row; explicit
+    /// concatenation keeps empty fields and yields a fixed 8 columns.
+    ///
+    /// The three `normal_target` fields are wrapped in `try(expr, "")`: rows with
+    /// `present == false` (local tag deleted while the remote tag remains) have no
+    /// commit, and jj does not fail there — it embeds the literal string
+    /// `<Error: No Commit available>` in the output, which would be mis-parsed as
+    /// a change_id. `try()` turns it into an empty field.
     pub fn tag_list(&self) -> Result<Vec<TagInfo>, JjError> {
-        const TAG_LIST_TEMPLATE: &str = r#"separate("\t", name, if(remote, remote, ""), if(present, "true", "false"), if(tracked, "true", "false"), normal_target.change_id().short(8), normal_target.commit_id().short(8), normal_target.description().first_line()) ++ "\n""#;
+        const TAG_LIST_TEMPLATE: &str = concat!(
+            r#"name ++ "\t""#,
+            r#" ++ if(remote, remote, "") ++ "\t""#,
+            r#" ++ if(present, "true", "false") ++ "\t""#,
+            r#" ++ if(tracked, "true", "false") ++ "\t""#,
+            r#" ++ if(conflict, "true", "false") ++ "\t""#,
+            r#" ++ try(normal_target.change_id().short(8), "") ++ "\t""#,
+            r#" ++ try(normal_target.commit_id().short(8), "") ++ "\t""#,
+            r#" ++ try(normal_target.description().first_line(), "") ++ "\n""#,
+        );
 
         let output = self.run_readonly_str(&[
             commands::TAG,
             commands::TAG_LIST,
+            flags::ALL_REMOTES,
             flags::TEMPLATE,
             TAG_LIST_TEMPLATE,
         ])?;
@@ -1784,10 +1868,116 @@ mod tests {
         assert_eq!(PushBulkMode::Deleted.flag(), "--deleted");
     }
 
+    /// Regression: the capture must not collapse jj's stderr to its first
+    /// line. jj puts the actionable half in the `Hint:` line, and after this
+    /// the Command History detail is the only place it can be read.
+    #[test]
+    fn recorded_error_keeps_every_stderr_line() {
+        let stderr = "Error: Refusing to create new remote tag v1.0@other\n\
+                      Hint: Run `jj tag track v1.0@other` and try again.\n";
+        let recorded = recorded_error(stderr);
+        assert_eq!(
+            recorded.lines().count(),
+            2,
+            "both lines survive the capture: {recorded:?}"
+        );
+        assert!(recorded.starts_with("Error: Refusing to create new remote tag"));
+        assert!(
+            recorded.contains("Hint: Run `jj tag track v1.0@other` and try again."),
+            "the Hint line must not be truncated away: {recorded:?}"
+        );
+    }
+
+    #[test]
+    fn recorded_error_trims_only_the_trailing_newline() {
+        // No phantom blank row in the detail view …
+        assert_eq!(recorded_error("Error: boom\n"), "Error: boom");
+        assert_eq!(recorded_error("Error: boom\n\n"), "Error: boom");
+        // … and interior blank lines / indentation are left alone.
+        assert_eq!(
+            recorded_error("Error: a\n\n  Hint: b"),
+            "Error: a\n\n  Hint: b"
+        );
+        // Empty stderr keeps recording as an empty string (renders as no
+        // error line), matching the pre-full-stderr behaviour.
+        assert_eq!(recorded_error(""), "");
+    }
+
+    // =====================================================================
+    // resolve_list: "no conflicts" is a normal state, not an error
+    //
+    // jj 0.44 exits 2 with `Error: No conflicts found …` when a revision is
+    // conflict-free. `resolve_list` turns exactly that into `Ok(vec![])`; the
+    // predicate below is what draws the line, so it is pinned from both sides.
+    // =====================================================================
+
+    #[test]
+    fn no_conflicts_at_this_revision_is_not_a_real_error() {
+        let err = JjError::CommandFailed {
+            stderr: "Error: No conflicts found at this revision\n".to_string(),
+            exit_code: 2,
+        };
+        assert!(is_no_conflicts_error(&err));
+    }
+
+    #[test]
+    fn no_conflicts_at_the_given_paths_is_not_a_real_error() {
+        // Path-scoped wording (`jj resolve --list <path>`), plus jj's warning line.
+        let err = JjError::CommandFailed {
+            stderr: "Warning: No matching entries for paths: src/main.rs\n\
+                     Error: No conflicts found at the given path(s)\n"
+                .to_string(),
+            exit_code: 2,
+        };
+        assert!(is_no_conflicts_error(&err));
+    }
+
+    #[test]
+    fn exit_2_with_another_message_stays_a_real_error() {
+        // Exit code alone must not classify: if jj ever reuses 2, a genuine
+        // failure must still reach the error banner.
+        let err = JjError::CommandFailed {
+            stderr: "Error: Merge tool exited with code 2\n".to_string(),
+            exit_code: 2,
+        };
+        assert!(!is_no_conflicts_error(&err));
+    }
+
+    #[test]
+    fn no_conflicts_wording_with_exit_1_stays_a_real_error() {
+        // Message alone must not classify either — exit 1 is a real failure
+        // even when its text mentions conflicts.
+        let err = JjError::CommandFailed {
+            stderr: "Error: No conflicts something went wrong\n".to_string(),
+            exit_code: 1,
+        };
+        assert!(!is_no_conflicts_error(&err));
+    }
+
+    #[test]
+    fn nonexistent_revision_stays_a_real_error() {
+        // Measured jj 0.44 behaviour for a bad `-r`: exit 1.
+        let err = JjError::CommandFailed {
+            stderr: "Error: Revision `nosuch` doesn't exist\n".to_string(),
+            exit_code: 1,
+        };
+        assert!(!is_no_conflicts_error(&err));
+    }
+
+    #[test]
+    fn non_command_failures_stay_real_errors() {
+        assert!(!is_no_conflicts_error(&JjError::JjNotFound));
+        assert!(!is_no_conflicts_error(&JjError::NotARepository));
+        assert!(!is_no_conflicts_error(&JjError::ParseError(
+            "No conflicts".to_string()
+        )));
+    }
+
     #[test]
     fn test_push_bulk_mode_label() {
-        assert_eq!(PushBulkMode::All.label(), "all bookmarks");
-        assert_eq!(PushBulkMode::Tracked.label(), "tracked bookmarks");
-        assert_eq!(PushBulkMode::Deleted.label(), "deleted bookmarks");
+        // jj 0.44: every bulk mode pushes tags together with bookmarks.
+        assert_eq!(PushBulkMode::All.label(), "all bookmarks and tags");
+        assert_eq!(PushBulkMode::Tracked.label(), "tracked bookmarks and tags");
+        assert_eq!(PushBulkMode::Deleted.label(), "deleted bookmarks and tags");
     }
 }

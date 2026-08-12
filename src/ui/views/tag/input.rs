@@ -36,13 +36,30 @@ impl TagView {
                     TagAction::None
                 }
             }
+            // Track / untrack / push are no-ops on rows they cannot act on
+            // (same guard style as the Bookmark View).
+            k if k == keys::TRACK => match self.selected_tag() {
+                Some(t) if t.is_untracked_remote() => TagAction::Track(t.full_name()),
+                _ => TagAction::None,
+            },
+            k if k == keys::BOOKMARK_UNTRACK => match self.selected_tag() {
+                Some(t) if t.is_tracked_remote() => TagAction::Untrack(t.full_name()),
+                _ => TagAction::None,
+            },
+            k if k == keys::PUSH => match self.selected_tag() {
+                Some(t) if t.is_local() => TagAction::Push(t.name.clone()),
+                _ => TagAction::None,
+            },
+            k if k == keys::TAG_FILTER => TagAction::CycleFilter,
             k if k == keys::OBJECT_NEW => TagAction::StartCreate,
             k if k == keys::OBJECT_DELETE => {
-                // Use `d` key for tag deletion
-                if let Some(tag) = self.selected_tag() {
-                    TagAction::Delete(tag.name.clone())
-                } else {
-                    TagAction::None
+                // Local rows only. `jj tag delete` takes a bare name, so on a
+                // remote row it would delete the *local* tag of the same name —
+                // a destructive action on a different object than the one under
+                // the cursor. Same guard as Bookmark View (`bookmark/input.rs`).
+                match self.selected_tag() {
+                    Some(tag) if tag.is_local() => TagAction::Delete(tag.name.clone()),
+                    _ => TagAction::None,
                 }
             }
             _ => TagAction::None,

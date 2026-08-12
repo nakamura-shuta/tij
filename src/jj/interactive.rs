@@ -216,6 +216,33 @@ impl JjExecutor {
     ) -> io::Result<ExitStatus> {
         self.spawn_interactive(&self.bisect_run_argv(good, bad, command))
     }
+
+    /// argv for [`Self::run_interactive`]
+    pub fn run_argv(&self, revset: &str, command: &str) -> Vec<String> {
+        let mut v = self.interactive_argv_base();
+        v.extend(
+            [
+                commands::RUN,
+                flags::REVISION,
+                revset,
+                "--",
+                "bash",
+                "-c",
+                command,
+            ]
+            .iter()
+            .map(|s| s.to_string()),
+        );
+        v
+    }
+
+    /// Run `jj run -r <revset> -- bash -c <command>` interactively
+    ///
+    /// Spawns jj run as a child process with inherited stdio. Used to apply a
+    /// shell command across the given revset (e.g. reformat, regenerate files).
+    pub fn run_interactive(&self, revset: &str, command: &str) -> io::Result<ExitStatus> {
+        self.spawn_interactive(&self.run_argv(revset, command))
+    }
 }
 
 #[cfg(test)]
@@ -265,6 +292,10 @@ mod tests {
                 "cargo test"
             ]
         );
+        assert_eq!(
+            jj.run_argv("mutable()", "cargo test"),
+            ["run", "-r", "mutable()", "--", "bash", "-c", "cargo test"]
+        );
     }
 
     #[test]
@@ -273,6 +304,20 @@ mod tests {
         assert_eq!(
             jj.split_argv("abc"),
             ["-R", "/tmp/repo", "split", "-r", "abc"]
+        );
+        assert_eq!(
+            jj.run_argv("main", "true"),
+            [
+                "-R",
+                "/tmp/repo",
+                "run",
+                "-r",
+                "main",
+                "--",
+                "bash",
+                "-c",
+                "true"
+            ]
         );
     }
 }

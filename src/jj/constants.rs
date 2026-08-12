@@ -53,12 +53,17 @@ pub mod commands {
     pub const SIMPLIFY_PARENTS: &str = "simplify-parents";
     pub const PARALLELIZE: &str = "parallelize";
     pub const FIX: &str = "fix";
+    pub const RUN: &str = "run";
     pub const GIT_REMOTE: &str = "remote";
     pub const GIT_REMOTE_LIST: &str = "list";
     pub const TAG: &str = "tag";
     pub const TAG_LIST: &str = "list";
     pub const TAG_SET: &str = "set";
     pub const TAG_DELETE: &str = "delete";
+    /// Track a remote tag (jj 0.44+): `jj tag track <TAG@REMOTE>`
+    pub const TAG_TRACK: &str = "track";
+    /// Stop tracking a remote tag (jj 0.44+): `jj tag untrack <TAG@REMOTE>`
+    pub const TAG_UNTRACK: &str = "untrack";
     pub const INTERDIFF: &str = "interdiff";
     pub const BISECT: &str = "bisect";
     pub const BISECT_RUN: &str = "run";
@@ -95,6 +100,11 @@ pub mod flags {
     pub const REPO_PATH: &str = "-R";
     /// Specify bookmark for push
     pub const BOOKMARK_FLAG: &str = "--bookmark";
+    /// Specify tag for push (jj 0.44+): `jj git push --tag <TAG>`
+    ///
+    /// The value is glob-interpreted by default, so callers must pass `exact:<name>`
+    /// when a single tag is intended.
+    pub const TAG_FLAG: &str = "--tag";
     /// List all remotes for bookmark list (jj 0.37+)
     pub const ALL_REMOTES: &str = "--all-remotes";
     /// Named push for new bookmarks (jj 0.37+): --named <bookmark>=<revision>

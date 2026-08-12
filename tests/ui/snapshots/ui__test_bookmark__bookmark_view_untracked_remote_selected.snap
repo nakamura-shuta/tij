@@ -1,0 +1,20 @@
+---
+source: tests/ui/test_bookmark.rs
+expression: out
+---
+"┌─────────────────────────────── Bookmarks (6) ────────────────────────────────┐"
+"│  ── Local ──                                                                 │"
+"│  feature-x                       vwxyzabc  wip: refactor                     │"
+"│  main                            kxryzmor  feat: add parser                  │"
+"│  orphan                                    (no description)                  │"
+"│  ── Remote (tracked) ──                                                      │"
+"│  main@origin                                                                 │"
+"│  ── Remote (untracked) ──                                                    │"
+"│  feature-y@origin                                                            │"
+"│  main@upstream                                                               │"
+"│                                                                              │"
+"│                                                                              │"
+"└──────────────────────────────────────────────────────────────────────────────┘"
+" [?] Help   [n] Create   [t] Track   [u] Undo   [^R] Redo   [^L] Refresh        "
+"                                                                                "
+" [q] Back                                                                       "

@@ -1210,6 +1210,128 @@ mod tests {
     }
 
     #[test]
+    fn test_push_target_remote_cleared_by_execute_tag_push() {
+        // execute_tag_push takes push_target_remote at the top, so it clears on
+        // every path. The tag name cannot exist, so jj either errors or reports
+        // "Nothing changed" — nothing is ever pushed either way.
+        let mut app = App::new_for_test();
+        app.push_target_remote = Some("upstream".to_string());
+        app.pending_push_tag = Some("v1.0".to_string());
+        app.execute_tag_push("tij-test-nonexistent-tag-xyz");
+        assert!(app.push_target_remote.is_none());
+        assert!(app.pending_push_tag.is_none());
+
+        // Same guarantee on the error path, pinned deterministically: an
+        // executor aimed at a non-repo makes the invocation fail outright.
+        let mut app = App::new_for_test();
+        app.jj = crate::jj::JjExecutor::with_repo_path(std::path::PathBuf::from(
+            "/nonexistent-tij-tag-push-test-repo",
+        ));
+        app.push_target_remote = Some("upstream".to_string());
+        app.pending_push_tag = Some("v1.0".to_string());
+        app.execute_tag_push("v1.0");
+        assert!(app.error_message.is_some(), "the push must have failed");
+        assert!(
+            app.push_target_remote.is_none(),
+            "cleared on the error path"
+        );
+        assert!(app.pending_push_tag.is_none());
+    }
+
+    #[test]
+    fn test_push_target_remote_cleared_on_tag_push_cancel() {
+        // Cancelling the TagPush confirmation must not arm the next push
+        let mut app = App::new_for_test();
+        app.push_target_remote = Some("upstream".to_string());
+        app.pending_push_tag = Some("v1.0".to_string());
+        app.active_dialog = Some(Dialog::confirm(
+            "Push Tag",
+            "Push tag 'v1.0' to upstream?",
+            None,
+            DialogCallback::TagPush {
+                name: "v1.0".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Cancelled);
+        assert!(app.push_target_remote.is_none());
+        assert!(app.pending_push_tag.is_none());
+    }
+
+    #[test]
+    fn test_pending_push_tag_cleared_on_remote_select_cancel() {
+        // Cancelling the shared remote picker must drop the stashed tag too,
+        // otherwise the next bookmark push would be hijacked into a tag push.
+        let mut app = App::new_for_test();
+        app.push_target_remote = Some("upstream".to_string());
+        app.pending_push_tag = Some("v1.0".to_string());
+        app.active_dialog = Some(Dialog::select_single(
+            "Push to Remote",
+            "Select remote:",
+            vec![],
+            None,
+            DialogCallback::GitPushRemoteSelect,
+        ));
+        app.handle_dialog_result(DialogResult::Cancelled);
+        assert!(app.push_target_remote.is_none());
+        assert!(app.pending_push_tag.is_none());
+    }
+
+    #[test]
+    fn test_remote_select_dispatches_to_tag_push_when_pending() {
+        // pending_push_tag set → confirming the remote resumes the TAG push
+        let mut app = App::new_for_test();
+        app.pending_push_tag = Some("v1.0".to_string());
+        app.active_dialog = Some(Dialog::select_single(
+            "Push to Remote",
+            "Select remote:",
+            vec![],
+            None,
+            DialogCallback::GitPushRemoteSelect,
+        ));
+        app.handle_dialog_result(DialogResult::Confirmed(vec!["upstream".to_string()]));
+
+        assert_eq!(app.push_target_remote.as_deref(), Some("upstream"));
+        let dialog = app.active_dialog.as_ref().expect("confirm dialog expected");
+        assert_eq!(
+            dialog.callback_id,
+            DialogCallback::TagPush {
+                name: "v1.0".to_string()
+            },
+            "must land in start_tag_push, not start_push"
+        );
+        assert!(
+            app.pending_push_tag.is_none(),
+            "the marker is consumed by take()"
+        );
+    }
+
+    #[test]
+    fn test_remote_select_dispatches_to_bookmark_push_when_not_pending() {
+        // pending_push_tag unset → the pre-existing bookmark push path is used.
+        // start_push() returns early without a selected change, so the tell is
+        // that no TagPush dialog was opened.
+        let mut app = App::new_for_test();
+        app.pending_push_tag = None;
+        app.active_dialog = Some(Dialog::select_single(
+            "Push to Remote",
+            "Select remote:",
+            vec![],
+            None,
+            DialogCallback::GitPushRemoteSelect,
+        ));
+        app.handle_dialog_result(DialogResult::Confirmed(vec!["upstream".to_string()]));
+
+        assert_eq!(app.push_target_remote.as_deref(), Some("upstream"));
+        assert!(
+            !matches!(
+                app.active_dialog.as_ref().map(|d| &d.callback_id),
+                Some(DialogCallback::TagPush { .. })
+            ),
+            "bookmark push must not be swallowed by the tag branch"
+        );
+    }
+
+    #[test]
     fn test_push_target_remote_cleared_on_push_change_cancel() {
         // Simulating GitPushChange dialog cancel should clear push_target_remote
         let mut app = App::new_for_test();

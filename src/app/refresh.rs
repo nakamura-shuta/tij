@@ -9,6 +9,8 @@
 //! navigation via `go_to_view()`. This design (from Phase 17.1 DirtyFlags)
 //! makes parallel refresh unnecessary for the current architecture.
 
+use crate::jj::JjError;
+use crate::model::ConflictFile;
 use crate::ui::views::ResolveView;
 
 use super::state::{App, DirtyFlags, View};
@@ -149,7 +151,21 @@ impl App {
 
     /// Refresh the resolve list for the current resolve view
     pub(crate) fn refresh_resolve_list(&mut self, revision: &str, is_working_copy: bool) {
-        match self.jj.resolve_list(Some(revision)) {
+        let result = self.jj.resolve_list(Some(revision));
+        self.apply_resolve_list_refresh(result, revision, is_working_copy);
+    }
+
+    /// Apply a `resolve --list` result to the refresh path.
+    ///
+    /// Split out of `refresh_resolve_list` so the "last conflict just got
+    /// resolved" branch can be exercised without spawning jj.
+    pub(crate) fn apply_resolve_list_refresh(
+        &mut self,
+        result: Result<Vec<ConflictFile>, JjError>,
+        revision: &str,
+        is_working_copy: bool,
+    ) {
+        match result {
             Ok(files) => {
                 if files.is_empty() {
                     // All resolved - go back (simple message for Log View title bar)
@@ -169,19 +185,11 @@ impl App {
                     ));
                 }
             }
+            // "No conflicts" is normalized to `Ok(vec![])` by
+            // `JjExecutor::resolve_list`, so everything reaching here is a
+            // real failure. (Handling it in both arms invited fixing only one.)
             Err(e) => {
-                // "No conflicts found" means all conflicts were just resolved
-                let err_msg = e.to_string();
-                if err_msg.contains("No conflicts") {
-                    // All resolved - simple message for Log View title bar
-                    self.notify_success("All conflicts resolved!");
-                    self.resolve_view = None;
-                    self.go_back();
-                    let revset = self.log_view.current_revset.clone();
-                    self.refresh_log(revset.as_deref());
-                } else {
-                    self.set_error(format!("Failed to refresh conflicts: {}", e));
-                }
+                self.set_error(format!("Failed to refresh conflicts: {}", e));
             }
         }
     }
@@ -298,5 +306,103 @@ impl App {
                 // Help is static content, no refresh needed, no notification
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::jj::JjExecutor;
+    use crate::model::NotificationKind;
+
+    fn conflict(path: &str) -> ConflictFile {
+        ConflictFile {
+            path: path.to_string(),
+            description: "2-sided conflict".to_string(),
+        }
+    }
+
+    /// An App sitting in the Resolve View with one conflict listed.
+    ///
+    /// The executor points at a path that is not a jj repo so the trailing
+    /// `refresh_log` in the "all resolved" branch fails fast instead of
+    /// reading whatever repository the test runner happens to sit in (and it
+    /// is equally harmless when jj is not installed at all, as in CI's
+    /// `cargo test --lib`).
+    fn app_in_resolve_view() -> App {
+        let mut app = App::new_for_test();
+        app.jj = JjExecutor::with_repo_path(std::env::temp_dir().join("tij-not-a-repo"));
+        app.resolve_view = Some(ResolveView::new(
+            "abc12345".to_string(),
+            true,
+            vec![conflict("src/main.rs")],
+        ));
+        app.current_view = View::Resolve;
+        app.view_stack = vec![View::Log];
+        app
+    }
+
+    /// Resolving the last conflict still reports success and drops back to
+    /// Log. This used to run through an `Err` branch that string-matched
+    /// "No conflicts"; `resolve_list` now normalizes that to `Ok(empty)` and
+    /// the workaround is gone — this pins the behaviour across that move.
+    #[test]
+    fn refresh_with_no_conflicts_reports_all_conflicts_resolved() {
+        let mut app = app_in_resolve_view();
+
+        app.apply_resolve_list_refresh(Ok(Vec::new()), "abc12345", true);
+
+        let notification = app.notification.clone().expect("expected a notification");
+        assert_eq!(notification.message, "All conflicts resolved!");
+        assert_eq!(notification.kind, NotificationKind::Success);
+        assert!(app.resolve_view.is_none());
+        assert_eq!(app.current_view, View::Log);
+        // The conflict listing itself must not raise a banner. (The log
+        // refresh that follows may fail without a repo — unrelated.)
+        assert!(
+            !app.error_message
+                .unwrap_or_default()
+                .contains("Failed to refresh conflicts"),
+        );
+    }
+
+    #[test]
+    fn refresh_with_remaining_conflicts_updates_the_view_in_place() {
+        let mut app = app_in_resolve_view();
+
+        app.apply_resolve_list_refresh(
+            Ok(vec![conflict("src/main.rs"), conflict("src/lib.rs")]),
+            "abc12345",
+            true,
+        );
+
+        assert_eq!(app.current_view, View::Resolve);
+        let view = app.resolve_view.expect("view should stay open");
+        assert_eq!(view.files().len(), 2);
+        assert!(app.notification.is_none());
+        assert!(app.error_message.is_none());
+    }
+
+    /// A real failure must surface as an error and leave the view open — it
+    /// must never be mistaken for "all conflicts resolved" (which would close
+    /// the view and claim success on a change that is still conflicted).
+    #[test]
+    fn refresh_with_a_real_error_keeps_the_view_and_shows_the_banner() {
+        let mut app = app_in_resolve_view();
+
+        app.apply_resolve_list_refresh(
+            Err(JjError::CommandFailed {
+                stderr: "Error: Revision `nosuch` doesn't exist".to_string(),
+                exit_code: 1,
+            }),
+            "abc12345",
+            true,
+        );
+
+        let error = app.error_message.expect("expected an error banner");
+        assert!(error.starts_with("Failed to refresh conflicts:"), "{error}");
+        assert!(app.notification.is_none(), "must not claim success");
+        assert!(app.resolve_view.is_some(), "view must stay open");
+        assert_eq!(app.current_view, View::Resolve);
     }
 }

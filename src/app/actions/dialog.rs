@@ -50,7 +50,9 @@ impl App {
                     self.handle_bookmark_dialog(callback, values);
                 }
                 // Tag
-                DialogCallback::TagCreate { .. } | DialogCallback::TagDelete { .. } => {
+                DialogCallback::TagCreate { .. }
+                | DialogCallback::TagDelete { .. }
+                | DialogCallback::TagPush { .. } => {
                     self.handle_tag_dialog(callback, values);
                 }
                 // Workspace
@@ -71,7 +73,9 @@ impl App {
                 | DialogCallback::BisectRun { .. }
                 | DialogCallback::MetaeditSelect { .. }
                 | DialogCallback::MetaeditSetAuthor { .. }
-                | DialogCallback::MetaeditNewChangeId { .. } => {
+                | DialogCallback::MetaeditNewChangeId { .. }
+                | DialogCallback::RunTarget { .. }
+                | DialogCallback::RunCommand { .. } => {
                     self.handle_misc_dialog(callback, values);
                 }
             },
@@ -92,6 +96,13 @@ impl App {
             | DialogCallback::GitPushRevisions { .. }
             | DialogCallback::GitPushMultiBookmarkMode { .. } => {
                 self.push_target_remote = None;
+                // GitPushRemoteSelect is shared with the Tag View push flow;
+                // cancelling it must not leave a tag armed for the next push.
+                self.pending_push_tag = None;
+            }
+            DialogCallback::TagPush { .. } => {
+                self.push_target_remote = None;
+                self.pending_push_tag = None;
             }
             DialogCallback::BookmarkForget => {
                 self.pending_forget_bookmark = None;
@@ -120,6 +131,8 @@ impl App {
             | DialogCallback::MetaeditSelect { .. }
             | DialogCallback::MetaeditSetAuthor { .. }
             | DialogCallback::MetaeditNewChangeId { .. }
+            | DialogCallback::RunTarget { .. }
+            | DialogCallback::RunCommand { .. }
             | DialogCallback::WorkspaceAdd
             | DialogCallback::WorkspaceForget { .. }
             | DialogCallback::WorkspaceRename { .. } => {}
@@ -143,7 +156,11 @@ impl App {
             DialogCallback::GitPushRemoteSelect => {
                 if let Some(remote) = values.first() {
                     self.push_target_remote = Some(remote.clone());
-                    self.start_push();
+                    // The dialog is shared: resume whichever flow armed it.
+                    match self.pending_push_tag.take() {
+                        Some(name) => self.start_tag_push(name),
+                        None => self.start_push(),
+                    }
                 }
             }
             DialogCallback::GitPushModeSelect { change_id } => {
@@ -333,6 +350,25 @@ impl App {
                 change_id,
             } => {
                 self.execute_metaedit(&commit_id, &change_id, &["--update-change-id"]);
+            }
+            // Run: preset value → revset, then open the command input dialog.
+            DialogCallback::RunTarget { revision } => {
+                let revset = match values.first().map(|s| s.as_str()) {
+                    Some("selected") => revision,
+                    Some("selected-to-at") => format!("{revision}::@"),
+                    Some("mutable") => "mutable()".to_string(),
+                    _ => return,
+                };
+                self.active_dialog = Some(Dialog::input(
+                    "Run Command",
+                    "Shell command (e.g. cargo test):",
+                    DialogCallback::RunCommand { revset },
+                ));
+            }
+            DialogCallback::RunCommand { revset } => {
+                // Empty input is handled inside execute_run (info notify, no spawn).
+                let command = values.first().map(|s| s.as_str()).unwrap_or("");
+                self.execute_run(&revset, command);
             }
             _ => {}
         }
@@ -767,5 +803,38 @@ mod tests {
         assert!(app.error_message.is_none());
         assert!(app.notification.is_none());
         assert!(app.command_history.is_empty());
+    }
+
+    // =========================================================================
+    // Run command Input dialog: empty command must not spawn jj.
+    //
+    // The RunTarget preset → revset mapping (the producer/consumer cross-check)
+    // is pinned against the REAL dialog opener in
+    // `app::input::tests::run_target_real_preset_values_resolve_to_expected_revsets`,
+    // so it is not re-tested here with a hand-typed fixture.
+    // =========================================================================
+
+    #[test]
+    fn test_run_command_empty_is_cancelled_no_spawn() {
+        // RunCommand with an empty command must NOT spawn jj (execute_run returns
+        // early before suspend_tui / run_interactive), only an info notification.
+        let mut app = App::new_for_test();
+        app.active_dialog = Some(Dialog::input(
+            "Run Command",
+            "Shell command (e.g. cargo test):",
+            DialogCallback::RunCommand {
+                revset: "mutable()".to_string(),
+            },
+        ));
+        app.handle_dialog_result(DialogResult::Confirmed(vec!["".to_string()]));
+        assert!(app.error_message.is_none(), "no jj shelled → no error");
+        assert!(
+            app.command_history.is_empty(),
+            "empty command must not record a jj run"
+        );
+        assert!(
+            app.notification.is_some(),
+            "empty command shows an info notification"
+        );
     }
 }

@@ -31,7 +31,7 @@ git clone https://github.com/nakamura-shuta/tij.git
 cd tij && cargo install --path .
 ```
 
-**Requirements**: [Jujutsu](https://github.com/jj-vcs/jj) >= 0.42.0 in PATH (Homebrew installs it automatically)
+**Requirements**: [Jujutsu](https://github.com/jj-vcs/jj) >= 0.44.0 in PATH (Homebrew installs it automatically)
 
 ## Quick Start
 
@@ -47,16 +47,16 @@ Press `?` for help, `q` to quit.
 | Area | Features |
 |------|----------|
 | Views | Log (with split-pane preview) / Diff / Status (`s`) / Help / Operation History (`o`) / Blame (with Log jump) / Bookmark (`b`) / Tag (`t`) / Workspace (`w`, `Enter` jump / `n` add / `d` forget / `r` rename, `<name>@` markers in Log) / Evolog (`L`, evolution history) / Command History (`H`, every jj command tij ran — reads included — tagged `[R]`/`[W]`/`[I]` with OK/NG status; `f` filters All/Write/Read, `y` copies a shell-pasteable command line, identical consecutive reads collapse to `×N`; `:` → `toggle-command-echo` shows the jj command behind your last operation (mutating/interactive) above the status bar) |
-| History Editing | Describe (`d` quick edit / `Ctrl+E` external editor) / Edit (`e`) / New change (`c`) / New from selected (`C`) / Squash (`S`) / Abandon (`A`) / Split (`x`) / Rebase (`R`: revision/source/branch/insert-after/insert-before, with `--skip-emptied` toggle and revset input for multi-revision rebase) / Absorb (`B`) / Resolve conflicts (`X`). Low-frequency ops via command palette (`:`): interdiff / compare / duplicate / revert / simplify-parents / parallelize / metaedit / arrange / bisect / fix |
+| History Editing | Describe (`d` quick edit / `Ctrl+E` external editor) / Edit (`e`) / New change (`c`) / New from selected (`C`) / Squash (`S`) / Abandon (`A`) / Split (`x`) / Rebase (`R`: revision/source/branch/insert-after/insert-before, with `--skip-emptied` toggle and revset input for multi-revision rebase) / Absorb (`B`) / Resolve conflicts (`X`). Low-frequency ops via command palette (`:`): interdiff / compare / duplicate / revert / simplify-parents / parallelize / metaedit / arrange / bisect / fix / run (shell command across a target preset: selected revision / selected `::@` / `mutable()`, executed via `jj run -- bash -c`) |
 | Conflict Resolution | Resolve List View / :ours / :theirs / External merge tool / Conflict jump |
 | Recovery | Undo `u` (shows undone operation detail) / Redo `Ctrl+R` — available in all mutating views (Log, Status, Bookmark, Tag, Workspace, Operation, Resolve) / Operation Restore / Restore file / Restore all |
 | Bookmarks | `b` opens Bookmark View; in-view ops: `Enter` jump / `n` create / `d` delete / `r` rename / `t` track / `T` untrack / `f` forget / `m` move to @ (with backward detection). Create target defaults to Log selection (else `@`). |
-| Tags | Tag View (`t`): `Enter` jump / `n` create / `d` delete. Jump supports revset expansion. |
+| Tags | Tag View (`t`): local and remote tags grouped as Local / Remote (tracked) / Remote (untracked). `Enter` jump / `n` create / `d` delete (local only) / `t` track / `T` untrack / `P` push (`--tag exact:<name>`, remote picker on multi-remote) / `F` cycles the All → Tracked → Conflicted filter. Jump supports revset expansion. |
 | Git Integration | Fetch (multi-remote selection, branch-specific fetch, tracked-only fetch) / Push (with dry-run preview, force push warnings, protected bookmark detection, multi-remote selection, push-by-change, push-by-revision, bulk options: --all/--tracked/--deleted, auto-retry for private commits and empty descriptions) |
 | Navigation | Next/Prev (`]`/`[` to move @ through history) / Reversed log order (`V`) |
 | AI Attribution | [Agent Trace](https://github.com/cursor/agent-trace) reader: changes with AI contributions get a `[AI]` badge (`[AI?]` when anchored via git SHA) in the Log View; `:` → `show-traces` opens a Trace Detail View (time / tool+version / contributor breakdown / per-file ranges / all URLs incl. `related[]`, `y` to copy a URL); the Diff View marks AI-contributed line ranges with a `▎` gutter (color-words format, approximate by design). Reads `.agent-trace/traces.jsonl` (gitignore it so trace appends don't dirty the working copy); path configurable via `jj config set --repo tij.agent-trace.path <path>`. Reloads on `Ctrl+L`. |
 | Diff | Display mode cycle (`m`: color-words → stat → git) / Copy to clipboard (`y` full / `Y` diff-only) / Export to `.patch` file (`w`, git unified format) / Stack diff (`:` → `show-stack-diff`: all diffs from the selected change up to `@` in one view, with `◉` change boundaries). Compare, interdiff, and bisect are reachable via command palette (`:`) in Log View. |
-| Usability | Command palette (`:`, fuzzy-search low-frequency commands) / Current-view help (`?` shows only the current view's keys, `a` toggles all views) / Revset filtering (with count + truncation indicator) / Text search / Adaptive status bar / Dynamic context-aware hints / `--limit 200` for all queries / Startup jj version check (>= 0.42) |
+| Usability | Command palette (`:`, fuzzy-search low-frequency commands) / Current-view help (`?` shows only the current view's keys, `a` toggles all views) / Revset filtering (with count + truncation indicator) / Text search / Adaptive status bar / Dynamic context-aware hints / `--limit 200` for all queries / Startup jj version check (>= 0.44) |
 
 ## AI Attribution (Agent Trace)
 

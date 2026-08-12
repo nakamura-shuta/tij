@@ -101,6 +101,8 @@ pub enum DialogCallback {
     TagCreate { revision: String },
     /// Tag deletion (Confirm dialog)
     TagDelete { name: String },
+    /// Tag push to a remote (Confirm dialog) — carries the bare tag name
+    TagPush { name: String },
     /// Workspace add (Input dialog for path)
     WorkspaceAdd,
     /// Workspace forget (Confirm dialog)
@@ -124,6 +126,12 @@ pub enum DialogCallback {
         commit_id: String,
         change_id: String,
     },
+    /// Run target-preset selection (Select dialog, single_select).
+    /// Carries the selected change's commit_id; the preset value chooses how it
+    /// expands into a revset (`<revision>` / `<revision>::@` / `mutable()`).
+    RunTarget { revision: String },
+    /// Run command entry (Input dialog) — carries the resolved revset.
+    RunCommand { revset: String },
 }
 
 /// Selection item for Select dialog
