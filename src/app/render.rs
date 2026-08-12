@@ -173,9 +173,22 @@ impl App {
                 let hints = keys::current_hints(View::Bookmark, self.log_view.input_mode, &ctx);
                 status_hints_height(&hints, width)
             }
-            View::Tag | View::Workspace => {
+            // Tag must use the SAME context `render_tag_view` renders with.
+            // With the default context the hint list is 9 entries; a selected
+            // row adds Delete/Push/Track/Untrack and makes it 10–11, which
+            // wraps to 3 rows instead of 1 from ~126 columns up. Reserving the
+            // wrong height let the status bar paint over the view's bottom
+            // border. Bookmark already did this correctly.
+            View::Tag => {
+                let ctx = self.build_tag_hint_context();
+                let hints = keys::current_hints(View::Tag, self.log_view.input_mode, &ctx);
+                status_hints_height(&hints, width)
+            }
+            // Workspace hints are static (`workspace_view_hints` takes no
+            // context), so the default is exact here.
+            View::Workspace => {
                 let ctx = keys::HintContext::default();
-                let hints = keys::current_hints(self.current_view, self.log_view.input_mode, &ctx);
+                let hints = keys::current_hints(View::Workspace, self.log_view.input_mode, &ctx);
                 status_hints_height(&hints, width)
             }
             View::Resolve => {
@@ -1043,6 +1056,75 @@ mod tests {
     ) -> String {
         let buf = terminal.backend().buffer();
         (0..width).map(|x| buf[(x, y)].symbol()).collect()
+    }
+
+    #[test]
+    fn tag_status_bar_height_matches_the_hints_actually_rendered() {
+        // `get_current_status_bar_height` reserves the rows and
+        // `render_tag_view` draws them; they must agree at every width.
+        // Regression: the height branch used `HintContext::default()` while
+        // the render used the real context, so a selected row (9 hints -> 10
+        // or 11) reserved 1 row but drew 3 from ~126 columns up, and the
+        // status bar painted over the view's bottom border.
+        use crate::model::{ChangeId, CommitId, TagInfo};
+
+        let tag = |name: &str, remote: Option<&str>, tracked: bool| TagInfo {
+            name: name.to_string(),
+            remote: remote.map(str::to_string),
+            present: true,
+            tracked,
+            conflict: false,
+            change_id: Some(ChangeId::new("aaaaaaaa".to_string())),
+            commit_id: Some(CommitId::new("bbbbbbbb".to_string())),
+            description: Some("desc".to_string()),
+        };
+
+        let mut app = App::new_for_test();
+        app.current_view = View::Tag;
+        // One row of each kind, so walking the list exercises every hint set.
+        app.tag_view.set_tags(vec![
+            tag("v1.0", None, false),
+            tag("v1.0", Some("origin"), true),
+            tag("v0.9", Some("origin"), false),
+        ]);
+
+        app.tag_view.select_first();
+        loop {
+            let ctx = app.build_tag_hint_context();
+            let hints = keys::current_hints(View::Tag, app.log_view.input_mode, &ctx);
+            for width in 40u16..=200 {
+                assert_eq!(
+                    app.get_current_status_bar_height(width),
+                    status_hints_height(&hints, width),
+                    "tag status bar height disagrees at width {width} for {:?}",
+                    ctx.selected_tag_kind
+                );
+            }
+            let before = app.tag_view.selected_tag().map(|t| t.full_name());
+            app.tag_view.select_next();
+            if app.tag_view.selected_tag().map(|t| t.full_name()) == before {
+                break;
+            }
+        }
+    }
+
+    #[test]
+    fn tag_and_workspace_height_branches_use_their_render_context() {
+        // Guards the branch split: Tag reads the real context, Workspace's
+        // hints are static so the default is exact. If Tag is ever folded
+        // back in with `HintContext::default()`, this fails.
+        let mut app = App::new_for_test();
+        app.current_view = View::Tag;
+        for width in [80u16, 126, 140, 200] {
+            let via_branch = app.get_current_status_bar_height(width);
+            let ctx = app.build_tag_hint_context();
+            let hints = keys::current_hints(View::Tag, app.log_view.input_mode, &ctx);
+            assert_eq!(
+                via_branch,
+                status_hints_height(&hints, width),
+                "Tag height branch must use build_tag_hint_context at width {width}"
+            );
+        }
     }
 
     #[test]
