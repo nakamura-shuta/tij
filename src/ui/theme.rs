@@ -38,6 +38,9 @@ pub mod log_view {
     pub const GRAPH_LINE: Color = Color::Blue;
     /// Agent Trace AI badge color ([AI] / [AI?]; bold applied for confirmed)
     pub const AI_BADGE: Color = Color::Magenta;
+    /// Divergent change color (`/N` suffix and `[DIVERGENT]` marker; bold
+    /// applied for the marker). Not Yellow: CHANGE_ID is already Yellow.
+    pub const DIVERGENT: Color = Color::LightRed;
 }
 
 /// Colors for Diff View

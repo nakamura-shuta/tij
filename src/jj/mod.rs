@@ -10,6 +10,7 @@ pub mod parser;
 mod template;
 
 pub use executor::{JjExecutor, JjInvocation, PushBulkMode, RunResult};
+pub use interactive::converge_target_revset;
 pub use parser::{
     PushPreviewAction, PushPreviewResult, SkippedRef, parse_push_dry_run, parse_push_skipped,
 };

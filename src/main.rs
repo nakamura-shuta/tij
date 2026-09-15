@@ -60,11 +60,13 @@ fn print_help() {
 
 /// Minimum required jj version (major, minor)
 ///
-/// Bumped to 0.44 because tag tracking (`jj tag track` / `jj tag untrack`,
-/// `jj tag list --all-remotes`, `jj git push --tag`) landed in jj 0.44.
-/// Previous bumps: 0.42 for Stack Diff (`jj show` over a multi-revision
-/// revset), 0.41 for `--no-integrate-operation` (read-only invocations).
-const MIN_JJ_VERSION: (u32, u32) = (0, 44);
+/// Bumped to 0.45 because `jj converge` and the `divergent` / `change_offset`
+/// template keywords (used by the log template) landed in jj 0.45.
+/// Previous bumps: 0.44 for tag tracking (`jj tag track` / `untrack`,
+/// `jj tag list --all-remotes`, `jj git push --tag`), 0.42 for Stack Diff
+/// (`jj show` over a multi-revision revset), 0.41 for
+/// `--no-integrate-operation` (read-only invocations).
+const MIN_JJ_VERSION: (u32, u32) = (0, 45);
 
 /// Check that jj is installed and meets the minimum version requirement.
 fn check_jj_version() -> color_eyre::Result<()> {
@@ -210,6 +212,16 @@ mod tests {
     #[test]
     fn test_parse_jj_version_empty() {
         assert_eq!(parse_jj_version(""), None);
+    }
+
+    #[test]
+    fn test_min_jj_version_rejects_0_44_and_accepts_0_45() {
+        // The log template uses `divergent` / `change_offset` (jj 0.45+), so
+        // 0.44 must be rejected at startup.
+        let v044 = parse_jj_version("jj 0.44.0").unwrap();
+        let v045 = parse_jj_version("jj 0.45.1").unwrap();
+        assert!(v044 < MIN_JJ_VERSION);
+        assert!(v045 >= MIN_JJ_VERSION);
     }
 
     #[test]

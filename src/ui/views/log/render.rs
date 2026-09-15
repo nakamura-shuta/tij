@@ -259,27 +259,42 @@ impl LogView {
             String::new()
         };
 
+        // Divergent change count (distinct change_ids in the loaded set).
+        // After the AI chunk; hidden when there are none.
+        let divergent_count = self.divergent_change_count();
+        let divergent_suffix = if divergent_count > 0 {
+            format!(" ⚠ {} divergent", divergent_count)
+        } else {
+            String::new()
+        };
+
         let title_text = match (&self.current_revset, &self.last_search_query) {
             (Some(revset), Some(query)) => {
                 format!(
-                    " Tij - Log View [{}{}]{} [Search: {}] ",
-                    revset, count_suffix, ai_suffix, query
+                    " Tij - Log View [{}{}]{}{} [Search: {}] ",
+                    revset, count_suffix, ai_suffix, divergent_suffix, query
                 )
             }
             (Some(revset), None) => {
-                format!(" Tij - Log View [{}{}]{} ", revset, count_suffix, ai_suffix)
+                format!(
+                    " Tij - Log View [{}{}]{}{} ",
+                    revset, count_suffix, ai_suffix, divergent_suffix
+                )
             }
             (None, Some(query)) => {
                 format!(
-                    " Tij - Log View{}{} [Search: {}] ",
-                    count_suffix, ai_suffix, query
+                    " Tij - Log View{}{}{} [Search: {}] ",
+                    count_suffix, ai_suffix, divergent_suffix, query
                 )
             }
             (None, None) => {
-                if count_suffix.is_empty() && ai_suffix.is_empty() {
+                if count_suffix.is_empty() && ai_suffix.is_empty() && divergent_suffix.is_empty() {
                     " Tij - Log View ".to_string()
                 } else {
-                    format!(" Tij - Log View{}{} ", count_suffix, ai_suffix)
+                    format!(
+                        " Tij - Log View{}{}{} ",
+                        count_suffix, ai_suffix, divergent_suffix
+                    )
                 }
             }
         };
@@ -354,11 +369,23 @@ impl LogView {
             return Line::from(spans);
         }
 
-        // Change ID
-        spans.push(Span::styled(
-            format!("{} ", change.short_id()),
-            Style::default().fg(theme::log_view::CHANGE_ID),
-        ));
+        // Change ID (+ `/N` for divergent commits, like jj's own display;
+        // the widened column is accepted, as in jj)
+        if let Some(offset) = change.divergent_offset {
+            spans.push(Span::styled(
+                change.short_id().to_string(),
+                Style::default().fg(theme::log_view::CHANGE_ID),
+            ));
+            spans.push(Span::styled(
+                format!("/{} ", offset),
+                Style::default().fg(theme::log_view::DIVERGENT),
+            ));
+        } else {
+            spans.push(Span::styled(
+                format!("{} ", change.short_id()),
+                Style::default().fg(theme::log_view::CHANGE_ID),
+            ));
+        }
 
         // Author (if not root)
         if change.change_id != constants::ROOT_CHANGE_ID {
@@ -399,6 +426,16 @@ impl LogView {
             spans.push(Span::styled(
                 "[CONFLICT] ",
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ));
+        }
+
+        // Divergent indicator (`:converge` resolves it)
+        if change.is_divergent() {
+            spans.push(Span::styled(
+                "[DIVERGENT] ",
+                Style::default()
+                    .fg(theme::log_view::DIVERGENT)
+                    .add_modifier(Modifier::BOLD),
             ));
         }
 
@@ -563,6 +600,7 @@ mod tests {
                 is_graph_only: false,
                 has_conflict: false,
                 working_copy_names: Vec::new(),
+                divergent_offset: None,
             })
             .collect()
     }
@@ -637,6 +675,118 @@ mod tests {
         let text = line_text(&view, &changes[0]);
         assert!(text.contains("[AI] "), "got: {text}");
         assert!(!text.contains("[AI?]"), "got: {text}");
+    }
+
+    // ── Divergent changes (converge SoW, Task 3) ──
+
+    /// Rows 1 and 2 become one divergent change (offsets 0 and 1).
+    fn changes_with_one_divergent_pair(count: usize) -> Vec<Change> {
+        let mut changes = create_selectable_changes(count);
+        changes[2].change_id = changes[1].change_id.clone();
+        changes[1].divergent_offset = Some(0);
+        changes[2].divergent_offset = Some(1);
+        changes
+    }
+
+    #[test]
+    fn divergent_row_shows_offset_suffix_and_marker() {
+        let mut view = LogView::new();
+        let mut changes = create_selectable_changes(3);
+        changes[0].divergent_offset = Some(1);
+        changes[1].divergent_offset = Some(2);
+        view.set_changes(changes.clone());
+
+        let t0 = line_text(&view, &changes[0]);
+        assert!(t0.starts_with("@  chg00000/1 user@"), "got: {t0}");
+        assert!(t0.contains("[DIVERGENT] Commit 0"), "got: {t0}");
+        // A change split 3+ ways reaches /2
+        let t1 = line_text(&view, &changes[1]);
+        assert!(t1.starts_with("○  chg00001/2 user@"), "got: {t1}");
+        // Non-divergent rows are unchanged
+        let t2 = line_text(&view, &changes[2]);
+        assert!(t2.starts_with("○  chg00002 user@"), "got: {t2}");
+        assert!(!t2.contains("[DIVERGENT]"), "got: {t2}");
+    }
+
+    #[test]
+    fn divergent_marker_sits_between_conflict_and_ai_badge() {
+        let mut view = LogView::new();
+        let mut changes = create_selectable_changes(1);
+        changes[0].has_conflict = true;
+        changes[0].divergent_offset = Some(0);
+        let mut badges = crate::trace::AiBadgeSets::default();
+        badges.confirmed.insert("commit00000".to_string());
+        view.set_changes(changes.clone());
+        view.set_ai_badges(badges);
+
+        let text = line_text(&view, &changes[0]);
+        assert!(
+            text.contains("[CONFLICT] [DIVERGENT] [AI] Commit 0"),
+            "got: {text}"
+        );
+    }
+
+    #[test]
+    fn divergent_offset_uses_divergent_color() {
+        let mut view = LogView::new();
+        let mut changes = create_selectable_changes(1);
+        changes[0].divergent_offset = Some(1);
+        view.set_changes(changes.clone());
+
+        let spans = view.build_change_line(&changes[0], false).spans;
+        let id = spans.iter().find(|s| s.content == "chg00000").unwrap();
+        assert_eq!(id.style.fg, Some(crate::ui::theme::log_view::CHANGE_ID));
+        let suffix = spans.iter().find(|s| s.content == "/1 ").unwrap();
+        assert_eq!(suffix.style.fg, Some(crate::ui::theme::log_view::DIVERGENT));
+    }
+
+    #[test]
+    fn test_build_title_divergent_counts_distinct_change_ids() {
+        let mut view = LogView::new();
+        view.set_changes(changes_with_one_divergent_pair(3));
+
+        // 2 divergent commits of the same change → 1
+        assert_eq!(title_text(&view), " Tij - Log View ⚠ 1 divergent ");
+    }
+
+    #[test]
+    fn test_build_title_without_divergent_has_no_marker() {
+        let mut view = LogView::new();
+        view.set_changes(create_selectable_changes(3));
+
+        let title = title_text(&view);
+        assert!(!title.contains("divergent"), "got: {title}");
+        assert_eq!(title, " Tij - Log View ");
+    }
+
+    #[test]
+    fn test_build_title_divergent_after_revset_and_ai_filter() {
+        let mut view = LogView::new();
+        view.current_revset = Some("mine()".to_string());
+        view.set_changes(changes_with_one_divergent_pair(3));
+        let mut b = crate::trace::AiBadgeSets::default();
+        b.confirmed.insert("commit00000".to_string());
+        view.set_ai_badges(b);
+        view.toggle_ai_filter();
+
+        // revset count → AI chunk → divergent chunk. The divergent count is
+        // over the loaded set, so AI-hidden rows still count.
+        assert_eq!(
+            title_text(&view),
+            " Tij - Log View [mine() (3)] [AI] (1) ⚠ 1 divergent "
+        );
+    }
+
+    #[test]
+    fn test_build_title_divergent_before_search() {
+        let mut view = LogView::new();
+        view.set_changes(changes_with_one_divergent_pair(3));
+        view.last_search_query = Some("foo".to_string());
+
+        assert_eq!(
+            title_text(&view),
+            " Tij - Log View ⚠ 1 divergent [Search: foo] "
+        );
     }
 
     #[test]

@@ -19,6 +19,15 @@ use std::process::{Command, ExitStatus, Stdio};
 use super::constants::{self, commands, flags};
 use super::executor::JjExecutor;
 
+/// Revset that selects every visible commit of a (possibly divergent) change.
+///
+/// `jj converge -r` needs `change_id(<id>)`: a bare change_id errors on a
+/// divergent change, and a commit_id selects only one side (a no-op).
+/// Prefix ids (tij's `short(8)`) are accepted.
+pub fn converge_target_revset(change_id: &str) -> String {
+    format!("change_id({change_id})")
+}
+
 impl JjExecutor {
     /// Shared prefix for every interactive argv: `-R <path>` when set.
     fn interactive_argv_base(&self) -> Vec<String> {
@@ -243,6 +252,30 @@ impl JjExecutor {
     pub fn run_interactive(&self, revset: &str, command: &str) -> io::Result<ExitStatus> {
         self.spawn_interactive(&self.run_argv(revset, command))
     }
+
+    /// argv for [`Self::converge_interactive`]
+    ///
+    /// Never passes `--no-interactive`: without a TTY jj auto-answers its
+    /// description-merge prompt and can commit conflict markers, so converge
+    /// always runs with inherited stdio.
+    pub fn converge_argv(&self, target_revset: Option<&str>) -> Vec<String> {
+        let mut v = self.interactive_argv_base();
+        v.push(commands::CONVERGE.to_string());
+        if let Some(rev) = target_revset {
+            v.push(flags::REVISION.to_string());
+            v.push(rev.to_string());
+        }
+        v
+    }
+
+    /// Run `jj converge [-r <revset>]` interactively (jj 0.45+)
+    ///
+    /// Resolves a divergent change into one commit. jj may prompt (Yn) and
+    /// open an editor to merge descriptions, or ask which change to converge
+    /// when `target_revset` is None and several are divergent.
+    pub fn converge_interactive(&self, target_revset: Option<&str>) -> io::Result<ExitStatus> {
+        self.spawn_interactive(&self.converge_argv(target_revset))
+    }
 }
 
 #[cfg(test)]
@@ -296,6 +329,16 @@ mod tests {
             jj.run_argv("mutable()", "cargo test"),
             ["run", "-r", "mutable()", "--", "bash", "-c", "cargo test"]
         );
+        assert_eq!(jj.converge_argv(None), ["converge"]);
+        assert_eq!(
+            jj.converge_argv(Some(&converge_target_revset("qpnwytoo"))),
+            ["converge", "-r", "change_id(qpnwytoo)"]
+        );
+    }
+
+    #[test]
+    fn converge_target_revset_wraps_change_id() {
+        assert_eq!(converge_target_revset("qpnwytoo"), "change_id(qpnwytoo)");
     }
 
     #[test]
@@ -318,6 +361,11 @@ mod tests {
                 "-c",
                 "true"
             ]
+        );
+        assert_eq!(jj.converge_argv(None), ["-R", "/tmp/repo", "converge"]);
+        assert_eq!(
+            jj.converge_argv(Some("change_id(qpnwytoo)")),
+            ["-R", "/tmp/repo", "converge", "-r", "change_id(qpnwytoo)"]
         );
     }
 }

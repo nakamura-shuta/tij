@@ -11,7 +11,8 @@ use std::io;
 use std::process::ExitStatus;
 use std::time::{Instant, SystemTime};
 
-use crate::jj::{JjError, RunResult};
+use crate::jj::constants::DEFAULT_CONVERGE_REVSET;
+use crate::jj::{JjError, RunResult, converge_target_revset};
 use crate::model::{
     CommandKind, CommandRecord, CommandStatus, CompareInfo, DiffContent, DiffDisplayFormat,
     DiffMode, Notification, RebaseMode, shell_quote,
@@ -63,6 +64,58 @@ fn suspend_tui() -> impl Drop {
         let _ = enable_raw_mode();
         let _ = execute!(stdout(), EnterAlternateScreen);
     })
+}
+
+/// What `:converge` should do, decided from the pre-check query results.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ConvergePlan {
+    /// Suspend and run `jj converge [-r <revset>]`
+    Run {
+        target_revset: Option<String>,
+        select_after: Option<String>,
+    },
+    NotifyImmutable {
+        change_id: String,
+    },
+    NotifyNothing,
+    PrecheckFailed(String),
+}
+
+/// Decide the `:converge` outcome without touching jj (lib tests run without jj).
+///
+/// `immutable` is the count for `change_id(x) & immutable()` (only queried
+/// when `target` is Some); `candidates` is the count for the converge revset
+/// (only queried when `target` is None).
+pub(crate) fn plan_converge(
+    target: Option<&str>,
+    immutable: Option<Result<usize, String>>,
+    candidates: Option<Result<usize, String>>,
+) -> ConvergePlan {
+    match target {
+        Some(change_id) => match immutable {
+            Some(Ok(0)) => ConvergePlan::Run {
+                target_revset: Some(converge_target_revset(change_id)),
+                select_after: Some(change_id.to_string()),
+            },
+            Some(Ok(_)) => ConvergePlan::NotifyImmutable {
+                change_id: change_id.to_string(),
+            },
+            Some(Err(e)) => ConvergePlan::PrecheckFailed(e),
+            // Caller contract violation; refuse rather than run unchecked
+            None => ConvergePlan::PrecheckFailed("immutability was not checked".to_string()),
+        },
+        None => match candidates {
+            Some(Ok(0)) => ConvergePlan::NotifyNothing,
+            Some(Ok(_)) => ConvergePlan::Run {
+                target_revset: None,
+                select_after: None,
+            },
+            Some(Err(e)) => ConvergePlan::PrecheckFailed(e),
+            None => {
+                ConvergePlan::PrecheckFailed("converge candidates were not checked".to_string())
+            }
+        },
+    }
 }
 
 impl App {
@@ -795,6 +848,111 @@ impl App {
         }
 
         self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
+    }
+
+    /// Start `:converge` (jj 0.45+): pre-check, then run interactively.
+    ///
+    /// `target` = the selected change's change_id when it is divergent.
+    /// The pre-checks run as captured queries BEFORE suspending the TUI,
+    /// because jj's own refusal / no-op output would vanish when the TUI
+    /// resumes. Pre-check outcomes never suspend and never refresh (a refresh
+    /// would clear the `set_error` banner; the repo is unchanged anyway).
+    pub(crate) fn start_converge(&mut self, target: Option<String>) {
+        let (immutable, candidates) = match target.as_deref() {
+            Some(change_id) => {
+                // NOT `is_immutable()`: `change_id(x)` yields 2 rows for a
+                // divergent change, so its "true" comparison misreports.
+                let revset = format!("{} & immutable()", converge_target_revset(change_id));
+                let count = self
+                    .jj
+                    .count_revisions_capped(&revset, 1)
+                    .map_err(|e| e.to_string());
+                (Some(count), None)
+            }
+            None => {
+                // Same revset jj uses without `-r`. A broken value still
+                // surfaces: the count query below fails on it.
+                let revset = self
+                    .jj
+                    .config_get("revsets.converge")
+                    .unwrap_or_else(|| DEFAULT_CONVERGE_REVSET.to_string());
+                let count = self
+                    .jj
+                    .count_revisions_capped(&revset, 1)
+                    .map_err(|e| e.to_string());
+                (None, Some(count))
+            }
+        };
+
+        match plan_converge(target.as_deref(), immutable, candidates) {
+            ConvergePlan::Run {
+                target_revset,
+                select_after,
+            } => self.execute_converge(target_revset.as_deref(), select_after.as_deref()),
+            ConvergePlan::NotifyImmutable { change_id } => {
+                self.notify_info(format!("Cannot converge {}: immutable", change_id));
+            }
+            ConvergePlan::NotifyNothing => self.notify_info("No divergent changes"),
+            ConvergePlan::PrecheckFailed(e) => {
+                self.set_error(format!("Converge pre-check failed: {}", e));
+            }
+        }
+    }
+
+    /// Run `jj converge [-r <revset>]` with inherited stdio (always
+    /// interactive), then notify, refresh everything, and (on success with a
+    /// target) move the cursor to the converged change.
+    fn execute_converge(&mut self, target_revset: Option<&str>, select_after: Option<&str>) {
+        // TUI stays suspended for the whole fn; `_guard` restores it on return.
+        let _guard = suspend_tui();
+        match target_revset {
+            Some(r) => println!("--- jj converge -r {} ---", shell_quote(r)),
+            None => println!("--- jj converge ---"),
+        }
+
+        let start = Instant::now();
+        let result = self.jj.converge_interactive(target_revset);
+        self.record_interactive_command(
+            "Converge",
+            &self.jj.converge_argv(target_revset),
+            start,
+            &result,
+        );
+
+        let status = match result {
+            Ok(status) => status,
+            Err(e) => {
+                // jj never started → the repo is unchanged, so there is nothing
+                // to refresh. Refreshing here would also wipe this banner:
+                // refresh_log() sets error_message = None on success.
+                self.set_error(format!("Converge failed: {}", e));
+                return;
+            }
+        };
+
+        if status.success() {
+            self.notify_success("Converge completed (undo: u)");
+        } else {
+            self.notify_info(format!(
+                "Converge cancelled or failed (status: {})",
+                status.code().unwrap_or(-1)
+            ));
+        }
+
+        // Converge rebases descendants and moves local bookmarks → all views
+        // are stale. Refresh even on non-zero exit in case jj did partial work.
+        self.mark_dirty_and_refresh_current(DirtyFlags::all());
+        if status.success()
+            && let Some(cid) = select_after
+        {
+            // Exact match on the 8-char change_id; not found → stay put.
+            // The refresh above scheduled the preview for row 0 (the cursor
+            // before the jump), and the palette dispatch path does not
+            // re-schedule it, so do it here for the row we jumped to.
+            if self.log_view.select_change_by_id(cid) {
+                self.update_preview_if_needed();
+            }
+        }
     }
 
     /// Execute restore for a single file
@@ -1853,6 +2011,87 @@ fn unique_patch_filename(short_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // =========================================================================
+    // plan_converge (pure decision logic; no jj needed)
+    // =========================================================================
+
+    #[test]
+    fn plan_converge_target_immutable_notifies() {
+        assert_eq!(
+            plan_converge(Some("qpnwytoo"), Some(Ok(1)), None),
+            ConvergePlan::NotifyImmutable {
+                change_id: "qpnwytoo".to_string()
+            }
+        );
+        // Capped count can come back as cap + 1
+        assert_eq!(
+            plan_converge(Some("qpnwytoo"), Some(Ok(2)), None),
+            ConvergePlan::NotifyImmutable {
+                change_id: "qpnwytoo".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn plan_converge_target_mutable_runs_with_change_id_revset() {
+        assert_eq!(
+            plan_converge(Some("qpnwytoo"), Some(Ok(0)), None),
+            ConvergePlan::Run {
+                target_revset: Some("change_id(qpnwytoo)".to_string()),
+                select_after: Some("qpnwytoo".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn plan_converge_target_query_error_is_precheck_failure() {
+        assert_eq!(
+            plan_converge(Some("qpnwytoo"), Some(Err("boom".to_string())), None),
+            ConvergePlan::PrecheckFailed("boom".to_string())
+        );
+    }
+
+    #[test]
+    fn plan_converge_no_target_without_candidates_notifies_nothing() {
+        assert_eq!(
+            plan_converge(None, None, Some(Ok(0))),
+            ConvergePlan::NotifyNothing
+        );
+    }
+
+    #[test]
+    fn plan_converge_no_target_with_candidates_runs_without_revset() {
+        for n in [1, 2] {
+            assert_eq!(
+                plan_converge(None, None, Some(Ok(n))),
+                ConvergePlan::Run {
+                    target_revset: None,
+                    select_after: None,
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn plan_converge_no_target_query_error_is_precheck_failure() {
+        assert_eq!(
+            plan_converge(None, None, Some(Err("Failed to parse revset".to_string()))),
+            ConvergePlan::PrecheckFailed("Failed to parse revset".to_string())
+        );
+    }
+
+    #[test]
+    fn plan_converge_missing_query_never_runs() {
+        assert!(matches!(
+            plan_converge(Some("qpnwytoo"), None, Some(Ok(1))),
+            ConvergePlan::PrecheckFailed(_)
+        ));
+        assert!(matches!(
+            plan_converge(None, Some(Ok(0)), None),
+            ConvergePlan::PrecheckFailed(_)
+        ));
+    }
 
     // =========================================================================
     // Describe multi-line detection tests

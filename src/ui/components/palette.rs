@@ -68,6 +68,11 @@ pub fn palette_commands() -> &'static [PaletteCommand] {
             dispatch: PaletteDispatch::Command(LogCommand::Arrange),
         },
         PaletteCommand {
+            name: "converge",
+            description: "Resolve divergent changes (jj converge)",
+            dispatch: PaletteDispatch::Command(LogCommand::Converge),
+        },
+        PaletteCommand {
             name: "metaedit",
             description: "Edit author, change-id, timestamp",
             dispatch: PaletteDispatch::Command(LogCommand::Metaedit),
@@ -348,6 +353,26 @@ mod tests {
             cmd.dispatch,
             PaletteDispatch::Command(LogCommand::Run)
         ));
+    }
+
+    #[test]
+    fn registry_has_converge() {
+        let cmds = palette_commands();
+        let cmd = cmds
+            .iter()
+            .find(|c| c.name == "converge")
+            .expect("converge registered");
+        assert!(matches!(
+            cmd.dispatch,
+            PaletteDispatch::Command(LogCommand::Converge)
+        ));
+    }
+
+    #[test]
+    fn filter_matches_converge_by_divergent() {
+        let cmds = palette_commands();
+        let out = filter_commands(cmds, "diverg");
+        assert!(out.iter().any(|c| c.name == "converge"));
     }
 
     #[test]

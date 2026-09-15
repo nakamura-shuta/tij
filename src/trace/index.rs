@@ -483,6 +483,7 @@ mod tests {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: vec![],
+            divergent_offset: None,
         }
     }
 

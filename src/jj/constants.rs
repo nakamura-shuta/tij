@@ -69,6 +69,8 @@ pub mod commands {
     pub const BISECT_RUN: &str = "run";
     pub const METAEDIT: &str = "metaedit";
     pub const ARRANGE: &str = "arrange";
+    /// Resolve a divergent change into one commit (jj 0.45+)
+    pub const CONVERGE: &str = "converge";
     pub const WORKSPACE: &str = "workspace";
     pub const WORKSPACE_LIST: &str = "list";
     pub const WORKSPACE_ADD: &str = "add";
@@ -165,6 +167,11 @@ pub mod flags {
 
 /// Default limit for log output (no revset)
 pub const DEFAULT_LOG_LIMIT: &str = "200";
+
+/// jj 0.45's built-in default for `revsets.converge` — the revset
+/// `jj converge` uses when no `-r` is given. Only used as a fallback when
+/// `jj config get revsets.converge` yields nothing.
+pub const DEFAULT_CONVERGE_REVSET: &str = "mutable() & divergent()";
 
 /// Special jj values
 pub mod special {

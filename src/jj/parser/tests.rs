@@ -1055,6 +1055,106 @@ fn test_parse_log_missing_conflict_field() {
 }
 
 // =========================================================================
+// divergent offset field (jj 0.45 converge support)
+//
+// Graph-mode `jj log` trims trailing TABs, so a non-divergent row ends at
+// has_conflict (8 fields after change_id) and a divergent row with empty
+// working_copies is `...\tfalse\t\t<N>`. `--no-graph` keeps trailing empties.
+// =========================================================================
+
+/// Fields after change_id up to and including has_conflict (graph-mode tail trimmed)
+const LOG_DATA_PREFIX: &str =
+    "def67890\tuser@example.com\t2026-09-15T13:29:00+0900\tsame desc\tfalse\tfalse\t\tfalse";
+
+#[test]
+fn test_parse_log_fields_divergent_offsets() {
+    for n in [0u32, 1, 2] {
+        let data = format!("{LOG_DATA_PREFIX}\t\t{n}");
+        let change = Parser::parse_log_fields("qpnwytoo", &data).unwrap();
+        assert_eq!(change.divergent_offset, Some(n), "data: {data:?}");
+        assert!(change.is_divergent());
+        assert!(change.working_copy_names.is_empty());
+    }
+}
+
+#[test]
+fn test_parse_log_fields_non_divergent_trimmed_row_is_none() {
+    // Real graph-mode shape: tail trimmed right after has_conflict
+    let change = Parser::parse_log_fields("qpnwytoo", LOG_DATA_PREFIX).unwrap();
+    assert_eq!(change.divergent_offset, None);
+    assert!(!change.is_divergent());
+    assert!(change.working_copy_names.is_empty());
+}
+
+#[test]
+fn test_parse_log_fields_no_graph_trailing_empty_is_none() {
+    // `--no-graph` shape: trailing empty working_copies + empty offset
+    let data = format!("{LOG_DATA_PREFIX}\t\t");
+    let change = Parser::parse_log_fields("qpnwytoo", &data).unwrap();
+    assert_eq!(change.divergent_offset, None);
+    assert!(change.working_copy_names.is_empty());
+}
+
+#[test]
+fn test_parse_log_fields_divergent_with_working_copy() {
+    let data = format!("{LOG_DATA_PREFIX}\tdefault\t1");
+    let change = Parser::parse_log_fields("qpnwytoo", &data).unwrap();
+    assert_eq!(change.divergent_offset, Some(1));
+    assert_eq!(change.working_copy_names, vec!["default"]);
+}
+
+#[test]
+fn test_parse_log_fields_non_numeric_offset_is_none() {
+    let data = format!("{LOG_DATA_PREFIX}\t\tx");
+    let change = Parser::parse_log_fields("qpnwytoo", &data).unwrap();
+    assert_eq!(change.divergent_offset, None);
+}
+
+#[test]
+fn test_parse_log_record_divergent_offsets() {
+    for n in [0u32, 1, 2] {
+        let record = format!("qpnwytoo\t{LOG_DATA_PREFIX}\t\t{n}");
+        let change = Parser::parse_log_record(&record).unwrap();
+        assert_eq!(change.divergent_offset, Some(n), "record: {record:?}");
+        assert!(change.working_copy_names.is_empty());
+    }
+}
+
+#[test]
+fn test_parse_log_record_non_divergent_trimmed_row_is_none() {
+    let record = format!("qpnwytoo\t{LOG_DATA_PREFIX}");
+    let change = Parser::parse_log_record(&record).unwrap();
+    assert_eq!(change.divergent_offset, None);
+    assert!(change.working_copy_names.is_empty());
+}
+
+#[test]
+fn test_parse_log_record_no_graph_trailing_empty_is_none() {
+    let record = format!("qpnwytoo\t{LOG_DATA_PREFIX}\t\t");
+    let change = Parser::parse_log_record(&record).unwrap();
+    assert_eq!(change.divergent_offset, None);
+    assert!(change.working_copy_names.is_empty());
+}
+
+#[test]
+fn test_parse_log_graph_divergent_rows() {
+    // Two graph rows of the same change (offsets 1 and 0) + a plain row
+    let output = format!(
+        "@  qpnwytoo\t{LOG_DATA_PREFIX}\t\t1\n\
+         │ ○  qpnwytoo\t{LOG_DATA_PREFIX}\t\t0\n\
+         ├─╯\n\
+         ○  vtyyuouv\t{LOG_DATA_PREFIX}"
+    );
+    let changes = Parser::parse_log(&output).unwrap();
+    assert_eq!(changes.len(), 4);
+    assert_eq!(changes[0].divergent_offset, Some(1));
+    assert_eq!(changes[1].divergent_offset, Some(0));
+    assert!(changes[2].is_graph_only);
+    assert_eq!(changes[2].divergent_offset, None);
+    assert_eq!(changes[3].divergent_offset, None);
+}
+
+// =========================================================================
 // Multi-line description tests (parse_show)
 // =========================================================================
 

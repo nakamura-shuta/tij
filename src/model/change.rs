@@ -47,9 +47,18 @@ pub struct Change {
     /// Workspace names that have this commit as working copy
     /// Empty if not a working copy for any workspace.
     pub working_copy_names: Vec<String>,
+
+    /// `Some(N)` when this commit is one of several visible commits for the
+    /// same change_id (jj shows it as `<change_id>/N`); `None` otherwise.
+    pub divergent_offset: Option<u32>,
 }
 
 impl Change {
+    /// True when this commit is one of several visible commits for its change_id
+    pub fn is_divergent(&self) -> bool {
+        self.divergent_offset.is_some()
+    }
+
     /// Get a display-friendly short ID
     pub fn short_id(&self) -> &str {
         self.change_id.as_str()
@@ -90,7 +99,18 @@ mod tests {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: Vec::new(),
+            divergent_offset: None,
         }
+    }
+
+    #[test]
+    fn test_is_divergent() {
+        assert!(!sample_change().is_divergent());
+        let divergent = Change {
+            divergent_offset: Some(0),
+            ..sample_change()
+        };
+        assert!(divergent.is_divergent());
     }
 
     #[test]

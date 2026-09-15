@@ -22,6 +22,7 @@ fn create_test_changes() -> Vec<Change> {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: Vec::new(),
+            divergent_offset: None,
         },
         Change {
             change_id: ChangeId::new("xyz98765".to_string()),
@@ -36,6 +37,7 @@ fn create_test_changes() -> Vec<Change> {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: Vec::new(),
+            divergent_offset: None,
         },
         Change {
             change_id: ChangeId::new(constants::ROOT_CHANGE_ID.to_string()),
@@ -50,6 +52,7 @@ fn create_test_changes() -> Vec<Change> {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: Vec::new(),
+            divergent_offset: None,
         },
     ]
 }
@@ -169,6 +172,62 @@ fn palette_command_show_traces_without_selection_is_none() {
     let mut v = LogView::new();
     let action = v.command_action(LogCommand::ShowTraces);
     assert_eq!(action, LogAction::None);
+}
+
+// ─── converge (jj 0.45): smart target selection ───
+
+/// `create_test_changes()` with the first two rows turned into one divergent
+/// change (same change_id, offsets 1 and 0). The first row stays selected.
+fn divergent_test_changes() -> Vec<Change> {
+    let mut changes = create_test_changes();
+    changes[0].divergent_offset = Some(1);
+    changes[1].change_id = changes[0].change_id.clone();
+    changes[1].divergent_offset = Some(0);
+    changes
+}
+
+#[test]
+fn palette_command_converge_divergent_selection_targets_change() {
+    let mut v = LogView::new();
+    v.set_changes(divergent_test_changes());
+    assert_eq!(
+        v.command_action(LogCommand::Converge),
+        LogAction::Converge {
+            target: Some("abc12345".to_string())
+        }
+    );
+}
+
+#[test]
+fn palette_command_converge_non_divergent_selection_defers_to_jj() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    assert_eq!(
+        v.command_action(LogCommand::Converge),
+        LogAction::Converge { target: None }
+    );
+}
+
+#[test]
+fn palette_command_converge_empty_log_defers_to_jj() {
+    // No selection must NOT become LogAction::None: jj can still pick a
+    // divergent change from revsets.converge.
+    let mut v = LogView::new();
+    assert_eq!(
+        v.command_action(LogCommand::Converge),
+        LogAction::Converge { target: None }
+    );
+}
+
+#[test]
+fn divergent_change_count_counts_distinct_change_ids() {
+    let mut v = LogView::new();
+    v.set_changes(create_test_changes());
+    assert_eq!(v.divergent_change_count(), 0);
+
+    // Two commits of the same change → 1 divergent change
+    v.set_changes(divergent_test_changes());
+    assert_eq!(v.divergent_change_count(), 1);
 }
 
 #[test]
@@ -1654,6 +1713,7 @@ fn test_select_working_copy_not_found() {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: Vec::new(),
+            divergent_offset: None,
         },
         Change {
             change_id: ChangeId::new("xyz98765".to_string()),
@@ -1668,6 +1728,7 @@ fn test_select_working_copy_not_found() {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: Vec::new(),
+            divergent_offset: None,
         },
     ];
     view.set_changes(changes);
@@ -1773,6 +1834,7 @@ fn test_reverse_falls_back_to_working_copy() {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: Vec::new(),
+            divergent_offset: None,
         },
         Change {
             change_id: ChangeId::new("abc12345".to_string()),
@@ -1787,6 +1849,7 @@ fn test_reverse_falls_back_to_working_copy() {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: Vec::new(),
+            divergent_offset: None,
         },
     ];
     view.set_changes(changes);

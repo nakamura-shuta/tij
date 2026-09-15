@@ -325,6 +325,15 @@ impl LogView {
                     LogAction::None
                 }
             }
+            // Smart target: a divergent selection converges that change;
+            // anything else (incl. no selection) defers to jj's own choice,
+            // so this never returns LogAction::None.
+            LogCommand::Converge => LogAction::Converge {
+                target: self
+                    .selected_change()
+                    .filter(|c| c.is_divergent())
+                    .map(|c| c.change_id.to_string()),
+            },
         }
     }
 

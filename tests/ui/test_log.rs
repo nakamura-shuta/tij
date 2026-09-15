@@ -32,7 +32,14 @@ fn make_change(
         is_graph_only: false,
         has_conflict,
         working_copy_names: Vec::new(),
+        divergent_offset: None,
     }
+}
+
+/// Helper: mark a change as one commit of a divergent change (`/offset`)
+fn divergent(mut change: Change, offset: u32) -> Change {
+    change.divergent_offset = Some(offset);
+    change
 }
 
 #[test]
@@ -141,6 +148,36 @@ fn test_log_view_search_input() {
     )]);
     view.input_mode = InputMode::SearchInput;
     view.input_buffer = "auth".to_string();
+
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal
+        .draw(|frame| {
+            view.render(frame, frame.area(), None);
+        })
+        .unwrap();
+
+    assert_snapshot!(terminal.backend());
+}
+
+#[test]
+fn test_log_view_with_divergent() {
+    let mut view = LogView::new();
+    view.set_changes(vec![
+        divergent(
+            make_change("qpnwytoo", "a1b2c3d4", "A", "@  ", true, vec![], false),
+            1,
+        ),
+        divergent(
+            make_change("qpnwytoo", "e5f6a7b8", "B", "│ ○  ", false, vec![], false),
+            0,
+        ),
+        Change {
+            graph_prefix: "├─╯".to_string(),
+            is_graph_only: true,
+            ..Default::default()
+        },
+        make_change("vtyyuouv", "c9d0e1f2", "base", "○  ", false, vec![], false),
+    ]);
 
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
     terminal

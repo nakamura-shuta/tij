@@ -1,0 +1,28 @@
+---
+source: tests/ui/test_log.rs
+expression: terminal.backend()
+---
+"┌──────────────────────── Tij - Log View ⚠ 1 divergent ────────────────────────┐"
+"│@  qpnwytoo/1 test@example.com 2025-01-15 10:30:00 [DIVERGENT] A              │"
+"││ ○  qpnwytoo/0 test@example.com 2025-01-15 10:30:00 [DIVERGENT] B            │"
+"│├─╯                                                                           │"
+"│○  vtyyuouv test@example.com 2025-01-15 10:30:00 base                         │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"│                                                                              │"
+"└──────────────────────────────────────────────────────────────────────────────┘"

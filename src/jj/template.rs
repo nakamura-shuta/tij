@@ -23,8 +23,14 @@ impl Templates {
     /// 8. bookmarks (comma-separated)
     /// 9. has_conflict ("true" or "false")
     /// 10. working_copies (comma-separated workspace names)
+    /// 11. divergent change offset (empty if not divergent)
     ///
     /// Notes:
+    /// - In graph mode jj trims trailing whitespace (TABs included) from each
+    ///   line, so rows with empty trailing fields simply end early: a
+    ///   non-divergent row usually stops after has_conflict. Parsers must read
+    ///   fields 10 and 11 with `get()`, never by direct index.
+    /// - `divergent` / `change_offset` are available in jj 0.45.0+.
     /// - jj doesn't interpret `\x1f` escape sequences in templates,
     ///   so we use tab characters with explicit concatenation instead of `separate()`.
     /// - `current_working_copy` is available in jj 0.20.0+.
@@ -51,6 +57,8 @@ impl Templates {
             "if(conflict, 'true', 'false')",
             " ++ \"\\t\" ++ ",
             "self.working_copies().map(|w| w.name()).join(',')",
+            " ++ \"\\t\" ++ ",
+            "if(divergent, change_offset, '')",
             " ++ \"\\n\""
         )
     }
@@ -157,6 +165,15 @@ mod tests {
         assert!(template.contains("commit_id"));
         assert!(template.contains("\\t")); // tab separator
         assert!(template.contains("\\n")); // newline at end
+    }
+
+    #[test]
+    fn test_log_template_has_divergent_offset_field() {
+        let template = Templates::log();
+        assert!(template.contains("divergent"));
+        assert!(template.contains("change_offset"));
+        // Appended last so existing field indexes stay unchanged
+        assert!(template.ends_with("if(divergent, change_offset, '') ++ \"\\n\""));
     }
 
     #[test]

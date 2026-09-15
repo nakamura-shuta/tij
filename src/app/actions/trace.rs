@@ -336,6 +336,7 @@ mod tests {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: vec![],
+            divergent_offset: None,
         }]);
 
         app.show_ai_summary();
@@ -365,6 +366,7 @@ mod tests {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: vec![],
+            divergent_offset: None,
         };
         app.log_view.set_changes(vec![mk("a", "1"), mk("b", "2")]);
         app.show_ai_summary();
@@ -481,6 +483,7 @@ mod tests {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: vec![],
+            divergent_offset: None,
         }]);
         app.diff_view = Some(diff_view_for("2d31c7f1")); // commit_id, not change_id
 

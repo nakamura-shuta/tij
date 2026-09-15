@@ -529,6 +529,9 @@ impl App {
             // Run a shell command across revisions (jj run)
             LogAction::RunStart { .. } => self.handle_log_run(action),
 
+            // Resolve divergent changes (jj converge, interactive)
+            LogAction::Converge { target } => self.start_converge(target),
+
             // Misc
             LogAction::NextChange | LogAction::PrevChange | LogAction::ToggleReversed => {
                 self.handle_log_misc(action);
@@ -1479,6 +1482,7 @@ mod tests {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: vec![],
+            divergent_offset: None,
         }]);
 
         // Confirm the change is selected before navigation
@@ -1573,6 +1577,7 @@ mod tests {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: vec![],
+            divergent_offset: None,
         }]);
 
         // The 11 low-frequency single keys removed in Phase 48-C.
@@ -1611,6 +1616,7 @@ mod tests {
             is_graph_only: false,
             has_conflict: false,
             working_copy_names: vec![],
+            divergent_offset: None,
         }]);
 
         // Open the palette and type "compare" to select that entry.

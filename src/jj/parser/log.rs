@@ -78,9 +78,19 @@ impl Parser {
         }
     }
 
+    /// Parse the divergent-offset field (`/N` in jj's display).
+    ///
+    /// Empty, missing, or non-numeric → `None`. A missing field is the NORMAL
+    /// case, not a legacy format: graph-mode `jj log` trims trailing TABs, so
+    /// a non-divergent row ends before this field.
+    fn parse_divergent_offset(field: Option<&&str>) -> Option<u32> {
+        field.and_then(|v| v.parse::<u32>().ok())
+    }
+
     /// Parse TAB-separated fields after change_id
     ///
-    /// Fields: commit_id, author, timestamp, description, is_working_copy, is_empty, bookmarks
+    /// Fields: commit_id, author, timestamp, description, is_working_copy, is_empty,
+    /// bookmarks, has_conflict, working_copies, divergent_offset
     pub(super) fn parse_log_fields(change_id: &str, data: &str) -> Result<Change, JjError> {
         let fields: Vec<&str> = data.split(FIELD_SEPARATOR).collect();
 
@@ -113,6 +123,8 @@ impl Parser {
             } else {
                 Vec::new()
             },
+            // change_id is not in `fields` here, so offset is index 9
+            divergent_offset: Self::parse_divergent_offset(fields.get(9)),
         })
     }
 
@@ -150,6 +162,8 @@ impl Parser {
             } else {
                 Vec::new()
             },
+            // fields[0] is change_id here, so offset is index 10
+            divergent_offset: Self::parse_divergent_offset(fields.get(10)),
         })
     }
 }

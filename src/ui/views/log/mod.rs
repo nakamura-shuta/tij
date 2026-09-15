@@ -224,6 +224,10 @@ pub enum LogAction {
     /// dialog title only (it is consumed there — the follow-up callback carries
     /// the revision only, no dead field).
     RunStart { revision: String, change_id: String },
+    /// Run `jj converge` (jj 0.45+). `target` = the selected change's
+    /// change_id when it is divergent (converge that change); `None` lets jj
+    /// pick from `revsets.converge` (and prompt when there are several).
+    Converge { target: Option<String> },
 }
 
 /// Identifiers for low-frequency Log commands reachable only via the palette
@@ -249,6 +253,7 @@ pub enum LogCommand {
     AiOrphans,
     ToggleCommandEcho,
     Run,
+    Converge,
 }
 
 /// Log View state
@@ -406,6 +411,20 @@ impl LogView {
     /// Number of selectable (visible, AI-matched while filtered) changes.
     pub fn visible_change_count(&self) -> usize {
         self.selectable_indices.len()
+    }
+
+    /// Number of distinct divergent change_ids among the loaded rows.
+    ///
+    /// Counts changes, not commits (same as jj's "Found N divergent
+    /// change(s)"): the two commits of one divergent change count as 1. Only
+    /// the loaded set (after `--limit` / revset) is considered.
+    pub fn divergent_change_count(&self) -> usize {
+        self.changes
+            .iter()
+            .filter(|c| !c.is_graph_only && c.is_divergent())
+            .map(|c| c.change_id.as_str())
+            .collect::<std::collections::HashSet<_>>()
+            .len()
     }
 
     /// Absolute `changes` indices to draw, in order (render/scroll source).
