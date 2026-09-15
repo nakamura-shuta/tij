@@ -17,6 +17,23 @@ use crate::ui::widgets::{
 };
 
 impl App {
+    /// Draw one frame, forcing a full redraw first when one was requested
+    /// (an interactive command handed the terminal back — see `suspend_tui`).
+    ///
+    /// `Terminal::clear` clears the screen AND resets ratatui's previous
+    /// buffer, so the following draw repaints every cell instead of only the
+    /// diff. A plain `Clear(All)` would leave that buffer stale.
+    pub fn draw_frame<B: ratatui::backend::Backend>(
+        &mut self,
+        terminal: &mut ratatui::Terminal<B>,
+    ) -> Result<(), B::Error> {
+        if std::mem::take(&mut self.needs_full_redraw) {
+            terminal.clear()?;
+        }
+        terminal.draw(|frame| self.render(frame))?;
+        Ok(())
+    }
+
     /// Render the UI
     pub fn render(&mut self, frame: &mut Frame) {
         // Clone notification to avoid borrow conflict with &mut self in render_log_view
@@ -977,6 +994,39 @@ mod tests {
             .iter()
             .map(|c| c.symbol())
             .collect()
+    }
+
+    /// Returning from an interactive command re-enters the alternate screen,
+    /// which the terminal shows blank. ratatui diff-renders against its
+    /// previous buffer, so only a requested full redraw repaints it.
+    #[test]
+    fn draw_frame_repaints_everything_after_full_redraw_request() {
+        use ratatui::backend::Backend;
+
+        let mut app = App::new_for_test();
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+        app.draw_frame(&mut terminal).unwrap();
+        let full = buffer_text(&terminal);
+        assert!(!full.trim().is_empty(), "first frame should draw something");
+
+        // Simulate the blank alternate screen after resume.
+        terminal.backend_mut().clear().unwrap();
+
+        // No request: the diff against the previous buffer is empty, so the
+        // blank screen stays blank (the half-drawn bug this guards against).
+        app.draw_frame(&mut terminal).unwrap();
+        assert_ne!(buffer_text(&terminal), full);
+
+        // Request (what `suspend_tui` sets): every cell is repainted.
+        app.needs_full_redraw = true;
+        app.draw_frame(&mut terminal).unwrap();
+        assert_eq!(buffer_text(&terminal), full);
+        assert!(
+            !app.needs_full_redraw,
+            "the request is consumed by one frame"
+        );
     }
 
     #[test]

@@ -182,6 +182,9 @@ pub enum View {
 pub struct App {
     /// Is the application running?
     pub running: bool,
+    /// Set by `suspend_tui()`; consumed by `draw_frame()`, which then clears
+    /// the terminal (and ratatui's previous buffer) before the next draw.
+    pub(crate) needs_full_redraw: bool,
     /// Current view
     pub current_view: View,
     /// Breadcrumb of ancestor views (root-first) used for back navigation.
@@ -301,6 +304,7 @@ impl App {
     fn init() -> Self {
         Self {
             running: true,
+            needs_full_redraw: false,
             current_view: View::Log,
             view_stack: Vec::new(),
             log_view: LogView::new(),

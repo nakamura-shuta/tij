@@ -45,25 +45,38 @@ use crate::app::helpers::revision::{SelectedRevision, is_root_by_commit_id, shor
 
 use super::state::{App, DirtyFlags, View};
 
-/// Suspend TUI mode (raw mode off, leave alternate screen).
-///
-/// Returns a scope guard that restores TUI mode on drop.
-/// Use this before running interactive jj commands (describe --edit, split, diffedit, resolve).
-fn suspend_tui() -> impl Drop {
-    use crossterm::execute;
-    use crossterm::terminal::{
-        Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
-        enable_raw_mode,
-    };
-    use std::io::stdout;
+impl App {
+    /// Suspend TUI mode (raw mode off, leave alternate screen).
+    ///
+    /// Returns a scope guard that restores TUI mode on drop.
+    /// Use this before running interactive jj commands (describe --edit, split, diffedit, resolve).
+    ///
+    /// Also requests a full redraw for the next frame (see [`App::draw_frame`]).
+    /// Re-entering the alternate screen shows a blank screen, but ratatui only
+    /// draws the cells that changed against its previous buffer, so without
+    /// this the resumed UI is left half-drawn (missing borders and text).
+    ///
+    /// `use<>`: the guard captures nothing from `self`. Without it, edition
+    /// 2024 ties the guard to the `&mut self` borrow and the caller could not
+    /// use `self` while the guard is alive.
+    fn suspend_tui(&mut self) -> impl Drop + use<> {
+        use crossterm::execute;
+        use crossterm::terminal::{
+            Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+            enable_raw_mode,
+        };
+        use std::io::stdout;
 
-    let _ = disable_raw_mode();
-    let _ = execute!(stdout(), LeaveAlternateScreen, Clear(ClearType::All));
+        self.needs_full_redraw = true;
 
-    scopeguard::guard((), |_| {
-        let _ = enable_raw_mode();
-        let _ = execute!(stdout(), EnterAlternateScreen);
-    })
+        let _ = disable_raw_mode();
+        let _ = execute!(stdout(), LeaveAlternateScreen, Clear(ClearType::All));
+
+        scopeguard::guard((), |_| {
+            let _ = enable_raw_mode();
+            let _ = execute!(stdout(), EnterAlternateScreen);
+        })
+    }
 }
 
 /// What `:converge` should do, decided from the pre-check query results.
@@ -405,7 +418,7 @@ impl App {
             Err(_) => None,
         };
 
-        let _guard = suspend_tui();
+        let _guard = self.suspend_tui();
 
         // Run jj describe --editor (blocking, interactive)
         let start = Instant::now();
@@ -518,7 +531,7 @@ impl App {
             return;
         }
 
-        let _guard = suspend_tui();
+        let _guard = self.suspend_tui();
 
         // Run jj squash --from --into (blocking, interactive)
         let start = Instant::now();
@@ -663,7 +676,7 @@ impl App {
             return;
         }
 
-        let _guard = suspend_tui();
+        let _guard = self.suspend_tui();
 
         // Run jj split (blocking)
         let start = Instant::now();
@@ -694,7 +707,7 @@ impl App {
     /// When `file` is None, opens the full diffedit for the revision.
     /// When `file` is Some, opens diffedit scoped to that file.
     pub(crate) fn execute_diffedit(&mut self, revision: &str, file: Option<&str>) {
-        let _guard = suspend_tui();
+        let _guard = self.suspend_tui();
 
         // Run jj diffedit (blocking)
         let start = Instant::now();
@@ -739,7 +752,7 @@ impl App {
             command.trim()
         };
 
-        let _guard = suspend_tui();
+        let _guard = self.suspend_tui();
 
         println!(
             "--- jj bisect run --range {}..{} -- bash -c '{}' ---",
@@ -791,7 +804,7 @@ impl App {
 
         // TUI stays suspended for the whole fn (spawn + notify + refresh);
         // `_guard` restores the alternate screen when the fn returns.
-        let _guard = suspend_tui();
+        let _guard = self.suspend_tui();
         // shell_quote both fields so the echoed banner is paste-safe even when
         // the command contains a `'` or the revset contains parens (mutable()).
         println!(
@@ -824,7 +837,7 @@ impl App {
     pub(crate) fn execute_arrange(&mut self) {
         // Pass current revset to arrange so it operates on the same scope
         let revset = self.log_view.current_revset.clone();
-        let _guard = suspend_tui();
+        let _guard = self.suspend_tui();
 
         let start = Instant::now();
         let result = self.jj.arrange_interactive(revset.as_deref());
@@ -904,7 +917,7 @@ impl App {
     /// target) move the cursor to the converged change.
     fn execute_converge(&mut self, target_revset: Option<&str>, select_after: Option<&str>) {
         // TUI stays suspended for the whole fn; `_guard` restores it on return.
-        let _guard = suspend_tui();
+        let _guard = self.suspend_tui();
         match target_revset {
             Some(r) => println!("--- jj converge -r {} ---", shell_quote(r)),
             None => println!("--- jj converge ---"),
@@ -1476,7 +1489,7 @@ impl App {
             return;
         }
 
-        let _guard = suspend_tui();
+        let _guard = self.suspend_tui();
 
         // Run jj resolve (blocking)
         let start = Instant::now();

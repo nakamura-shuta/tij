@@ -140,7 +140,7 @@ fn run(mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
     let mut app = App::new();
 
     while app.running {
-        terminal.draw(|frame| app.render(frame))?;
+        app.draw_frame(&mut terminal)?;
         handle_events(&mut app)?;
         // Drain executor-captured jj invocations into the command history
         // (command transparency P1). Write paths flush inside their record
