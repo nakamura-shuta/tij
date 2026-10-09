@@ -25,6 +25,9 @@ use crate::keys;
 /// Use `clone()` when extracting from `active_dialog`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DialogCallback {
+    /// Retry `jj undo` with `--allow-cross-workspace` (Confirm dialog).
+    /// Offered when jj 0.46+ refuses to undo another workspace's operation.
+    UndoCrossWorkspace,
     /// Bookmark deletion (Select dialog)
     DeleteBookmarks,
     /// Bookmark move confirmation (Confirm dialog)

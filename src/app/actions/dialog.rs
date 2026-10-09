@@ -75,7 +75,8 @@ impl App {
                 | DialogCallback::MetaeditSetAuthor { .. }
                 | DialogCallback::MetaeditNewChangeId { .. }
                 | DialogCallback::RunTarget { .. }
-                | DialogCallback::RunCommand { .. } => {
+                | DialogCallback::RunCommand { .. }
+                | DialogCallback::UndoCrossWorkspace => {
                     self.handle_misc_dialog(callback, values);
                 }
             },
@@ -135,7 +136,8 @@ impl App {
             | DialogCallback::RunCommand { .. }
             | DialogCallback::WorkspaceAdd
             | DialogCallback::WorkspaceForget { .. }
-            | DialogCallback::WorkspaceRename { .. } => {}
+            | DialogCallback::WorkspaceRename { .. }
+            | DialogCallback::UndoCrossWorkspace => {}
         }
     }
 
@@ -265,6 +267,9 @@ impl App {
             }
             DialogCallback::RestoreAll => {
                 self.execute_restore_all();
+            }
+            DialogCallback::UndoCrossWorkspace => {
+                self.execute_undo_cross_workspace();
             }
             DialogCallback::Revert { revision } => {
                 self.execute_revert(&revision);

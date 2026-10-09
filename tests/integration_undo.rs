@@ -150,3 +150,61 @@ fn test_redo_key_clears_create_target() {
         "redo (Ctrl+R) must clear create_target; stale id survived the redo"
     );
 }
+
+/// jj 0.46 refuses to undo an operation performed in another workspace;
+/// `--allow-cross-workspace` overrides it. Pins the stderr wording tij's
+/// detection matches on, and that the retry tij runs after the confirm
+/// dialog actually succeeds.
+#[test]
+fn cross_workspace_undo_is_refused_until_flag_is_passed() {
+    skip_if_no_jj!();
+    let repo = TestRepo::new();
+    repo.write_file("f.txt", "base");
+    repo.jj(&["describe", "-m", "base"]);
+
+    let holder = tempfile::tempdir().expect("tempdir");
+    let second = holder.path().join("ws2");
+    repo.jj(&[
+        "workspace",
+        "add",
+        second.to_str().expect("utf-8 path"),
+        "--name",
+        "second",
+    ]);
+
+    // An operation performed in the OTHER workspace.
+    let out = std::process::Command::new("jj")
+        .args(["describe", "-m", "from second"])
+        .current_dir(&second)
+        .output()
+        .expect("jj describe in second workspace");
+    assert!(
+        out.status.success(),
+        "describe in second workspace failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // Plain undo from the main workspace is refused.
+    let executor = JjExecutor::with_repo_path(repo.path());
+    let err = executor
+        .undo()
+        .expect_err("cross-workspace undo should be refused");
+    let msg = err.to_string().to_lowercase();
+    assert!(
+        msg.contains("allow-cross-workspace")
+            || (msg.contains("refusing to") && msg.contains("workspace")),
+        "unexpected undo error: {err}"
+    );
+
+    // What tij runs once the user confirms the dialog.
+    let retried = std::process::Command::new("jj")
+        .args(["undo", "--allow-cross-workspace"])
+        .current_dir(repo.path())
+        .output()
+        .expect("jj undo --allow-cross-workspace");
+    assert!(
+        retried.status.success(),
+        "retry with the flag failed: {}",
+        String::from_utf8_lossy(&retried.stderr)
+    );
+}

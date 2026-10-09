@@ -321,7 +321,7 @@ impl App {
         let title = match cached {
             Some(entry) => {
                 let commit_short = short_id(entry.content.commit_id.as_str());
-                format!(" Preview: {} ({}) ", &entry.change_id, commit_short)
+                format!(" Preview: {} ({}) ", entry.change_id, commit_short)
             }
             None => " Preview ".to_string(),
         };

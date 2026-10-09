@@ -41,6 +41,39 @@ fn auto_operation_label(bare_args: &[String], kind: CommandKind) -> String {
 }
 use crate::ui::components::{Dialog, DialogCallback, SelectItem};
 
+/// Args for `jj undo`, optionally allowing another workspace's operation.
+fn undo_args(allow_cross_workspace: bool) -> Vec<&'static str> {
+    let mut args = vec!["undo"];
+    if allow_cross_workspace {
+        args.push("--allow-cross-workspace");
+    }
+    args
+}
+
+/// Did jj refuse this undo because the operation belongs to another workspace?
+///
+/// jj 0.46 added the refusal together with `--allow-cross-workspace`, so the
+/// hint naming that flag is the strongest signal. Matching stays broad because
+/// jj's wording changes between versions.
+fn is_cross_workspace_undo_error(error: &JjError) -> bool {
+    match error {
+        JjError::CommandFailed { stderr, .. } => {
+            let lower = stderr.to_lowercase();
+            lower.contains("allow-cross-workspace")
+                || (lower.contains("refusing to") && lower.contains("workspace"))
+        }
+        _ => false,
+    }
+}
+
+/// jj's own message, trimmed, for a dialog detail line.
+fn jj_error_detail(error: &JjError) -> String {
+    match error {
+        JjError::CommandFailed { stderr, .. } => stderr.trim().to_string(),
+        other => other.to_string(),
+    }
+}
+
 use crate::app::helpers::revision::{SelectedRevision, is_root_by_commit_id, short_id};
 
 use super::state::{App, DirtyFlags, View};
@@ -335,10 +368,19 @@ impl App {
     /// jj 0.39+ outputs "Undid operation: ..." to stderr.
     /// We extract the description part for a more informative notification.
     pub(crate) fn execute_undo(&mut self) {
-        let args: &[&str] = &["undo"];
+        self.run_undo(false);
+    }
+
+    /// Retry the undo with `--allow-cross-workspace` (user confirmed the dialog)
+    pub(crate) fn execute_undo_cross_workspace(&mut self) {
+        self.run_undo(true);
+    }
+
+    fn run_undo(&mut self, allow_cross_workspace: bool) {
+        let args = undo_args(allow_cross_workspace);
         let start = Instant::now();
-        let result = self.jj.run(args);
-        self.record_command("Undo", args, start, &result);
+        let result = self.jj.run(&args);
+        self.record_command("Undo", &args, start, &result);
         match result {
             Ok(r) => {
                 let msg = Self::parse_undo_message(&r.stderr);
@@ -348,7 +390,19 @@ impl App {
                 self.create_target = None; // op-log advanced; any pre-undo captured change id may be stale (Phase 48 M4)
             }
             Err(e) => {
-                self.set_error(format!("Undo failed: {}", e));
+                // jj 0.46+ refuses to undo another workspace's operation. The
+                // flag is only ever passed after jj itself produced that
+                // refusal, so an older jj (which has no such flag) never sees it.
+                if !allow_cross_workspace && is_cross_workspace_undo_error(&e) {
+                    self.active_dialog = Some(Dialog::confirm(
+                        "Cross-workspace undo",
+                        "Undo another workspace's operation?",
+                        Some(jj_error_detail(&e)),
+                        DialogCallback::UndoCrossWorkspace,
+                    ));
+                } else {
+                    self.set_error(format!("Undo failed: {}", e));
+                }
             }
         }
     }
@@ -2787,5 +2841,34 @@ mod tests {
             auto_operation_label(&["new".to_string()], CommandKind::Write),
             "new"
         );
+    }
+    #[test]
+    fn undo_args_adds_cross_workspace_flag_only_when_requested() {
+        assert_eq!(undo_args(false), vec!["undo"]);
+        assert_eq!(undo_args(true), vec!["undo", "--allow-cross-workspace"]);
+    }
+
+    #[test]
+    fn cross_workspace_undo_error_is_detected_from_real_jj_output() {
+        // Verbatim jj 0.46.0 stderr (measured 2026-10-09).
+        let err = JjError::CommandFailed {
+            stderr: "Error: Refusing to undo operation 790f5f6e194e because it was \
+performed in workspace second\nHint: Use `--allow-cross-workspace` to undo it \
+anyway, or use `jj op revert` to revert a specific operation\n"
+                .to_string(),
+            exit_code: 1,
+        };
+        assert!(is_cross_workspace_undo_error(&err));
+        assert!(jj_error_detail(&err).starts_with("Error: Refusing to undo operation"));
+    }
+
+    #[test]
+    fn unrelated_undo_failures_are_not_treated_as_cross_workspace() {
+        let other = JjError::CommandFailed {
+            stderr: "Error: No operation to undo".to_string(),
+            exit_code: 1,
+        };
+        assert!(!is_cross_workspace_undo_error(&other));
+        assert!(!is_cross_workspace_undo_error(&JjError::JjNotFound));
     }
 }
