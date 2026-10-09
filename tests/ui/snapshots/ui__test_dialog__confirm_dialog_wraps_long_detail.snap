@@ -1,0 +1,28 @@
+---
+source: tests/ui/test_dialog.rs
+expression: terminal.backend()
+---
+"                                                            "
+"                                                            "
+"                                                            "
+"                                                            "
+"                                                            "
+"     ┌ Cross-workspace undo ──────────────────────────┐     "
+"     │                                                │     "
+"     │       Undo another workspace's operation?      │     "
+"     │                                                │     "
+"     │       Error: Refusing to undo operation        │     "
+"     │    52f6769185b7 because it was performed in    │     "
+"     │                workspace second                │     "
+"     │  Hint: Use `--allow-cross-workspace` to undo   │     "
+"     │  it anyway, or use `jj op revert` to revert a  │     "
+"     │               specific operation               │     "
+"     │                                                │     "
+"     │                [Y]es       [N]o                │     "
+"     │                                                │     "
+"     └────────────────────────────────────────────────┘     "
+"                                                            "
+"                                                            "
+"                                                            "
+"                                                            "
+"                                                            "

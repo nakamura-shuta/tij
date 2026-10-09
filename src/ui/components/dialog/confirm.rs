@@ -9,6 +9,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use super::super::message::wrap_display_width;
 use super::{Dialog, DialogResult, centered_rect};
 
 impl Dialog {
@@ -30,14 +31,33 @@ impl Dialog {
         message: &str,
         detail: Option<&str>,
     ) {
-        // Split message by newlines for multi-line support (e.g., push dry-run preview)
-        let message_lines: Vec<&str> = message.split('\n').collect();
-        let extra_lines = message_lines.len().saturating_sub(1) as u16;
-
-        // Calculate dialog size (dynamic height based on message lines)
         let width = 50.min(area.width.saturating_sub(4));
-        let base_height: u16 = if detail.is_some() { 9 } else { 7 };
-        let height = (base_height + extra_lines).min(area.height.saturating_sub(4));
+
+        // Wrap to the inner width so long messages and jj's own error text
+        // (dialog details) stay readable instead of being cut at the border.
+        // Same wrapping as the error banner: word boundaries, with a
+        // per-character fallback for CJK and over-long words.
+        let inner_width = width.saturating_sub(4).max(1) as usize;
+        let wrap = |text: &str| -> Vec<String> {
+            text.split('\n')
+                .flat_map(|line| wrap_display_width(line, inner_width))
+                .collect()
+        };
+        let message_lines = wrap(message);
+        let detail_lines: Vec<String> = detail.map(wrap).unwrap_or_default();
+
+        // blank + message + blank + [detail + blank] + [Y]/[N], plus borders
+        // and the one spare row the original layout kept.
+        let content_rows = 1
+            + message_lines.len()
+            + 1
+            + if detail_lines.is_empty() {
+                0
+            } else {
+                detail_lines.len() + 1
+            }
+            + 1;
+        let height = (content_rows as u16 + 3).min(area.height.saturating_sub(4));
 
         let dialog_area = centered_rect(width, height, area);
 
@@ -50,25 +70,27 @@ impl Dialog {
         // First line: bold (question text)
         if let Some(first) = message_lines.first() {
             lines.push(Line::from(Span::styled(
-                *first,
+                first.clone(),
                 Style::default().add_modifier(Modifier::BOLD),
             )));
         }
         // Subsequent lines: cyan (preview info)
         for line_text in message_lines.iter().skip(1) {
             lines.push(Line::from(Span::styled(
-                *line_text,
+                line_text.clone(),
                 Style::default().fg(Color::Cyan),
             )));
         }
 
         lines.push(Line::from(""));
 
-        if let Some(detail_text) = detail {
-            lines.push(Line::from(Span::styled(
-                detail_text,
-                Style::default().fg(Color::Yellow),
-            )));
+        if !detail_lines.is_empty() {
+            for line_text in &detail_lines {
+                lines.push(Line::from(Span::styled(
+                    line_text.clone(),
+                    Style::default().fg(Color::Yellow),
+                )));
+            }
             lines.push(Line::from(""));
         }
 

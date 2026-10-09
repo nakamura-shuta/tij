@@ -141,3 +141,51 @@ fn test_select_single_dialog() {
 
     assert_snapshot!(terminal.backend());
 }
+
+/// A long detail (jj's own error text) must wrap inside the box instead of
+/// being cut at the border. Verbatim jj 0.46 refusal, as the cross-workspace
+/// undo dialog shows it.
+#[test]
+fn test_confirm_dialog_wraps_long_detail() {
+    let dialog = Dialog::confirm(
+        "Cross-workspace undo",
+        "Undo another workspace's operation?",
+        Some(
+            "Error: Refusing to undo operation 52f6769185b7 because it was performed in \
+workspace second\nHint: Use `--allow-cross-workspace` to undo it anyway, or use \
+`jj op revert` to revert a specific operation"
+                .to_string(),
+        ),
+        DialogCallback::UndoCrossWorkspace,
+    );
+
+    let mut terminal = Terminal::new(TestBackend::new(60, 24)).unwrap();
+    terminal
+        .draw(|frame| {
+            dialog.render(frame, frame.area());
+        })
+        .unwrap();
+
+    assert_snapshot!(terminal.backend());
+}
+
+/// CJK text has no spaces: wrapping must fall back to display width so the
+/// message still fits the box.
+#[test]
+fn test_confirm_dialog_wraps_cjk_message() {
+    let dialog = Dialog::confirm(
+        "確認",
+        "この操作は別のワークスペースで実行されました。元に戻しますか？",
+        None,
+        DialogCallback::UndoCrossWorkspace,
+    );
+
+    let mut terminal = Terminal::new(TestBackend::new(60, 16)).unwrap();
+    terminal
+        .draw(|frame| {
+            dialog.render(frame, frame.area());
+        })
+        .unwrap();
+
+    assert_snapshot!(terminal.backend());
+}

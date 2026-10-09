@@ -131,7 +131,7 @@ expression: terminal.backend()
 "│  j/k       Move down/up                                                      │"
 "│  g/G       Go to top/bottom                                                  │"
 "│  Enter     Toggle detail                                                     │"
-"│  f         Filter: All / Write / Read                                        │"
+"│  f         Filter: All / Write / Read / Failed                               │"
 "│  y         Copy command line                                                 │"
 "│  q         Back                                                              │"
 "│                                                                              │"

@@ -3,7 +3,7 @@
 mod input;
 mod render;
 
-use crate::model::{CommandHistory, CommandKind};
+use crate::model::{CommandHistory, CommandKind, CommandRecord, CommandStatus};
 use crate::ui::navigation;
 
 /// Action returned by the Command History View after handling input
@@ -29,6 +29,8 @@ pub enum HistoryFilter {
     Mutations,
     /// Read invocations only — what tij runs behind the scenes
     Reads,
+    /// Failed invocations only — jump straight to what went wrong
+    Failed,
 }
 
 impl HistoryFilter {
@@ -36,17 +38,19 @@ impl HistoryFilter {
         match self {
             HistoryFilter::All => HistoryFilter::Mutations,
             HistoryFilter::Mutations => HistoryFilter::Reads,
-            HistoryFilter::Reads => HistoryFilter::All,
+            HistoryFilter::Reads => HistoryFilter::Failed,
+            HistoryFilter::Failed => HistoryFilter::All,
         }
     }
 
-    fn matches(self, kind: CommandKind) -> bool {
+    fn matches(self, record: &CommandRecord) -> bool {
         match self {
             HistoryFilter::All => true,
             HistoryFilter::Mutations => {
-                matches!(kind, CommandKind::Write | CommandKind::Interactive)
+                matches!(record.kind, CommandKind::Write | CommandKind::Interactive)
             }
-            HistoryFilter::Reads => kind == CommandKind::Read,
+            HistoryFilter::Reads => record.kind == CommandKind::Read,
+            HistoryFilter::Failed => record.status == CommandStatus::Failed,
         }
     }
 
@@ -56,6 +60,7 @@ impl HistoryFilter {
             HistoryFilter::All => "All",
             HistoryFilter::Mutations => "Write",
             HistoryFilter::Reads => "Read",
+            HistoryFilter::Failed => "Failed",
         }
     }
 }
@@ -106,7 +111,7 @@ impl CommandHistoryView {
             .records()
             .iter()
             .enumerate()
-            .filter(|(_, r)| self.filter.matches(r.kind))
+            .filter(|(_, r)| self.filter.matches(r))
             .map(|(i, _)| i)
             .collect();
         if self.selected >= self.visible.len() {
@@ -325,6 +330,10 @@ mod tests {
         assert_eq!(view.visible_len(), 2);
 
         view.handle_key(KeyEvent::from(KeyCode::Char('f')), &h);
+        assert_eq!(view.filter, HistoryFilter::Failed);
+        assert_eq!(view.visible_len(), 0, "mixed_history has no failures");
+
+        view.handle_key(KeyEvent::from(KeyCode::Char('f')), &h);
         assert_eq!(view.filter, HistoryFilter::All);
         assert_eq!(view.visible_len(), 5);
     }
@@ -368,5 +377,46 @@ mod tests {
             action,
             CommandHistoryAction::CopyCommand("jj --color=never log -r 'all()'".to_string())
         );
+    }
+    fn failed_record(operation: &str, kind: CommandKind) -> CommandRecord {
+        CommandRecord {
+            status: CommandStatus::Failed,
+            ..record(operation, kind, &["--color=never", "undo"])
+        }
+    }
+
+    #[test]
+    fn filter_cycle_includes_failed_last() {
+        assert_eq!(HistoryFilter::All.next(), HistoryFilter::Mutations);
+        assert_eq!(HistoryFilter::Mutations.next(), HistoryFilter::Reads);
+        assert_eq!(HistoryFilter::Reads.next(), HistoryFilter::Failed);
+        assert_eq!(HistoryFilter::Failed.next(), HistoryFilter::All);
+        assert_eq!(HistoryFilter::Failed.label(), "Failed");
+    }
+
+    #[test]
+    fn failed_filter_selects_by_status_across_every_kind() {
+        for kind in [
+            CommandKind::Read,
+            CommandKind::Write,
+            CommandKind::Interactive,
+        ] {
+            assert!(
+                HistoryFilter::Failed.matches(&failed_record("Undo", kind)),
+                "failed {kind:?} record should match"
+            );
+            assert!(
+                !HistoryFilter::Failed.matches(&record("Undo", kind, &["undo"])),
+                "successful {kind:?} record should not match"
+            );
+        }
+    }
+
+    #[test]
+    fn other_filters_still_ignore_status() {
+        let failed_write = failed_record("Undo", CommandKind::Write);
+        assert!(HistoryFilter::All.matches(&failed_write));
+        assert!(HistoryFilter::Mutations.matches(&failed_write));
+        assert!(!HistoryFilter::Reads.matches(&failed_write));
     }
 }

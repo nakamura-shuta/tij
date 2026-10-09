@@ -614,6 +614,9 @@ impl App {
             Err(e) => {
                 // IO error (command not found, etc.)
                 self.set_error(format!("Squash failed: {}", e));
+                // jj never started → the repo is unchanged; returning keeps
+                // the banner (a successful refresh clears error_message).
+                return;
             }
         }
 
@@ -749,6 +752,9 @@ impl App {
             }
             Err(e) => {
                 self.set_error(format!("Split failed: {}", e));
+                // jj never started → the repo is unchanged; returning keeps
+                // the banner (a successful refresh clears error_message).
+                return;
             }
         }
 
@@ -788,6 +794,9 @@ impl App {
             }
             Err(e) => {
                 self.set_error(format!("Diffedit failed: {}", e));
+                // jj never started → the repo is unchanged; returning keeps
+                // the banner (a successful refresh clears error_message).
+                return;
             }
         }
 
@@ -837,6 +846,9 @@ impl App {
             }
             Err(e) => {
                 self.set_error(format!("Bisect failed: {}", e));
+                // jj never started → the repo is unchanged; returning keeps
+                // the banner (a successful refresh clears error_message).
+                return;
             }
         }
 
@@ -877,7 +889,12 @@ impl App {
                 "Run exited with status: {}",
                 status.code().unwrap_or(-1)
             )),
-            Err(e) => self.set_error(format!("Run failed: {}", e)),
+            Err(e) => {
+                // jj never started → the repo is unchanged; returning keeps
+                // the banner (a successful refresh clears error_message).
+                self.set_error(format!("Run failed: {}", e));
+                return;
+            }
         }
 
         self.mark_dirty_and_refresh_current(DirtyFlags::log_and_status());
@@ -911,6 +928,9 @@ impl App {
             }
             Err(e) => {
                 self.set_error(format!("Arrange failed: {}", e));
+                // jj never started → the repo is unchanged; returning keeps
+                // the banner (a successful refresh clears error_message).
+                return;
             }
         }
 
@@ -1565,6 +1585,9 @@ impl App {
             }
             Err(e) => {
                 self.set_error(format!("Resolve failed: {}", e));
+                // jj never started → the repo is unchanged; returning keeps
+                // the banner (a successful refresh clears error_message).
+                return;
             }
         }
 

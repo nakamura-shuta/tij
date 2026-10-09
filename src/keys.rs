@@ -1645,7 +1645,7 @@ pub const COMMAND_HISTORY_KEYS: &[KeyBindEntry] = &[
     },
     KeyBindEntry {
         key: "f",
-        description: "Filter: All / Write / Read",
+        description: "Filter: All / Write / Read / Failed",
     },
     KeyBindEntry {
         key: "y",

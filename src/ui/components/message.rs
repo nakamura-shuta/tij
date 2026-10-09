@@ -173,7 +173,7 @@ fn strip_command_failed_wrapper(error: &str) -> Cow<'_, str> {
 /// cannot fit a row on its own falls back to the per-character walk (by
 /// [`display_width`], never by byte or char count), so the walk always makes
 /// progress and no row ever overflows.
-fn wrap_display_width(s: &str, width: usize) -> Vec<String> {
+pub(crate) fn wrap_display_width(s: &str, width: usize) -> Vec<String> {
     let mut out = Vec::new();
     let mut current = String::new();
     let mut current_width = 0usize;
